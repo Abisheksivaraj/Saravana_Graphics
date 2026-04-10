@@ -1,0 +1,176 @@
+.admin-portal-layout {
+    display: flex;
+    height: 100vh;
+    background: var(--bg-primary);
+}
+
+.ap-main {
+    flex: 1;
+    padding: 2.5rem;
+    overflow-y: auto;
+}
+
+.ap-header {
+    margin-bottom: 2.5rem;
+}
+
+.ap-header-title h1 {
+    font-size: 28px;
+    font-weight: 800;
+    margin-bottom: 4px;
+    color: var(--text-primary);
+}
+
+.ap-header-title p {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+/* Controls */
+.ap-controls {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.ap-search {
+    flex: 1;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    padding: 0 1rem;
+    gap: 12px;
+}
+
+.ap-search input {
+    width: 100%;
+    height: 48px;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 15px;
+}
+
+.ap-filter {
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    padding: 0 1rem;
+    gap: 12px;
+    min-width: 220px;
+}
+
+.ap-filter select {
+    width: 100%;
+    height: 48px;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* Table */
+.ap-table-container {
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+.ap-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.ap-table th {
+    padding: 1.25rem 1.5rem;
+    text-align: left;
+    background: var(--bg-primary);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.ap-table td {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border-light);
+    font-size: 14px;
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+
+.ap-table tr:hover td {
+    background: var(--bg-secondary);
+}
+
+.ap-vendor-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.ap-vendor-info small {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.ap-file-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--primary-color);
+    font-weight: 500;
+}
+
+.ap-status-badge {
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    display: inline-block;
+}
+
+/* Status variants (reusing logic or creating theme-compatible ones) */
+.ap-status-badge.queued { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.ap-status-badge.reject { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.ap-status-badge.verification { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.ap-status-badge.artwork-approval { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
+.ap-status-badge.production { background: rgba(6, 182, 212, 0.1); color: #06b6d4; }
+.ap-status-badge.despatch { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.ap-status-badge.approved { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+
+.ap-remarks {
+    font-size: 12px;
+    color: var(--text-muted);
+    max-width: 200px;
+}
+
+/* Modal specific overrides for consistency */
+.modal-overlay {
+    backdrop-filter: blur(8px);
+    z-index: 1000;
+}
+
+.modal-body.space-y-4 > * + * {
+    margin-top: 1.5rem;
+}
+
+.bg-secondary {
+    background: var(--bg-secondary);
+}
+
+.text-muted {
+    color: var(--text-muted);
+}
