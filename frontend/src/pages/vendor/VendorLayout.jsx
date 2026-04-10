@@ -103,8 +103,11 @@ export default function VendorLayout() {
                                             {item.icon}
                                         </ListItemIcon>
                                         <ListItemText
-                                            primary={item.label}
-                                            primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: isActive ? 700 : 500 }}
+                                            primary={
+                                                <Typography sx={{ fontSize: '0.875rem', fontWeight: isActive ? 700 : 500 }}>
+                                                    {item.label}
+                                                </Typography>
+                                            }
                                         />
                                     </ListItemButton>
                                 </ListItem>

@@ -104,7 +104,7 @@ export default function AdminVendorManager() {
                     <div className="modal-overlay" onClick={() => setShowModal(false)}>
                         <div className="modal" style={{ maxWidth: 650, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
                             <div className="modal-header">
-                                <h2 className="modal-title">Create Vendor Account</h2>
+                                <h2 className="modal-title text-[white]">Create Vendor Account</h2>
                                 <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}>✕</button>
                             </div>
                             <form onSubmit={handleCreateVendor} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -112,36 +112,36 @@ export default function AdminVendorManager() {
                                     <div className="flex gap-4">
                                         <div className="form-group flex-1">
                                             <label className="form-label block text-sm font-semibold mb-2">Contact Name *</label>
-                                            <input required name="name" className="input w-full" value={formData.name} onChange={handleChange} />
+                                            <input required name="name" className="input w-full" value={formData.name || ''} onChange={handleChange} />
                                         </div>
                                         <div className="form-group flex-1">
                                             <label className="form-label block text-sm font-semibold mb-2">Email *</label>
-                                            <input required type="email" name="email" className="input w-full" value={formData.email} onChange={handleChange} />
+                                            <input required type="email" name="email" className="input w-full" value={formData.email || ''} onChange={handleChange} />
                                         </div>
                                     </div>
                                     <div className="form-group mt-4">
                                         <label className="form-label block text-sm font-semibold mb-2">Business/Vendor Name</label>
-                                        <input name="vendorName" className="input w-full" value={formData.vendorName} onChange={handleChange} />
+                                        <input name="vendorName" className="input w-full" value={formData.vendorName || ''} onChange={handleChange} />
                                     </div>
                                     <div className="flex gap-4 mt-4">
                                         <div className="form-group flex-1">
                                             <label className="form-label block text-sm font-semibold mb-2">Vendor Code *</label>
-                                            <input required name="vendorCode" className="input w-full uppercase" value={formData.vendorCode} onChange={handleChange} />
+                                            <input required name="vendorCode" className="input w-full uppercase" value={formData.vendorCode || ''} onChange={handleChange} />
                                         </div>
                                         <div className="form-group flex-1">
                                             <label className="form-label block text-sm font-semibold mb-2">Vendor GSTIN</label>
-                                            <input name="vendorGstin" className="input w-full uppercase" value={formData.vendorGstin} onChange={handleChange} />
+                                            <input name="vendorGstin" className="input w-full uppercase" value={formData.vendorGstin || ''} onChange={handleChange} />
                                         </div>
                                     </div>
                                     <hr className="my-5" style={{ borderColor: 'var(--border-light)' }}/>
                                     <div className="flex gap-4">
                                         <div className="form-group flex-1">
                                             <label className="form-label block text-sm font-semibold mb-2">Login Username *</label>
-                                            <input required name="username" className="input w-full" value={formData.username} onChange={handleChange} />
+                                            <input required name="username" className="input w-full" value={formData.username || ''} onChange={handleChange} />
                                         </div>
                                         <div className="form-group flex-1">
                                             <label className="form-label block text-sm font-semibold mb-2">Login Password * (Min 6 chars)</label>
-                                            <input required type="password" name="password" className="input w-full" value={formData.password} onChange={handleChange} />
+                                            <input required type="password" name="password" className="input w-full" value={formData.password || ''} onChange={handleChange} />
                                         </div>
                                     </div>
                                 </div>

@@ -1,7 +1,12 @@
 import axios from 'axios';
 
+// export const BASE_URL = 'http://localhost:5000';
+
+export const BASE_URL = 'https://saravana-graphics.onrender.com';
+
+
 const api = axios.create({
-    baseURL: '/api',
+    baseURL: `${BASE_URL}/api`,
     headers: { 'Content-Type': 'application/json' },
 });
 

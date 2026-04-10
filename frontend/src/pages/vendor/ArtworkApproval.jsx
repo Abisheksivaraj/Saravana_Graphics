@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { vendorAPI } from '../../api';
+import { vendorAPI, BASE_URL } from '../../api';
 import toast from 'react-hot-toast';
 import {
     Box, Typography, Paper, Button, TextField, Card, CardContent,
@@ -93,7 +93,7 @@ export default function ArtworkApproval() {
                                         variant="outlined"
                                         fullWidth
                                         startIcon={<VisibilityIcon />}
-                                        onClick={() => window.open(`http://localhost:5000/${order.layoutFileUrl}`, '_blank')}
+                                        onClick={() => window.open(`${BASE_URL}/${order.layoutFileUrl}`, '_blank')}
                                         sx={{
                                             borderColor: '#7c3aed', color: '#7c3aed', fontWeight: 600,
                                             '&:hover': { bgcolor: '#f5f3ff', borderColor: '#6d28d9' },
@@ -113,7 +113,7 @@ export default function ArtworkApproval() {
                                         rows={3}
                                         fullWidth
                                         placeholder="Add your remarks or reasons for rejection..."
-                                        value={reviewOrder?._id === order._id ? reviewRemarks : ''}
+                                        value={(reviewOrder?._id === order._id ? reviewRemarks : '') || ''}
                                         onChange={e => { setReviewOrder(order); setReviewRemarks(e.target.value); }}
                                         onFocus={() => setReviewOrder(order)}
                                         sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}

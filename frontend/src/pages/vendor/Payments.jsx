@@ -147,7 +147,7 @@ export default function Payments() {
                                     fullWidth
                                     required
                                     size="small"
-                                    value={paymentData.amountPaid}
+                                    value={paymentData.amountPaid || ''}
                                     onChange={e => updateField('amountPaid', e.target.value)}
                                     inputProps={{ min: 0 }}
                                     sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
@@ -187,28 +187,28 @@ export default function Payments() {
                         {/* Dense Grid */}
                         <Grid container spacing={2} sx={{ mb: 3 }}>
                             <Grid size={{ xs: 12, sm: 4 }}>
-                                <TextField label="Cheque Number *" required fullWidth size="small" value={paymentData.chequeNumber} onChange={e => updateField('chequeNumber', e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                                <TextField label="Cheque Number *" required fullWidth size="small" value={paymentData.chequeNumber || ''} onChange={e => updateField('chequeNumber', e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
                             </Grid>
                             <Grid size={{ xs: 12, sm: 4 }}>
                                 <FileUploadBtn label="Cheque Scan Image" file={chequeFile} onChange={setChequeFile} required />
                             </Grid>
                             <Grid size={{ xs: 12, sm: 4 }}>
-                                <TextField label="Cheque Date *" type="date" required fullWidth size="small" InputLabelProps={{ shrink: true }} value={paymentData.chequeDate} onChange={e => updateField('chequeDate', e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                                <TextField label="Cheque Date *" type="date" required fullWidth size="small" InputLabelProps={{ shrink: true }} value={paymentData.chequeDate || ''} onChange={e => updateField('chequeDate', e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
                             </Grid>
                             <Grid size={{ xs: 12, sm: 4 }}>
-                                <TextField label="Dispatched By *" required fullWidth size="small" placeholder="Courier Name" value={paymentData.dispatchedBy} onChange={e => updateField('dispatchedBy', e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                                <TextField label="Dispatched By *" required fullWidth size="small" placeholder="Courier Name" value={paymentData.dispatchedBy || ''} onChange={e => updateField('dispatchedBy', e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
                             </Grid>
                             <Grid size={{ xs: 12, sm: 4 }}>
                                 <FileUploadBtn label="Tracking Scan Copy" file={trackingFile} onChange={setTrackingFile} />
                             </Grid>
                             <Grid size={{ xs: 12, sm: 4 }}>
-                                <TextField label="Tracking No" fullWidth size="small" placeholder="AWB/Tracking" value={paymentData.trackingNumber} onChange={e => updateField('trackingNumber', e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                                <TextField label="Tracking No" fullWidth size="small" placeholder="AWB/Tracking" value={paymentData.trackingNumber || ''} onChange={e => updateField('trackingNumber', e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
                             </Grid>
                             <Grid size={{ xs: 12, sm: 4 }}>
-                                <TextField label="Approx Delivery Date *" type="date" required fullWidth size="small" InputLabelProps={{ shrink: true }} value={paymentData.deliveryDate} onChange={e => updateField('deliveryDate', e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                                <TextField label="Approx Delivery Date *" type="date" required fullWidth size="small" InputLabelProps={{ shrink: true }} value={paymentData.deliveryDate || ''} onChange={e => updateField('deliveryDate', e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
                             </Grid>
                             <Grid size={{ xs: 12, sm: 4 }}>
-                                <TextField label="Purchase Order(s)" fullWidth size="small" placeholder="PO Numbers" value={paymentData.purchaseOrders} onChange={e => updateField('purchaseOrders', e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
+                                <TextField label="Purchase Order(s)" fullWidth size="small" placeholder="PO Numbers" value={paymentData.purchaseOrders || ''} onChange={e => updateField('purchaseOrders', e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
                             </Grid>
                             <Grid size={{ xs: 12, sm: 4 }}>
                                 <FileUploadBtn label="PO Copy" file={poFile} onChange={setPoFile} />
@@ -222,7 +222,7 @@ export default function Payments() {
                             rows={2}
                             fullWidth
                             size="small"
-                            value={paymentData.remarks}
+                            value={paymentData.remarks || ''}
                             onChange={e => updateField('remarks', e.target.value)}
                             sx={{ mb: 3, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                         />

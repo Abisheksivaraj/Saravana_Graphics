@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { vendorAPI } from '../api';
+import { vendorAPI, BASE_URL } from '../api';
 import { 
     FileText, CheckCircle, Clock, XCircle, Upload,
     AlertCircle, Truck, Package, List, Search,
@@ -23,6 +23,7 @@ export default function AdminVendorPortal() {
     const [editingOrder, setEditingOrder] = useState(null);
     const [newStatus, setNewStatus] = useState('');
     const [remarks, setRemarks] = useState('');
+    const [productionDate, setProductionDate] = useState('');
 
     const fetchData = async () => {
         try {
@@ -42,7 +43,7 @@ export default function AdminVendorPortal() {
     const handleUpdateStatus = async () => {
         if (!editingOrder) return;
         try {
-            await vendorAPI.updateStatus(editingOrder._id, { status: newStatus, remarks });
+            await vendorAPI.updateStatus(editingOrder._id, { status: newStatus, remarks, productionDate });
             toast.success('Status updated successfully');
             setEditingOrder(null);
             fetchData();
@@ -76,13 +77,13 @@ export default function AdminVendorPortal() {
                         <Search size={18} />
                         <input 
                             placeholder="Search by Order ID, File, or Vendor..." 
-                            value={search}
+                            value={search || ''}
                             onChange={e => setSearch(e.target.value)}
                         />
                     </div>
                     <div className="ap-filter">
                         <Filter size={18} />
-                        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                        <select value={statusFilter || 'All'} onChange={e => setStatusFilter(e.target.value)}>
                             <option value="All">All Statuses</option>
                             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
@@ -144,7 +145,7 @@ export default function AdminVendorPortal() {
                                                 <button 
                                                     className="btn btn-ghost btn-icon btn-sm" 
                                                     title="Download Excel"
-                                                    onClick={() => window.open(`http://localhost:5000/${o.filePath}`, '_blank')}
+                                                    onClick={() => window.open(`${BASE_URL}/${o.filePath}`, '_blank')}
                                                 >
                                                     <FileText size={16} />
                                                 </button>
@@ -184,6 +185,7 @@ export default function AdminVendorPortal() {
                                                         setEditingOrder(o);
                                                         setNewStatus(o.status);
                                                         setRemarks(o.remarks || '');
+                                                        setProductionDate(o.productionDate ? new Date(o.productionDate).toISOString().split('T')[0] : '');
                                                     }}
                                                 >
                                                     <Edit size={16} />
@@ -220,7 +222,7 @@ export default function AdminVendorPortal() {
                                     <label className="form-label block text-sm font-semibold mb-2">New Status</label>
                                     <select 
                                         className="select-input w-full" 
-                                        value={newStatus} 
+                                        value={newStatus || ''} 
                                         onChange={e => setNewStatus(e.target.value)}
                                     >
                                         {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -252,12 +254,23 @@ export default function AdminVendorPortal() {
                                         {editingOrder.layoutFileUrl && <small className="text-muted block mt-1">A layout is already assigned. Uploading again will overwrite it.</small>}
                                     </div>
                                 )}
+
+                                <div className="form-group mt-4">
+                                    <label className="form-label block text-sm font-semibold mb-2">Estimated Production Date</label>
+                                    <input 
+                                        type="date" 
+                                        className="input w-full p-2" 
+                                        value={productionDate || ''}
+                                        onChange={e => setProductionDate(e.target.value)}
+                                    />
+                                    <small className="text-muted block mt-1">Set the deadline for production completion.</small>
+                                </div>
                                 <div className="form-group mt-4">
                                     <label className="form-label block text-sm font-semibold mb-2">Remarks</label>
                                     <textarea 
                                         className="textarea w-full p-2 h-24" 
                                         placeholder="Add notes or reasons for rejection..."
-                                        value={remarks}
+                                        value={remarks || ''}
                                         onChange={e => setRemarks(e.target.value)}
                                     />
                                 </div>

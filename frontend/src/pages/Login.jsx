@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { Layers, Eye, EyeOff, LogIn } from 'lucide-react';
+import { Layers, Eye, EyeOff, LogIn, Mail, Lock, Zap, Shield, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Auth.css';
 
 export default function Login() {
-    const [form, setForm] = useState({ email: '', password: '' });
+    const [form, setForm] = useState({ identifier: '', password: '' });
     const [showPwd, setShowPwd] = useState(false);
     const [loading, setLoading] = useState(false);
     const { login } = useAuthStore();
@@ -21,8 +21,6 @@ export default function Login() {
             toast.success('Welcome back!');
             if (user.role === 'vendor') {
                 navigate('/vendor-portal');
-            } else if (user.role === 'admin') {
-                navigate('/dashboard');
             } else {
                 navigate('/dashboard');
             }
@@ -37,37 +35,100 @@ export default function Login() {
                 <div className="orb orb-1"></div>
                 <div className="orb orb-2"></div>
             </div>
-            <div className="auth-card">
-                <div className="auth-logo">
-                    <div className="auth-logo-icon"><Layers size={22} color="white" /></div>
-                    <span>Saravana<b>Graphics</b></span>
-                </div>
-                <h1 className="auth-title">Welcome Back</h1>
-                <p className="auth-subtitle">Sign in to your design studio</p>
 
-                <form onSubmit={handleSubmit} className="auth-form">
-                    <div className="input-group">
-                        <label>Username or Email</label>
-                        <input className="input" type="text" placeholder="Enter identifier" value={form.identifier}
-                            onChange={e => setForm({ ...form, identifier: e.target.value })} />
-                    </div>
-                    <div className="input-group">
-                        <label>Password</label>
-                        <div className="input-with-icon">
-                            <input className="input" type={showPwd ? 'text' : 'password'} placeholder="Enter password" value={form.password}
-                                onChange={e => setForm({ ...form, password: e.target.value })} />
-                            <button type="button" className="input-icon-btn" onClick={() => setShowPwd(!showPwd)}>
-                                {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
-                            </button>
+            <div className="auth-container">
+                {/* Left Side: Hero */}
+                <div className="auth-hero">
+                    <div className="auth-hero-content">
+                        <div className="auth-hero-logo">
+                            <div className="auth-logo-icon-box">
+                                <Layers size={24} color="white" />
+                            </div>
+                            <span>Saravana<b>Graphics</b></span>
+                        </div>
+                        <h1 className="auth-hero-title">
+                            Pro Level <br />Design Studio.
+                        </h1>
+                        <p className="auth-hero-subtitle">
+                            The ultimate platform for high-performance label manufacturing and cloud-based design coordination.
+                        </p>
+
+                        <div className="auth-features">
+                            <div className="feature-item">
+                                <Zap size={18} color="#7c3aed" />
+                                <span>Real-time Sync</span>
+                            </div>
+                            <div className="feature-item">
+                                <Shield size={18} color="#c026d3" />
+                                <span>Secure Access</span>
+                            </div>
+                            <div className="feature-item">
+                                <Sparkles size={18} color="#39A3DD" />                                
+                                <span>AI Workflows</span>
+                            </div>
+                            <div className="feature-item">
+                                <Layers size={18} color="#10b981" />
+                                <span>Auto Layouts</span>
+                            </div>
                         </div>
                     </div>
-                    <button type="submit" className="btn btn-primary btn-lg auth-submit" disabled={loading}>
-                        {loading ? <div className="spinner"></div> : <><LogIn size={18} /> Sign In</>}
-                    </button>
-                </form>
+                </div>
 
-                <div className="auth-footer">
-                    <p>Don't have an account? <Link to="/register">Create one</Link></p>
+                {/* Right Side: Form */}
+                <div className="auth-form-section">
+                    <div className="auth-card-modern">
+                        <div className="auth-card-header">
+                            <h2>Welcome Back</h2>
+                            <p>Enter your credentials to access your studio</p>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="auth-form-modern">
+                            <div className="form-field">
+                                <label>Username or Email</label>
+                                <div className="input-wrapper">
+                                    <Mail className="input-icon" size={18} />
+                                    <input 
+                                        className="auth-input" 
+                                        type="text" 
+                                        placeholder="Identification" 
+                                        value={form.identifier}
+                                        onChange={e => setForm({ ...form, identifier: e.target.value })} 
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="form-field">
+                                <label>Password</label>
+                                <div className="input-wrapper">
+                                    <Lock className="input-icon" size={18} />
+                                    <input 
+                                        className="auth-input" 
+                                        type={showPwd ? 'text' : 'password'} 
+                                        placeholder="••••••••" 
+                                        value={form.password}
+                                        onChange={e => setForm({ ...form, password: e.target.value })} 
+                                        required
+                                    />
+                                    <button 
+                                        type="button" 
+                                        className="pwd-toggle" 
+                                        onClick={() => setShowPwd(!showPwd)}
+                                    >
+                                        {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <button type="submit" className="auth-btn" disabled={loading}>
+                                {loading ? <div className="auth-spinner"></div> : <><LogIn size={18} /> Sign In</>}
+                            </button>
+                        </form>
+
+                        <div className="auth-switch" style={{ marginTop: '24px' }}>
+                            Don't have an account? <Link to="/register">Join the Studio</Link>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { vendorAPI } from '../api';
+import { vendorAPI, BASE_URL } from '../api';
 import { 
     Upload, FileText, CheckCircle, Clock, XCircle, 
     AlertCircle, Truck, Package, List, Search,
@@ -308,7 +308,7 @@ export default function VendorDashboard() {
                                 <div className="p-4 bg-secondary rounded-lg flex items-center justify-between">
                                     <span className="font-semibold text-sm">Download Admin Layout:</span>
                                     {reviewOrder.layoutFileUrl ? (
-                                         <button className="btn btn-primary btn-sm" onClick={() => window.open(`http://localhost:5000/${reviewOrder.layoutFileUrl.replace(/\\/g, '/')}`, '_blank')}>
+                                         <button className="btn btn-primary btn-sm" onClick={() => window.open(`${BASE_URL}/${reviewOrder.layoutFileUrl.replace(/\\/g, '/')}`, '_blank')}>
                                             <FileText size={16} className="mr-2"/> View Layout
                                          </button>
                                     ) : (

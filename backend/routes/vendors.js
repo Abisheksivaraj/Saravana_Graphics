@@ -118,11 +118,11 @@ router.get('/stats', auth, async (req, res) => {
 // @access  Admin
 router.patch('/status/:id', auth, checkRole(['admin', 'vendor']), async (req, res) => {
     try {
-        const { status, remarks } = req.body;
+        const { status, remarks, productionDate } = req.body;
         const query = req.user.role === 'admin' ? { _id: req.params.id } : { _id: req.params.id, vendorId: req.user._id };
         const order = await VendorOrder.findOneAndUpdate(
             query,
-            { status, remarks },
+            { status, remarks, productionDate },
             { new: true }
         );
         if (!order) return res.status(404).json({ message: 'Order not found or unauthorized' });

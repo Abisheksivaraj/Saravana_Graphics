@@ -26,7 +26,7 @@ export default function CreateOrder() {
 
         setUploading(true);
         try {
-            const res = await vendorAPI.uploadOrder(formData);
+            const res = await vendorAPI.upload(formData);
             toast.success(`Order ${res.data.orderId} created!`);
             setFile(null);
             setTimeout(() => navigate('/vendor-portal/dashboard'), 1200);
