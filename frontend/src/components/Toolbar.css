@@ -1,57 +1,67 @@
-.editor-toolbar {
-    width: 80px;
-    flex-shrink: 0;
+.vertical-toolbox {
+    width: 64px;
     background: var(--bg-secondary);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    padding: 12px 6px;
-    gap: 2px;
-    overflow-y: auto;
+    align-items: center;
+    padding: 12px 0;
+    z-index: 80;
 }
 
-.toolbar-section-label {
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-muted);
-    text-align: center;
-    padding: 4px 0 6px;
-    margin-top: 4px;
+.toolbox-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: center;
+    width: 100%;
 }
 
-.toolbar-sep {
-    height: 1px;
-    background: var(--border);
-    margin: 8px 4px;
-}
-
-.toolbar-btn {
+.toolbox-btn {
+    width: 48px;
+    height: 48px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
-    padding: 10px 6px;
-    border-radius: var(--radius-sm);
-    font-size: 10px;
-    font-weight: 500;
-    cursor: pointer;
-    color: var(--text-muted);
+    justify-content: center;
     background: transparent;
-    border: none;
-    transition: var(--transition);
-    text-align: center;
-    width: 100%;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
 }
 
-.toolbar-btn:hover {
+.toolbox-btn:hover {
     background: var(--bg-hover);
-    color: var(--primary-light);
+    color: var(--text-primary);
+    transform: translateY(-1px);
 }
 
-.toolbar-btn.active {
+.toolbox-btn.active {
     background: var(--primary-glow);
     color: var(--primary-light);
+    border-color: rgba(108, 99, 255, 0.3);
 }
+
+.toolbox-icon {
+    margin-bottom: 2px;
+}
+
+.toolbox-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2px;
+    opacity: 0.7;
+}
+
+.toolbox-sep {
+    width: 32px;
+    height: 1px;
+    background: var(--border);
+    margin: 8px 0;
+}
+
+/* Tooltip style using data-tooltip if needed, but standard title attribute is used for now */

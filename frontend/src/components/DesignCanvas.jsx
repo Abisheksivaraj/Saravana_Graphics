@@ -126,6 +126,11 @@ function ElementWrapper({ el, isSelected, onSelect, onChange }) {
                     boundBoxFunc={(oldBox, newBox) => (newBox.width < 5 || newBox.height < 5 ? oldBox : newBox)}
                     rotateEnabled={true}
                     enabledAnchors={el.type === 'circle' ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : undefined}
+                    anchorFill="#ffffff"
+                    anchorStroke="#2563eb"
+                    anchorSize={8}
+                    borderStroke="#2563eb"
+                    borderStrokeWidth={1}
                 />
             )}
         </>
@@ -333,12 +338,31 @@ export default function DesignCanvas({ stageRef, showGrid = true }) {
     // --- KEYBOARD ---
     const handleKeyDown = useCallback((e) => {
         if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+
+        // Arrow Key Nudging
+        if (selectedId && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+            e.preventDefault();
+            const el = elements.find(el => el.id === selectedId);
+            if (el) {
+                const shift = e.shiftKey ? 10 : 1;
+                const updates = {};
+                if (e.key === 'ArrowUp') updates.y = el.y - shift;
+                if (e.key === 'ArrowDown') updates.y = el.y + shift;
+                if (e.key === 'ArrowLeft') updates.x = el.x - shift;
+                if (e.key === 'ArrowRight') updates.x = el.x + shift;
+                updateElementAndSave(selectedId, updates);
+            }
+            return;
+        }
+
         if (e.key === 'Delete' || e.key === 'Backspace') {
             if (selectedId) deleteElement(selectedId);
         }
         if (e.key === 'v') setSelectedTool('pick');
+        if (e.key === 't') setSelectedTool('text');
+        if (e.key === 'b') setSelectedTool('barcode');
         if (e.key === 'Escape') { setSelectedTool('pick'); deselectAll(); }
-    }, [selectedId]);
+    }, [selectedId, elements]);
 
     useEffect(() => {
         window.addEventListener('keydown', handleKeyDown);

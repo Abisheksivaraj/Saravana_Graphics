@@ -1,0 +1,141 @@
+.property-bar {
+    height: 44px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    z-index: 90;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.property-bar-content {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 12px;
+}
+
+.prop-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.prop-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-tertiary);
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-light);
+}
+
+.prop-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-right: 4px;
+}
+
+.prop-value {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.prop-input {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+    width: 60px;
+    outline: none;
+    padding: 2px 0;
+}
+
+.prop-input:focus {
+    color: var(--primary-light);
+}
+
+.prop-select {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 100px;
+    outline: none;
+    cursor: pointer;
+}
+
+.prop-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.prop-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.prop-btn.active {
+    background: var(--primary-glow);
+    color: var(--primary-light);
+}
+
+.prop-btn.danger:hover {
+    background: #ef444422;
+    color: #ef4444;
+}
+
+.prop-sep {
+    width: 1px;
+    height: 20px;
+    background: var(--border);
+    margin: 0 4px;
+}
+
+.prop-color-picker {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    background: none;
+}
+
+.prop-color-picker::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.prop-color-picker::-webkit-color-swatch {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.prop-context-label {
+    font-size: 10px;
+    font-weight: 800;
+    background: var(--primary);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.prop-push {
+    flex: 1;
+}

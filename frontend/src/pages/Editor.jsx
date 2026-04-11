@@ -6,7 +6,7 @@ import { useCompanyStore } from '../store/companyStore';
 import { useAuthStore } from '../store/authStore';
 import DesignCanvas from '../components/DesignCanvas';
 import Toolbar from '../components/Toolbar';
-import ToolStrip from '../components/ToolStrip';
+import PropertyBar from '../components/PropertyBar';
 import PropertiesPanel from '../components/PropertiesPanel';
 import {
     Save, Download, Printer, Undo2, Redo2, ZoomIn, ZoomOut,
@@ -305,16 +305,26 @@ export default function Editor() {
                 </div>
             </header>
 
-            {/* Tool Strip (horizontal, below topbar) */}
-            <ToolStrip />
+            {/* Dynamic Property Bar (context-sensitive) */}
+            <PropertyBar />
 
             {/* Body */}
             <div className="editor-body" onClick={() => setShowSizeMenu(false)}>
                 <Toolbar onImageUpload={handleImageUpload} />
 
-                {/* Canvas area */}
+                {/* Canvas area with Rulers Wrapper */}
                 <div ref={canvasAreaRef} className="editor-canvas-area">
-                    <DesignCanvas stageRef={stageRef} showGrid={showGrid} />
+                    <div className="ruler-container" style={{
+                        position: 'relative',
+                        padding: '20px 0 0 20px', // Space for rulers
+                        boxShadow: 'inset 20px 0 0 0 var(--bg-tertiary), inset 0 20px 0 0 var(--bg-tertiary)'
+                    }}>
+                        {/* Fake ruler lines for context */}
+                        <div className="ruler ruler-h" style={{ position: 'absolute', top: 0, left: 20, right: 0, height: 20, borderBottom: '1px solid var(--border)' }}></div>
+                        <div className="ruler ruler-v" style={{ position: 'absolute', top: 20, left: 0, bottom: 0, width: 20, borderRight: '1px solid var(--border)' }}></div>
+                        
+                        <DesignCanvas stageRef={stageRef} showGrid={showGrid} />
+                    </div>
                 </div>
 
                 <div className={`props-panel-container ${!selectedId ? 'collapsed' : ''}`}>
