@@ -40,7 +40,7 @@ const Sidebar = () => {
             <div className="db-sidebar-header">
                 <div className="db-logo">
                     <div className="db-logo-icon"><Layers size={20} color="white" /></div>
-                    {!isSidebarCollapsed && <span>Saravana<b>Graphics</b></span>}
+                    {!isSidebarCollapsed && <span>Saravana<b>Graphicss</b></span>}
                 </div>
                 <button className="sidebar-toggle" onClick={toggleSidebar}>
                     {isSidebarCollapsed ? <Menu size={20} /> : <ChevronLeft size={20} />}

@@ -163,7 +163,7 @@ export default function VendorDashboard() {
             <nav className="vp-nav">
                 <div className="vp-nav-container">
                     <div className="vp-logo">
-                        <span className="vp-logo-text">Saravana Graphics</span>
+                        <span className="vp-logo-text">Saravana Graphicss</span>
                         <div className="vp-logo-divider"></div>
                         <span className="vp-logo-sub">Vendor Portal</span>
                     </div>

@@ -3,16 +3,7 @@ import { v4 as uuid } from 'uuid';
 
 // Size presets in pixels (at 96 DPI)
 export const SIZE_PRESETS = {
-    'price-tag': { label: 'Price Tag', width: 200, height: 300, unit: 'mm', desc: '5cm × 7.5cm' },
-    'clothing-tag': { label: 'Clothing Tag', width: 180, height: 350, unit: 'mm', desc: '4.5cm × 9cm' },
-    'business-card': { label: 'Business Card', width: 350, height: 200, unit: 'mm', desc: '8.9cm × 5.1cm' },
-    'label-small': { label: 'Small Label', width: 250, height: 150, unit: 'mm', desc: '6.4cm × 3.8cm' },
-    'label-large': { label: 'Large Label', width: 400, height: 250, unit: 'mm', desc: '10cm × 6.4cm' },
-    'shipping-label': { label: 'Shipping Label', width: 400, height: 300, unit: 'mm', desc: '10cm × 7.5cm' },
-    'barcode-label': { label: 'Barcode Label', width: 300, height: 150, unit: 'mm', desc: '7.5cm × 3.8cm' },
-    'id-card': { label: 'ID Card', width: 340, height: 216, unit: 'mm', desc: '8.56cm × 5.4cm' },
-    'a4': { label: 'A4 Page', width: 794, height: 1123, unit: 'mm', desc: '21cm × 29.7cm' },
-    'custom': { label: 'Custom Size', width: 400, height: 400, unit: 'px', desc: 'Any size' },
+    'custom': { label: 'Custom Size', width: 200, height: 300, unit: 'mm', desc: 'Any size' },
 };
 
 export const useDesignStore = create((set, get) => ({
@@ -22,16 +13,17 @@ export const useDesignStore = create((set, get) => ({
     canvasWidth: 200,
     canvasHeight: 300,
     backgroundColor: '#ffffff',
-    sizePreset: 'price-tag',
+    sizePreset: 'custom',
     elements: [],
     company: '',
-    selectedId: null,
+    selectedIds: [], // Array of IDs for multi-selection
     isSaving: false,
     isDirty: false,
 
     // Canvas view
     zoom: 1,
     pan: { x: 0, y: 0 },
+    previewData: null, // First row of Excel data for live preview
 
     // History (undo/redo)
     history: [],
@@ -50,6 +42,7 @@ export const useDesignStore = create((set, get) => ({
     setDesignId: (id) => set({ designId: id }),
     setIsSaving: (saving) => set({ isSaving: saving }),
     setDirty: (dirty) => set({ isDirty: dirty }),
+    setPreviewData: (data) => set({ previewData: data }),
 
     // Load design from server
     loadDesign: (design) => {
@@ -82,7 +75,7 @@ export const useDesignStore = create((set, get) => ({
             ...getDefaultProps(type),
             ...extraProps,
         };
-        set((s) => ({ elements: [...s.elements, newElement], selectedId: id, isDirty: true }));
+        set((s) => ({ elements: [...s.elements, newElement], selectedIds: [id], isDirty: true }));
         get().saveHistory();
         return newElement;
     },
@@ -100,12 +93,138 @@ export const useDesignStore = create((set, get) => ({
     },
 
     deleteElement: (id) => {
-        set((s) => ({ elements: s.elements.filter((el) => el.id !== id), selectedId: null, isDirty: true }));
+        const idsToDelete = Array.isArray(id) ? id : [id];
+        set((s) => ({
+            elements: s.elements.filter((el) => !idsToDelete.includes(el.id)),
+            selectedIds: s.selectedIds.filter(sid => !idsToDelete.includes(sid)),
+            isDirty: true
+        }));
         get().saveHistory();
     },
 
-    selectElement: (id) => set({ selectedId: id }),
-    deselectAll: () => set({ selectedId: null }),
+    selectElement: (id, multiSelect = false) => {
+        if (!id) {
+            set({ selectedIds: [] });
+            return;
+        }
+        set((s) => {
+            if (multiSelect) {
+                const alreadySelected = s.selectedIds.includes(id);
+                const newSelection = alreadySelected 
+                    ? s.selectedIds.filter(sid => sid !== id)
+                    : [...s.selectedIds, id];
+                return { selectedIds: newSelection };
+            }
+            return { selectedIds: [id] };
+        });
+    },
+
+    deselectAll: () => set({ selectedIds: [] }),
+
+    // Multi-selection operations
+    matchSize: (property) => {
+        const { selectedIds, elements } = get();
+        if (selectedIds.length < 2) return;
+        const referenceId = selectedIds[0];
+        const ref = elements.find(e => e.id === referenceId);
+        if (!ref) return;
+
+        let value = ref[property];
+        // Special case for radius
+        if (property === 'height' && ref.type === 'circle') value = ref.radius * 2;
+        if (property === 'width' && ref.type === 'circle') value = ref.radius * 2;
+
+        set(s => ({
+            elements: s.elements.map(el => {
+                if (!selectedIds.slice(1).includes(el.id)) return el;
+                // Handle circles differently (they use radius)
+                if (el.type === 'circle') {
+                    if (property === 'width' || property === 'height') {
+                        return { ...el, radius: value / 2 };
+                    }
+                }
+                return { ...el, [property]: value };
+            }),
+            isDirty: true
+        }));
+        get().saveHistory();
+    },
+
+    alignElements: (type) => {
+        const { selectedIds, elements } = get();
+        if (selectedIds.length < 2) return;
+        const referenceId = selectedIds[0];
+        const ref = elements.find(e => e.id === referenceId);
+        if (!ref) return;
+
+        const getDim = (el, dim) => {
+            if (el.type === 'circle') return el.radius * 2;
+            return el[dim] || 0;
+        };
+
+        set(s => ({
+            elements: s.elements.map(el => {
+                if (!selectedIds.slice(1).includes(el.id)) return el;
+                const eW = getDim(el, 'width');
+                const eH = getDim(el, 'height');
+                const rW = getDim(ref, 'width');
+                const rH = getDim(ref, 'height');
+
+                switch(type) {
+                    case 'top': return { ...el, y: ref.y };
+                    case 'bottom': return { ...el, y: ref.y + rH - eH };
+                    case 'left': return { ...el, x: ref.x };
+                    case 'right': return { ...el, x: ref.x + rW - eW };
+                    case 'center': return { ...el, x: ref.x + rW/2 - eW/2 };
+                    case 'middle': return { ...el, y: ref.y + rH/2 - eH/2 };
+                    default: return el;
+                }
+            }),
+            isDirty: true
+        }));
+        get().saveHistory();
+    },
+
+    setElementDistance: (refId, targetId, axis, newDistance) => {
+        const { elements } = get();
+        const ref = elements.find(e => e.id === refId);
+        const target = elements.find(e => e.id === targetId);
+        if (!ref || !target) return;
+
+        const getBounds = (el) => {
+            const sx = el.scaleX || 1;
+            const sy = el.scaleY || 1;
+            let x = el.x, y = el.y, w = 0, h = 0;
+            if (el.type === 'circle') {
+                const r = (el.radius || 50) * Math.max(sx, sy);
+                x -= r; y -= r; w = r * 2; h = r * 2;
+            } else {
+                w = (el.width || 100) * sx;
+                h = (el.height || 100) * sy;
+            }
+            return { x, y, w, h };
+        };
+
+        const rB = getBounds(ref);
+        const tB = getBounds(target);
+        const updates = {};
+
+        if (axis === 'x') {
+            if (target.x >= ref.x) {
+                updates.x = rB.x + rB.w + newDistance + (target.x - tB.x);
+            } else {
+                updates.x = rB.x - tB.w - newDistance + (target.x - tB.x);
+            }
+        } else {
+            if (target.y >= ref.y) {
+                updates.y = rB.y + rB.h + newDistance + (target.y - tB.y);
+            } else {
+                updates.y = rB.y - tB.h - newDistance + (target.y - tB.y);
+            }
+        }
+
+        get().updateElementAndSave(targetId, updates);
+    },
 
     bringForward: (id) => {
         const els = [...get().elements];
@@ -141,7 +260,7 @@ export const useDesignStore = create((set, get) => ({
         const el = get().elements.find(e => e.id === id);
         if (!el) return;
         const newEl = { ...el, id: uuid(), x: el.x + 20, y: el.y + 20, zIndex: get().elements.length };
-        set((s) => ({ elements: [...s.elements, newEl], selectedId: newEl.id, isDirty: true }));
+        set((s) => ({ elements: [...s.elements, newEl], selectedIds: [newEl.id], isDirty: true }));
         get().saveHistory();
     },
 
@@ -178,8 +297,7 @@ export const useDesignStore = create((set, get) => ({
 
         set((s) => ({
             elements: [...s.elements, ...newElements],
-            canvasWidth: Math.max(canvasWidth, maxX + offset + 5),
-            selectedId: null, // Deselect individual to avoid confusion
+            selectedIds: [], // Deselect individual to avoid confusion
             isDirty: true,
         }));
         get().saveHistory();
@@ -216,7 +334,7 @@ export const useDesignStore = create((set, get) => ({
     },
 
     // Initialize fresh design
-    newDesign: (preset = 'price-tag', customWidth = null, customHeight = null) => {
+    newDesign: (preset = 'custom', customWidth = null, customHeight = null) => {
         const size = SIZE_PRESETS[preset] || SIZE_PRESETS['custom'];
         const currentCompany = get().company; // Preserve the company chosen in Dashboard
         
@@ -227,7 +345,7 @@ export const useDesignStore = create((set, get) => ({
             designId: null, title: 'Untitled Design',
             canvasWidth: width, canvasHeight: height,
             backgroundColor: '#ffffff', sizePreset: preset,
-            elements: [], company: currentCompany, selectedId: null, isDirty: false,
+            elements: [], company: currentCompany, selectedIds: [], isDirty: false,
             history: [], historyIndex: -1, zoom: 1, pan: { x: 0, y: 0 },
         });
     },
@@ -235,7 +353,7 @@ export const useDesignStore = create((set, get) => ({
 
 function getDefaultProps(type) {
     switch (type) {
-        case 'text': return { text: 'Double click to edit', fontSize: 18, fontFamily: 'Arial', fontWeight: 'bold', fill: '#000000', stroke: 'transparent', strokeWidth: 0, width: 200, textAlign: 'left', underline: false, fontStyle: 'normal' };
+        case 'text': return { text: 'Text', fontSize: 18, fontFamily: 'Arial', fontWeight: 'bold', fill: '#000000', stroke: 'transparent', strokeWidth: 0, width: 200, textAlign: 'left', underline: false, fontStyle: 'normal', mappingMode: 'smart' };
         case 'rect': return { width: 120, height: 80, fill: 'transparent', stroke: '#000000', strokeWidth: 2, cornerRadius: 4 };
         case 'circle': return { radius: 50, fill: 'transparent', stroke: '#000000', strokeWidth: 2 };
         case 'ellipse': return { width: 120, height: 80, fill: 'transparent', stroke: '#000000', strokeWidth: 2 };
@@ -243,9 +361,10 @@ function getDefaultProps(type) {
         case 'triangle': return { width: 100, height: 100, fill: 'transparent', stroke: '#000000', strokeWidth: 2 };
         case 'star': return { numPoints: 5, innerRadius: 20, outerRadius: 50, fill: 'transparent', stroke: '#000000', strokeWidth: 2 };
         case 'polygon': return { sides: 6, radius: 50, fill: 'transparent', stroke: '#000000', strokeWidth: 2 };
+        case 'placeholder': return { width: 100, height: 100, fill: 'rgba(37, 99, 235, 0.1)', stroke: '#2563eb', strokeWidth: 2, dash: [5, 5], fieldName: '' };
         case 'path': return { data: 'M 0 0 L 100 0 L 50 100 Z', fill: 'transparent', stroke: '#000000', strokeWidth: 2 };
-        case 'barcode': return { barcodeValue: '8905263411803', barcodeFormat: 'CODE128', width: 200, height: 80, fill: '#000000' };
-        case 'qrcode': return { qrValue: 'https://saravanagraphics.com', width: 100, height: 100 };
+        case 'barcode': return { barcodeValue: '8905263411803', barcodeFormat: 'CODE128', width: 200, height: 80, fill: '#000000', mappingMode: 'smart' };
+        case 'qrcode': return { qrValue: 'https://saravanagraphics.com', width: 100, height: 100, mappingMode: 'smart' };
         case 'image': return { width: 150, height: 150, src: '' };
         default: return {};
     }

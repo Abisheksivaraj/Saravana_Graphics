@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDesignStore, SIZE_PRESETS } from '../store/designStore';
+import { useUIStore, pxToUnit, unitToPx } from '../store/uiStore';
 import { designsAPI, companiesAPI } from '../api';
 import { useCompanyStore } from '../store/companyStore';
 import { useAuthStore } from '../store/authStore';
@@ -25,7 +26,7 @@ export default function Editor() {
 
     const {
         designId, title, canvasWidth, canvasHeight, backgroundColor, sizePreset,
-        elements, isDirty, isSaving, zoom, selectedId,
+        elements, isDirty, isSaving, zoom, selectedIds,
         setTitle, setCompany, setZoom, setCanvasSize, newDesign, loadDesign, setDesignId,
         setIsSaving, setDirty, addElement, undo, redo, historyIndex, history,
         company,
@@ -37,6 +38,8 @@ export default function Editor() {
     const [loading, setLoading] = useState(false);
     const [editingTitle, setEditingTitle] = useState(false);
     const [hidePanel, setHidePanel] = useState(false);
+
+    const { measurementUnit, setMeasurementUnit } = useUIStore();
 
     const { companies, fetchCompanies } = useCompanyStore();
 
@@ -241,34 +244,10 @@ export default function Editor() {
                         </select>
                     </div>
 
-                    {/* Size selector */}
-                    <div className="size-selector" style={{ position: 'relative' }}>
-                        <button className="btn btn-secondary btn-sm" onClick={() => setShowSizeMenu(!showSizeMenu)}>
-                            <Settings size={14} />
-                            {SIZE_PRESETS[sizePreset]?.label || 'Custom'} ({canvasWidth}×{canvasHeight})
-                            <ChevronDown size={14} />
-                        </button>
-                        {showSizeMenu && (
-                            <div className="size-dropdown" onClick={e => e.stopPropagation()}>
-                                <div className="size-dropdown-header">Canvas Size</div>
-                                {Object.entries(SIZE_PRESETS).map(([key, val]) => (
-                                    <button key={key} className={`size-dropdown-item ${sizePreset === key ? 'active' : ''}`}
-                                        onClick={() => { setCanvasSize(val.width, val.height, key); setShowSizeMenu(false); }}>
-                                        <span>{val.label}</span>
-                                        <span className="size-dropdown-dims">{val.desc}</span>
-                                    </button>
-                                ))}
-                                <div className="separator"></div>
-                                <div className="size-custom-inputs">
-                                    <input className="input" type="number" placeholder="W" value={canvasWidth}
-                                        onChange={e => setCanvasSize(Number(e.target.value), canvasHeight, 'custom')} style={{ width: 80 }} />
-                                    <span>×</span>
-                                    <input className="input" type="number" placeholder="H" value={canvasHeight}
-                                        onChange={e => setCanvasSize(canvasWidth, Number(e.target.value), 'custom')} style={{ width: 80 }} />
-                                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>px</span>
-                                </div>
-                            </div>
-                        )}
+                    <div className="prop-sep" />
+                    <div className="prop-group px-4">
+                        <span className="text-muted text-xs font-semibold uppercase tracking-wider">Dimensions:</span>
+                        <span className="font-bold">{Math.round(pxToUnit(canvasWidth, measurementUnit))} × {Math.round(pxToUnit(canvasHeight, measurementUnit))} {measurementUnit}</span>
                     </div>
 
                     {/* Undo/Redo */}
@@ -327,7 +306,7 @@ export default function Editor() {
                     </div>
                 </div>
 
-                <div className={`props-panel-container ${!selectedId ? 'collapsed' : ''}`}>
+                <div className={`props-panel-container ${selectedIds.length === 0 ? 'collapsed' : ''}`}>
                     <PropertiesPanel />
                 </div>
             </div>

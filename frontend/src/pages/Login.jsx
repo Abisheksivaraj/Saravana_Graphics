@@ -44,7 +44,7 @@ export default function Login() {
                             <div className="auth-logo-icon-box">
                                 <Layers size={24} color="white" />
                             </div>
-                            <span>Saravana<b>Graphics</b></span>
+                            <span>Saravana<b>Graphicss</b></span>
                         </div>
                         <h1 className="auth-hero-title">
                             Pro Level <br />Design Studio.

@@ -4,7 +4,7 @@ const elementSchema = new mongoose.Schema({
     id: { type: String, required: true },
     type: {
         type: String,
-        enum: ['text', 'rect', 'circle', 'line', 'image', 'barcode', 'qrcode', 'triangle', 'ellipse'],
+        enum: ['text', 'rect', 'circle', 'line', 'image', 'barcode', 'qrcode', 'triangle', 'ellipse', 'placeholder'],
         required: true
     },
     x: { type: Number, default: 0 },
@@ -38,6 +38,18 @@ const elementSchema = new mongoose.Schema({
     locked: { type: Boolean, default: false },
     visible: { type: Boolean, default: true },
     name: { type: String, default: '' },
+    // New properties for Placeholder and Styling
+    fieldName: { type: String, default: '' },
+    dash: [{ type: Number }],
+    cornerRadius: { type: Number, default: 0 },
+    // Shape specific properties
+    radius: { type: Number },
+    points: [{ type: Number }],
+    numPoints: { type: Number },
+    innerRadius: { type: Number },
+    outerRadius: { type: Number },
+    sides: { type: Number },
+    data: { type: String }, // For Paths
 });
 
 const designSchema = new mongoose.Schema({

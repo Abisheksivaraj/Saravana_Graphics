@@ -1,8 +1,11 @@
 import React from 'react';
 import { useDesignStore } from '../store/designStore';
+import { useUIStore, pxToUnit, unitToPx } from '../store/uiStore';
 import {
     Trash2, Lock, Unlock, Eye, EyeOff,
-    BringToFront, SendToBack, ChevronUp, ChevronDown, Copy
+    BringToFront, SendToBack, ChevronUp, ChevronDown, Copy,
+    AlignLeft, AlignCenter, AlignRight, AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd,
+    Maximize, Minimize, Database
 } from 'lucide-react';
 import './PropertiesPanel.css';
 
@@ -35,16 +38,20 @@ function NumInput({ label, value, onChange, min, max, step = 1, unit = '' }) {
 
 export default function PropertiesPanel() {
     const {
-        selectedId, elements, canvasWidth, canvasHeight, backgroundColor,
+        selectedIds, elements, canvasWidth, canvasHeight, backgroundColor,
         updateElement, updateElementAndSave, deleteElement, duplicateElement, duplicateAllElements,
         bringForward, sendBackward, bringToFront, sendToBack, toggleLock, toggleVisibility,
-        setBackgroundColor, setCanvasSize, sizePreset, newDesign
+        setBackgroundColor, setCanvasSize, sizePreset, newDesign,
+        matchSize, alignElements
     } = useDesignStore();
 
-    const el = elements.find(e => e.id === selectedId);
+    const { measurementUnit } = useUIStore();
 
-    const update = (key, val) => updateElement(selectedId, { [key]: val });
-    const updateAndSave = (key, val) => updateElementAndSave(selectedId, { [key]: val });
+    const primaryId = selectedIds[0];
+    const el = elements.find(e => e.id === primaryId);
+
+    const update = (key, val) => updateElement(primaryId, { [key]: val });
+    const updateAndSave = (key, val) => updateElementAndSave(primaryId, { [key]: val });
 
     if (!el) {
         // Canvas properties
@@ -52,9 +59,11 @@ export default function PropertiesPanel() {
             <aside className="props-panel">
                 <div className="props-header">Canvas</div>
                 <div className="props-section">
-                    <div className="props-row">
-                        <NumInput label="Width" value={canvasWidth} onChange={(v) => setCanvasSize(v, canvasHeight, sizePreset)} min={50} />
-                        <NumInput label="Height" value={canvasHeight} onChange={(v) => setCanvasSize(canvasWidth, v, sizePreset)} min={50} />
+                    <div className="props-row items-center py-2 bg-[rgba(37,99,235,0.05)] rounded-md px-3 border border-[rgba(37,99,235,0.1)]">
+                        <span className="text-xs text-muted">Fixed Dimensions:</span>
+                        <span className="font-bold text-sm ml-auto" style={{ color: 'var(--primary)' }}>
+                            {Math.round(pxToUnit(canvasWidth, measurementUnit))} × {Math.round(pxToUnit(canvasHeight, measurementUnit))} {measurementUnit}
+                        </span>
                     </div>
                     <ColorInput label="Background Color" value={backgroundColor} onChange={setBackgroundColor} />
                 </div>
@@ -100,27 +109,27 @@ export default function PropertiesPanel() {
             <div className="props-section">
                 <div className="props-label">Position & Size</div>
                 <div className="props-row">
-                    <NumInput label="X" value={Math.round(el.x)} onChange={v => updateAndSave('x', v)} />
-                    <NumInput label="Y" value={Math.round(el.y)} onChange={v => updateAndSave('y', v)} />
+                    <NumInput label="X" value={Math.round(pxToUnit(el.x, measurementUnit))} onChange={v => updateAndSave('x', unitToPx(v, measurementUnit))} unit={measurementUnit} />
+                    <NumInput label="Y" value={Math.round(pxToUnit(el.y, measurementUnit))} onChange={v => updateAndSave('y', unitToPx(v, measurementUnit))} unit={measurementUnit} />
                 </div>
 
                 {/* Dynamic Dimensions based on type */}
                 <div className="props-row">
                     {el.type === 'circle' && (
-                        <NumInput label="Radius" value={el.radius || 50} onChange={v => update('radius', v)} min={1} />
+                        <NumInput label="Radius" value={Math.round(pxToUnit(el.radius || 50, measurementUnit))} onChange={v => update('radius', unitToPx(v, measurementUnit))} min={1} unit={measurementUnit} />
                     )}
-                    {(el.width !== undefined || ['rect', 'barcode', 'qrcode', 'image', 'triangle'].includes(el.type)) && (
-                        <NumInput label="Width" value={Math.round(el.width || 100)} onChange={v => update('width', v)} min={1} />
+                    {(el.width !== undefined || ['rect', 'barcode', 'qrcode', 'image', 'triangle', 'text'].includes(el.type)) && (
+                        <NumInput label="Width" value={Math.round(pxToUnit(el.width || 100, measurementUnit))} onChange={v => update('width', unitToPx(v, measurementUnit))} min={1} unit={measurementUnit} />
                     )}
                     {(el.height !== undefined || ['rect', 'barcode', 'qrcode', 'image', 'triangle'].includes(el.type)) && (
-                        <NumInput label="Height" value={Math.round(el.height || 100)} onChange={v => update('height', v)} min={1} />
+                        <NumInput label="Height" value={Math.round(pxToUnit(el.height || 100, measurementUnit))} onChange={v => update('height', unitToPx(v, measurementUnit))} min={1} unit={measurementUnit} />
                     )}
                 </div>
 
                 {/* Line length support */}
                 {el.type === 'line' && el.points && (
-                    <NumInput label="Length" value={Math.abs(el.points[2] - el.points[0])}
-                        onChange={v => update('points', [0, 0, v, 0])} min={1} />
+                    <NumInput label="Length" value={Math.round(pxToUnit(Math.abs(el.points[2] - el.points[0]), measurementUnit))}
+                        onChange={v => update('points', [0, 0, unitToPx(v, measurementUnit), 0])} min={1} unit={measurementUnit} />
                 )}
 
                 <NumInput label="Rotation" value={Math.round(el.rotation || 0)} onChange={v => updateAndSave('rotation', v)} min={-360} max={360} unit="°" />
@@ -130,29 +139,32 @@ export default function PropertiesPanel() {
                     <NumInput label="Scale Y" value={Number((el.scaleY || 1).toFixed(2))} onChange={v => update('scaleY', v)} step={0.1} />
                 </div>
 
-                <div className="flex gap-1" style={{ marginTop: 4 }}>
-                    <button className="btn btn-secondary btn-sm flex-1" style={{ fontSize: 10 }}
-                        onClick={() => updateAndSave('selectedId', selectedId) || updateElementAndSave(selectedId, { scaleX: 1, scaleY: 1, rotation: 0 })}>
-                        Reset Transform
-                    </button>
-                    <button className="btn btn-secondary btn-sm flex-1" style={{ fontSize: 10 }} onClick={() => {
-                        const width = el.type === 'circle' ? (el.radius || 50) * 2 : (el.width || 100);
-                        const scaleX = el.scaleX || 1;
-                        let targetX = (canvasWidth / 2);
-                        if (el.type !== 'circle') {
-                            targetX -= (width * scaleX) / 2;
-                        }
-                        updateElementAndSave(selectedId, { x: targetX });
-                    }}>
-                        Center Horizontally
-                    </button>
-                </div>
-
                 <div className="input-group">
                     <label>Opacity <span style={{ color: 'var(--text-muted)' }}>{Math.round((el.opacity || 1) * 100)}%</span></label>
                     <input type="range" min={0} max={1} step={0.01} value={el.opacity || 1} onChange={e => update('opacity', parseFloat(e.target.value))} />
                 </div>
             </div>
+
+            {/* Multi-selection tools */}
+            {selectedIds.length > 1 && (
+                <div className="props-section" style={{ background: 'rgba(37, 99, 235, 0.05)', borderRadius: 8, padding: 8, border: '1px dashed var(--primary)' }}>
+                    <div className="props-label" style={{ color: 'var(--primary)', fontWeight: 'bold' }}>Bulk Actions (Ref: {el.name})</div>
+                    <div className="flex flex-col gap-2">
+                        <div className="grid grid-cols-2 gap-1">
+                            <button className="btn btn-secondary btn-sm gap-1" onClick={() => matchSize('width')} title="Match width of reference"><Maximize size={12} /> Match Width</button>
+                            <button className="btn btn-secondary btn-sm gap-1" onClick={() => matchSize('height')} title="Match height of reference"><Maximize size={12} style={{ transform: 'rotate(90deg)' }} /> Match Height</button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1">
+                            <button className="btn btn-secondary btn-sm btn-icon" onClick={() => alignElements('left')} title="Align Left"><AlignLeft size={14} /></button>
+                            <button className="btn btn-secondary btn-sm btn-icon" onClick={() => alignElements('center')} title="Align Center"><AlignCenter size={14} /></button>
+                            <button className="btn btn-secondary btn-sm btn-icon" onClick={() => alignElements('right')} title="Align Right"><AlignRight size={14} /></button>
+                            <button className="btn btn-secondary btn-sm btn-icon" onClick={() => alignElements('top')} title="Align Top"><AlignVerticalJustifyStart size={14} /></button>
+                            <button className="btn btn-secondary btn-sm btn-icon" onClick={() => alignElements('middle')} title="Align Middle"><AlignVerticalJustifyCenter size={14} /></button>
+                            <button className="btn btn-secondary btn-sm btn-icon" onClick={() => alignElements('bottom')} title="Align Bottom"><AlignVerticalJustifyEnd size={14} /></button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Text specific */}
             {el.type === 'text' && (
@@ -169,7 +181,7 @@ export default function PropertiesPanel() {
                             {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
                         </select>
                     </div>
-                    <NumInput label="Font Size" value={el.fontSize || 16} onChange={v => update('fontSize', v)} min={4} max={200} />
+                    <NumInput label="Font Size" value={Math.round(pxToUnit(el.fontSize || 16, 'pt'))} onChange={v => update('fontSize', unitToPx(v, 'pt'))} min={4} max={200} unit="pt" />
                     <div className="input-group">
                         <label>Style</label>
                         <div className="flex gap-1">
@@ -187,6 +199,34 @@ export default function PropertiesPanel() {
                         </div>
                     </div>
                     <ColorInput label="Text Color" value={el.fill} onChange={v => update('fill', v)} />
+                    
+                    <div className="props-divider" />
+                    <div className="input-group py-2">
+                        <label className="font-bold text-primary flex items-center gap-2 mb-2">
+                            <Database size={14} /> Data Mapping Mode
+                        </label>
+                        <div className="flex gap-1 bg-muted/10 p-1 rounded-md">
+                            {[
+                                { id: 'fixed', label: 'Fixed', title: 'Text only (Labels)' },
+                                { id: 'value', label: 'Value', title: 'Excel Value Only' },
+                                { id: 'smart', label: 'Smart', title: 'Text + Value' }
+                            ].map(m => (
+                                <button 
+                                    key={m.id}
+                                    title={m.title}
+                                    className={`btn btn-xs flex-1 ${ (el.mappingMode || 'smart') === m.id ? 'btn-primary' : 'btn-ghost' }`}
+                                    onClick={() => updateAndSave('mappingMode', m.id)}
+                                >
+                                    {m.label}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-[10px] text-muted mt-2 italic px-1">
+                            { (el.mappingMode === 'fixed') && "Shows exactly what you typed." }
+                            { (el.mappingMode === 'value') && "Replaced entirely by Excel data." }
+                            { (el.mappingMode === 'smart' || !el.mappingMode) && "Shows label + data automatically." }
+                        </p>
+                    </div>
                 </div>
             )}
 
@@ -196,11 +236,11 @@ export default function PropertiesPanel() {
                     <div className="props-label">Style (Fill & Outline)</div>
                     <div className="props-row">
                         <ColorInput label="Fill Color" value={el.fill} onChange={v => updateAndSave('fill', v)} />
-                        <ColorInput label="Stroke Color" value={el.stroke} onChange={v => updateAndSave('stroke', v)} />
-                    </div>
-                    <NumInput label="Outline Width" value={el.strokeWidth || 0} onChange={v => updateAndSave('strokeWidth', v)} min={0} max={20} />
-                    
-                    {el.type === 'rect' && <NumInput label="Corner Radius" value={el.cornerRadius || 0} onChange={v => updateAndSave('cornerRadius', v)} min={0} max={100} />}
+                    <ColorInput label="Stroke Color" value={el.stroke} onChange={v => updateAndSave('stroke', v)} />
+                </div>
+                <NumInput label="Outline Width" value={Math.round(pxToUnit(el.strokeWidth || 0, measurementUnit))} onChange={v => updateAndSave('strokeWidth', unitToPx(v, measurementUnit))} min={0} max={100} unit={measurementUnit} />
+                
+                {el.type === 'rect' && <NumInput label="Corner Radius" value={Math.round(pxToUnit(el.cornerRadius || 0, measurementUnit))} onChange={v => updateAndSave('cornerRadius', unitToPx(v, measurementUnit))} min={0} unit={measurementUnit} />}
                     
                     {el.type === 'star' && (
                         <div className="props-row">
@@ -227,7 +267,7 @@ export default function PropertiesPanel() {
                 <div className="props-section">
                     <div className="props-label">Line Style</div>
                     <ColorInput label="Color" value={el.stroke} onChange={v => update('stroke', v)} />
-                    <NumInput label="Width" value={el.strokeWidth || 2} onChange={v => update('strokeWidth', v)} min={1} max={30} />
+                    <NumInput label="Width" value={Math.round(pxToUnit(el.strokeWidth || 2, measurementUnit))} onChange={v => update('strokeWidth', unitToPx(v, measurementUnit))} min={1} max={100} unit={measurementUnit} />
                 </div>
             )}
 
@@ -246,6 +286,28 @@ export default function PropertiesPanel() {
                         </select>
                     </div>
                     <ColorInput label="Bar Color" value={el.fill} onChange={v => update('fill', v)} />
+                    
+                    <div className="props-divider" />
+                    <div className="input-group py-2">
+                        <label className="font-bold text-primary flex items-center gap-2 mb-2">
+                            <Database size={14} /> Barcode Mode
+                        </label>
+                        <div className="flex gap-1 bg-muted/10 p-1 rounded-md">
+                            {[
+                                { id: 'fixed', label: 'Fixed', title: 'Static Value' },
+                                { id: 'smart', label: 'Auto', title: 'Excel Data' }
+                            ].map(m => (
+                                <button 
+                                    key={m.id}
+                                    title={m.title}
+                                    className={`btn btn-xs flex-1 ${ (el.mappingMode || 'smart') === m.id ? 'btn-primary' : 'btn-ghost' }`}
+                                    onClick={() => updateAndSave('mappingMode', m.id)}
+                                >
+                                    {m.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -256,6 +318,20 @@ export default function PropertiesPanel() {
                     <div className="input-group">
                         <label>URL / Value</label>
                         <input className="input" value={el.qrValue || ''} onChange={e => update('qrValue', e.target.value)} placeholder="https://..." />
+                    </div>
+                </div>
+            )}
+            
+            {/* Placeholder / Data Binding */}
+            {el.type === 'placeholder' && (
+                <div className="props-section">
+                    <div className="props-label">Data Binding</div>
+                    <div className="input-group">
+                        <label>Excel Column Name</label>
+                        <input className="input" value={el.fieldName || ''} onChange={e => update('fieldName', e.target.value)} placeholder="e.g. SKU, Price, Brand" />
+                        <p className="text-xs text-muted mt-2">
+                            Enter the exact name of the Excel column this field should pull data from.
+                        </p>
                     </div>
                 </div>
             )}

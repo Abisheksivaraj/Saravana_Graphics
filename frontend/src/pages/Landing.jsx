@@ -29,7 +29,7 @@ export default function Landing() {
                 <div className="landing-nav-inner">
                     <div className="landing-logo">
                         <div className="landing-logo-icon"><Layers size={22} color="white" /></div>
-                        <span>Saravana<b>Graphics</b></span>
+                        <span>Saravana<b>Graphicss</b></span>
                     </div>
                     <div className="landing-nav-links">
                         <a href="#features">Features</a>
@@ -154,9 +154,9 @@ export default function Landing() {
                 <div className="footer-inner">
                     <div className="landing-logo">
                         <div className="landing-logo-icon"><Layers size={18} color="white" /></div>
-                        <span>Saravana<b>Graphics</b></span>
+                        <span>Saravana<b>Graphicss</b></span>
                     </div>
-                    <p>© 2026 Saravana Graphics. Professional Label & Card Designer.</p>
+                    <p>© 2026 Saravana Graphicss. Professional Label & Card Designer.</p>
                 </div>
             </footer>
         </div>

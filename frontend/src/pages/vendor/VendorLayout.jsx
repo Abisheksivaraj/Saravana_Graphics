@@ -70,7 +70,7 @@ export default function VendorLayout() {
                     {/* Brand */}
                     <Box sx={{ px: 3, py: 3 }}>
                         <Typography variant="h6" sx={{ fontWeight: 800, color: '#f59e0b', letterSpacing: -0.5 }}>
-                            Saravana Graphics
+                            Saravana Graphicss
                         </Typography>
                         <Typography variant="caption" sx={{ color: '#64748b', textTransform: 'uppercase', letterSpacing: 2, fontSize: '0.65rem' }}>
                             Vendor Portal

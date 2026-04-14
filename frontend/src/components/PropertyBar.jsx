@@ -1,25 +1,27 @@
 import React, { useRef } from 'react';
 import { useDesignStore } from '../store/designStore';
-import { useUIStore } from '../store/uiStore';
+import { useUIStore, pxToUnit, unitToPx } from '../store/uiStore';
 import {
     Type, Square, Circle, Minus, Star, Hexagon, Triangle,
     Bold, Italic, AlignLeft, AlignCenter, AlignRight, Underline,
     Settings, ZoomIn, ZoomOut, Grid, Maximize2, Palette, Box,
-    ChevronDown, Hash, Move, Trash2, Layers
+    ChevronDown, Hash, Move, Trash2, Layers, Layout
 } from 'lucide-react';
 import './PropertyBar.css';
 
 export default function PropertyBar() {
     const {
-        elements, selectedId, updateElementAndSave,
+        elements, selectedIds, updateElementAndSave,
         zoom, setZoom, canvasWidth, canvasHeight, setCanvasSize,
         showGrid, setShowGrid, deleteElement, backgroundColor, setBackgroundColor
     } = useDesignStore();
     
-    const selectedEl = selectedId ? elements.find(e => e.id === selectedId) : null;
+    const { measurementUnit } = useUIStore();
+
+    const selectedEl = selectedIds.length > 0 ? elements.find(e => e.id === selectedIds[0]) : null;
 
     const handleUpdate = (updates) => {
-        if (selectedId) updateElementAndSave(selectedId, updates);
+        selectedIds.forEach(id => updateElementAndSave(id, updates));
     };
 
     // --- SUB-COMPONENTS FOR CONTEXTS ---
@@ -28,10 +30,10 @@ export default function PropertyBar() {
         <div className="prop-section">
             <div className="prop-group">
                 <Settings size={14} className="text-muted" />
-                <span className="prop-label">Canvas</span>
-                <input type="number" value={canvasWidth} onChange={e => setCanvasSize(Number(e.target.value), canvasHeight)} className="prop-input" title="Width" />
-                <span className="text-muted">×</span>
-                <input type="number" value={canvasHeight} onChange={e => setCanvasSize(canvasWidth, Number(e.target.value))} className="prop-input" title="Height" />
+                <span className="prop-label">Dimensions:</span>
+                <span className="font-bold text-xs" style={{ color: 'var(--primary)' }}>
+                    {Math.round(pxToUnit(canvasWidth, measurementUnit))} × {Math.round(pxToUnit(canvasHeight, measurementUnit))} {measurementUnit}
+                </span>
             </div>
             <div className="prop-sep" />
             <div className="prop-group">
@@ -64,10 +66,11 @@ export default function PropertyBar() {
                 </select>
                 <input 
                     type="number" 
-                    value={el.fontSize || 16} 
-                    onChange={e => handleUpdate({ fontSize: Number(e.target.value) })} 
+                    value={Math.round(pxToUnit(el.fontSize || 16, 'pt'))} 
+                    onChange={e => handleUpdate({ fontSize: unitToPx(Number(e.target.value), 'pt') })} 
                     className="prop-input" 
                     style={{ width: 50 }}
+                    title="Font Size (pt)"
                 />
             </div>
             <div className="prop-sep" />
@@ -104,10 +107,11 @@ export default function PropertyBar() {
                 <input type="color" value={el.stroke || '#000000'} onChange={e => handleUpdate({ stroke: e.target.value })} className="prop-color-picker" />
                 <input 
                     type="number" 
-                    value={el.strokeWidth || 0} 
-                    onChange={e => handleUpdate({ strokeWidth: Number(e.target.value) })} 
+                    value={Math.round(pxToUnit(el.strokeWidth || 0, measurementUnit))} 
+                    onChange={e => handleUpdate({ strokeWidth: unitToPx(Number(e.target.value), measurementUnit) })} 
                     className="prop-input" 
                     style={{ width: 45 }}
+                    title={`Stroke (${measurementUnit})`}
                 />
             </div>
             {el.type === 'rect' && (
@@ -118,10 +122,11 @@ export default function PropertyBar() {
                         <span className="prop-label">Radius</span>
                         <input 
                             type="number" 
-                            value={el.cornerRadius || 0} 
-                            onChange={e => handleUpdate({ cornerRadius: Number(e.target.value) })} 
+                            value={Math.round(pxToUnit(el.cornerRadius || 0, measurementUnit))} 
+                            onChange={e => handleUpdate({ cornerRadius: unitToPx(Number(e.target.value), measurementUnit) })} 
                             className="prop-input" 
                             style={{ width: 45 }}
+                            title={`Radius (${measurementUnit})`}
                         />
                     </div>
                 </>
@@ -150,6 +155,23 @@ export default function PropertyBar() {
         </div>
     );
 
+    const PlaceholderControls = ({ el }) => (
+        <div className="prop-section">
+            <div className="prop-group">
+                <Layout size={14} className="text-muted" />
+                <span className="prop-label">Excel Field</span>
+                <input 
+                    type="text" 
+                    value={el.fieldName || ''} 
+                    onChange={e => handleUpdate({ fieldName: e.target.value })} 
+                    className="prop-input" 
+                    style={{ width: 150 }}
+                    placeholder="e.g. SKU, Price"
+                />
+            </div>
+        </div>
+    );
+
     return (
         <div className="property-bar">
             <div className="property-bar-content">
@@ -164,10 +186,11 @@ export default function PropertyBar() {
                         {selectedEl.type === 'text' && <TextControls el={selectedEl} />}
                         {(['rect', 'circle', 'triangle', 'star', 'polygon', 'line'].includes(selectedEl.type)) && <ShapeControls el={selectedEl} />}
                         {(['barcode', 'qrcode'].includes(selectedEl.type)) && <BarcodeControls el={selectedEl} />}
+                        {selectedEl.type === 'placeholder' && <PlaceholderControls el={selectedEl} />}
                         
                         <div className="prop-push" />
                         <div className="prop-group">
-                            <button className="prop-btn danger" onClick={() => deleteElement(selectedId)} title="Delete Object">
+                            <button className="prop-btn danger" onClick={() => deleteElement(selectedIds)} title="Delete Selection">
                                 <Trash2 size={16} />
                             </button>
                         </div>

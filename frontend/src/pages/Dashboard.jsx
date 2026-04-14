@@ -74,14 +74,14 @@ export default function Dashboard() {
             let pxH = customHeight;
             
             if (unit === 'mm') {
-                pxW = Math.round(customWidth * (96 / 25.4));
-                pxH = Math.round(customHeight * (96 / 25.4));
+                pxW = customWidth * (96 / 25.4);
+                pxH = customHeight * (96 / 25.4);
             } else if (unit === 'cm') {
-                pxW = Math.round(customWidth * 10 * (96 / 25.4));
-                pxH = Math.round(customHeight * 10 * (96 / 25.4));
+                pxW = customWidth * 10 * (96 / 25.4);
+                pxH = customHeight * 10 * (96 / 25.4);
             } else if (unit === 'inch') {
-                pxW = Math.round(customWidth * 96);
-                pxH = Math.round(customHeight * 96);
+                pxW = customWidth * 96;
+                pxH = customHeight * 96;
             }
 
             newDesign('custom', pxW, pxH);
@@ -208,16 +208,14 @@ export default function Dashboard() {
                                 <FolderPlus size={16} /> New Folder
                             </button>
                         )}
-                        <button className="btn btn-primary" onClick={() => {
-                            if (!currentFolder && companies.length > 0) {
-                                setSelectedCompany(companies[0].name);
-                            } else if (currentFolder) {
+                        {currentFolder && (
+                            <button className="btn btn-primary" onClick={() => {
                                 setSelectedCompany(currentFolder.name);
-                            }
-                            setShowNewModal(true);
-                        }}>
-                            <Plus size={16} /> New Design
-                        </button>
+                                setShowNewModal(true);
+                            }}>
+                                <Plus size={16} /> New Design
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -256,44 +254,38 @@ export default function Dashboard() {
                                 </div>
                             )}
 
-                            {/* Designs View */}
-                            <div className="section-block mt-8">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="section-title">
-                                        {currentFolder ? 'Designs' : 'Recent Designs'}
-                                    </h3>
-                                    <div className="db-view-toggle">
-                                        <button className={`btn btn-ghost btn-icon ${view === 'grid' ? 'active-view' : ''}`} onClick={() => setView('grid')}><Grid size={16} /></button>
-                                        <button className={`btn btn-ghost btn-icon ${view === 'list' ? 'active-view' : ''}`} onClick={() => setView('list')}><List size={16} /></button>
+                            {/* Designs View (Only shown when inside a folder) */}
+                            {currentFolder && (
+                                <div className="section-block mt-8">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="section-title">Designs</h3>
+                                        <div className="db-view-toggle">
+                                            <button className={`btn btn-ghost btn-icon ${view === 'grid' ? 'active-view' : ''}`} onClick={() => setView('grid')}><Grid size={16} /></button>
+                                            <button className={`btn btn-ghost btn-icon ${view === 'list' ? 'active-view' : ''}`} onClick={() => setView('list')}><List size={16} /></button>
+                                        </div>
                                     </div>
+                                    
+                                    {designs.filter(d => d.company === currentFolder.name).length === 0 ? (
+                                        <div className="db-empty-mini">
+                                            <FileText size={32} color="var(--text-muted)" />
+                                            <p>No designs found in this folder</p>
+                                            <button className="btn btn-primary btn-sm mt-2" onClick={() => {
+                                                setSelectedCompany(currentFolder.name);
+                                                setShowNewModal(true);
+                                            }}>
+                                                <Plus size={14} /> Create One
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className={view === 'grid' ? 'design-grid' : 'design-list'}>
+                                            {designs
+                                                .filter(d => d.company === currentFolder.name)
+                                                .map(d => renderDesignCard(d))
+                                            }
+                                        </div>
+                                    )}
                                 </div>
-                                
-                                {designs.filter(d => {
-                                    if (currentFolder) return d.company === currentFolder.name;
-                                    return !d.company; // Only show uncategorized in "Recent Designs"
-                                }).length === 0 ? (
-                                    <div className="db-empty-mini">
-                                        <FileText size={32} color="var(--text-muted)" />
-                                        <p>No designs found {currentFolder ? 'in this folder' : 'outside folders'}</p>
-                                        <button className="btn btn-primary btn-sm mt-2" onClick={() => {
-                                            if (currentFolder) setSelectedCompany(currentFolder.name);
-                                            setShowNewModal(true);
-                                        }}>
-                                            <Plus size={14} /> Create One
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className={view === 'grid' ? 'design-grid' : 'design-list'}>
-                                        {designs
-                                            .filter(d => {
-                                                if (currentFolder) return d.company === currentFolder.name;
-                                                return !d.company;
-                                            })
-                                            .map(d => renderDesignCard(d))
-                                        }
-                                    </div>
-                                )}
-                            </div>
+                            )}
                         </>
                     )}
                 </div>
