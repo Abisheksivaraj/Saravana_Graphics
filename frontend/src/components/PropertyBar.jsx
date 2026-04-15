@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useDesignStore } from '../store/designStore';
 import { useUIStore, pxToUnit, unitToPx } from '../store/uiStore';
 import {
@@ -24,6 +24,37 @@ export default function PropertyBar() {
         selectedIds.forEach(id => updateElementAndSave(id, updates));
     };
 
+    // --- REUSABLE INPUT FOR FLUID EDITING ---
+    const formatNum = (v) => Number(Number(v).toFixed(2));
+
+    const PropInput = ({ value, onChange, title, type = "number", className = "prop-input", style = {} }) => {
+        const [localValue, setLocalValue] = useState(value);
+
+        useEffect(() => {
+            setLocalValue(value);
+        }, [value]);
+
+        const handleChange = (e) => {
+            const val = e.target.value;
+            setLocalValue(val);
+            if (val !== '' && !isNaN(val)) {
+                onChange(Number(val));
+            }
+        };
+
+        return (
+            <input 
+                type={type}
+                value={localValue}
+                onChange={handleChange}
+                onBlur={() => setLocalValue(value)}
+                className={className}
+                style={style}
+                title={title}
+            />
+        );
+    };
+
     // --- SUB-COMPONENTS FOR CONTEXTS ---
 
     const GlobalControls = () => (
@@ -32,7 +63,7 @@ export default function PropertyBar() {
                 <Settings size={14} className="text-muted" />
                 <span className="prop-label">Dimensions:</span>
                 <span className="font-bold text-xs" style={{ color: 'var(--primary)' }}>
-                    {Math.round(pxToUnit(canvasWidth, measurementUnit))} × {Math.round(pxToUnit(canvasHeight, measurementUnit))} {measurementUnit}
+                    {formatNum(pxToUnit(canvasWidth, measurementUnit))} × {formatNum(pxToUnit(canvasHeight, measurementUnit))} {measurementUnit}
                 </span>
             </div>
             <div className="prop-sep" />
@@ -58,17 +89,16 @@ export default function PropertyBar() {
                     onChange={e => handleUpdate({ fontFamily: e.target.value })}
                 >
                     <option value="Arial">Arial</option>
+                    <option value="Calibri">Calibri</option>
                     <option value="Times New Roman">Times New Roman</option>
                     <option value="Courier New">Courier New</option>
                     <option value="Georgia">Georgia</option>
                     <option value="Verdana">Verdana</option>
                     <option value="Impact">Impact</option>
                 </select>
-                <input 
-                    type="number" 
-                    value={Math.round(pxToUnit(el.fontSize || 16, 'pt'))} 
-                    onChange={e => handleUpdate({ fontSize: unitToPx(Number(e.target.value), 'pt') })} 
-                    className="prop-input" 
+                <PropInput 
+                    value={formatNum(pxToUnit(el.fontSize || 16, 'pt'))} 
+                    onChange={v => handleUpdate({ fontSize: unitToPx(v, 'pt') })} 
                     style={{ width: 50 }}
                     title="Font Size (pt)"
                 />
@@ -105,28 +135,61 @@ export default function PropertyBar() {
                 <Box size={14} className="text-muted" />
                 <span className="prop-label">Stroke</span>
                 <input type="color" value={el.stroke || '#000000'} onChange={e => handleUpdate({ stroke: e.target.value })} className="prop-color-picker" />
-                <input 
-                    type="number" 
-                    value={Math.round(pxToUnit(el.strokeWidth || 0, measurementUnit))} 
-                    onChange={e => handleUpdate({ strokeWidth: unitToPx(Number(e.target.value), measurementUnit) })} 
-                    className="prop-input" 
+                <PropInput 
+                    value={formatNum(pxToUnit(el.strokeWidth || 0, measurementUnit))} 
+                    onChange={v => handleUpdate({ strokeWidth: unitToPx(v, measurementUnit) })} 
                     style={{ width: 45 }}
                     title={`Stroke (${measurementUnit})`}
                 />
             </div>
-            {el.type === 'rect' && (
+            {(['rect', 'ellipse', 'triangle', 'star', 'polygon', 'line', 'barcode', 'qrcode', 'image', 'placeholder'].includes(el.type)) && (
+                <>
+                    <div className="prop-sep" />
+                    <div className="prop-group">
+                        <Maximize2 size={14} className="text-muted" />
+                        <span className="prop-label">W</span>
+                        <PropInput 
+                            value={formatNum(pxToUnit(el.width || (el.radius ? el.radius * 2 : (el.outerRadius ? el.outerRadius * 2 : 0)), measurementUnit))} 
+                            onChange={val => {
+                                const pxVal = unitToPx(val, measurementUnit);
+                                if (el.type === 'circle' || el.type === 'polygon') handleUpdate({ radius: pxVal / 2 });
+                                else if (el.type === 'star') handleUpdate({ outerRadius: pxVal / 2, innerRadius: pxVal / 5 });
+                                else handleUpdate({ width: pxVal });
+                            }} 
+                            style={{ width: 45 }}
+                            title={`Width (${measurementUnit})`}
+                        />
+                        <span className="prop-label">H</span>
+                        <PropInput 
+                            value={formatNum(pxToUnit(el.height || (el.radius ? el.radius * 2 : (el.outerRadius ? el.outerRadius * 2 : 0)), measurementUnit))} 
+                            onChange={val => {
+                                const pxVal = unitToPx(val, measurementUnit);
+                                if (el.type === 'circle' || el.type === 'polygon') handleUpdate({ radius: pxVal / 2 });
+                                else if (el.type === 'star') handleUpdate({ outerRadius: pxVal / 2, innerRadius: pxVal / 5 });
+                                else handleUpdate({ height: pxVal });
+                            }} 
+                            style={{ width: 45 }}
+                            title={`Height (${measurementUnit})`}
+                        />
+                    </div>
+                </>
+            )}
+            {(el.type === 'rect' || el.type === 'circle' || el.type === 'star' || el.type === 'polygon') && (
                 <>
                     <div className="prop-sep" />
                     <div className="prop-group">
                         <Square size={14} className="text-muted" />
                         <span className="prop-label">Radius</span>
-                        <input 
-                            type="number" 
-                            value={Math.round(pxToUnit(el.cornerRadius || 0, measurementUnit))} 
-                            onChange={e => handleUpdate({ cornerRadius: unitToPx(Number(e.target.value), measurementUnit) })} 
-                            className="prop-input" 
+                        <PropInput 
+                            value={formatNum(pxToUnit(el.cornerRadius || el.radius || el.outerRadius || 0, measurementUnit))} 
+                            onChange={val => {
+                                const pxVal = unitToPx(val, measurementUnit);
+                                if (el.type === 'rect') handleUpdate({ cornerRadius: pxVal });
+                                else if (el.type === 'circle' || el.type === 'polygon') handleUpdate({ radius: pxVal });
+                                else if (el.type === 'star') handleUpdate({ outerRadius: pxVal, innerRadius: pxVal / 2.5 });
+                            }} 
                             style={{ width: 45 }}
-                            title={`Radius (${measurementUnit})`}
+                            title={`Corner/Shape Radius (${measurementUnit})`}
                         />
                     </div>
                 </>

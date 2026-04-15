@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import './PropertiesPanel.css';
 
-const FONTS = ['Arial', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana', 'Trebuchet MS', 'Impact', 'Comic Sans MS', 'Outfit', 'Inter'];
+const FONTS = ['Arial', 'Calibri', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana', 'Trebuchet MS', 'Impact', 'Comic Sans MS', 'Outfit', 'Inter'];
 const BARCODE_FORMATS = ['CODE128', 'CODE39', 'EAN13', 'EAN8', 'UPC', 'ITF14', 'MSI', 'pharmacode'];
 
 function ColorInput({ label, value, onChange }) {
@@ -26,7 +26,7 @@ function ColorInput({ label, value, onChange }) {
     );
 }
 
-function NumInput({ label, value, onChange, min, max, step = 1, unit = '' }) {
+function NumInput({ label, value, onChange, min, max, step = 0.01, unit = '' }) {
     return (
         <div className="input-group">
             <label>{label}{unit && <span style={{ color: 'var(--text-muted)', marginLeft: 4 }}>{unit}</span>}</label>
@@ -62,7 +62,7 @@ export default function PropertiesPanel() {
                     <div className="props-row items-center py-2 bg-[rgba(37,99,235,0.05)] rounded-md px-3 border border-[rgba(37,99,235,0.1)]">
                         <span className="text-xs text-muted">Fixed Dimensions:</span>
                         <span className="font-bold text-sm ml-auto" style={{ color: 'var(--primary)' }}>
-                            {Math.round(pxToUnit(canvasWidth, measurementUnit))} × {Math.round(pxToUnit(canvasHeight, measurementUnit))} {measurementUnit}
+                            {pxToUnit(canvasWidth, measurementUnit).toFixed(2)} × {pxToUnit(canvasHeight, measurementUnit).toFixed(2)} {measurementUnit}
                         </span>
                     </div>
                     <ColorInput label="Background Color" value={backgroundColor} onChange={setBackgroundColor} />
@@ -109,30 +109,30 @@ export default function PropertiesPanel() {
             <div className="props-section">
                 <div className="props-label">Position & Size</div>
                 <div className="props-row">
-                    <NumInput label="X" value={Math.round(pxToUnit(el.x, measurementUnit))} onChange={v => updateAndSave('x', unitToPx(v, measurementUnit))} unit={measurementUnit} />
-                    <NumInput label="Y" value={Math.round(pxToUnit(el.y, measurementUnit))} onChange={v => updateAndSave('y', unitToPx(v, measurementUnit))} unit={measurementUnit} />
+                    <NumInput label="X" value={Number(pxToUnit(el.x, measurementUnit).toFixed(2))} onChange={v => updateAndSave('x', unitToPx(v, measurementUnit))} unit={measurementUnit} />
+                    <NumInput label="Y" value={Number(pxToUnit(el.y, measurementUnit).toFixed(2))} onChange={v => updateAndSave('y', unitToPx(v, measurementUnit))} unit={measurementUnit} />
                 </div>
 
                 {/* Dynamic Dimensions based on type */}
                 <div className="props-row">
                     {el.type === 'circle' && (
-                        <NumInput label="Radius" value={Math.round(pxToUnit(el.radius || 50, measurementUnit))} onChange={v => update('radius', unitToPx(v, measurementUnit))} min={1} unit={measurementUnit} />
+                        <NumInput label="Radius" value={Number(pxToUnit(el.radius || 50, measurementUnit).toFixed(2))} onChange={v => update('radius', unitToPx(v, measurementUnit))} min={1} unit={measurementUnit} />
                     )}
                     {(el.width !== undefined || ['rect', 'barcode', 'qrcode', 'image', 'triangle', 'text'].includes(el.type)) && (
-                        <NumInput label="Width" value={Math.round(pxToUnit(el.width || 100, measurementUnit))} onChange={v => update('width', unitToPx(v, measurementUnit))} min={1} unit={measurementUnit} />
+                        <NumInput label="Width" value={Number(pxToUnit(el.width || 100, measurementUnit).toFixed(2))} onChange={v => update('width', unitToPx(v, measurementUnit))} min={1} unit={measurementUnit} />
                     )}
                     {(el.height !== undefined || ['rect', 'barcode', 'qrcode', 'image', 'triangle'].includes(el.type)) && (
-                        <NumInput label="Height" value={Math.round(pxToUnit(el.height || 100, measurementUnit))} onChange={v => update('height', unitToPx(v, measurementUnit))} min={1} unit={measurementUnit} />
+                        <NumInput label="Height" value={Number(pxToUnit(el.height || 100, measurementUnit).toFixed(2))} onChange={v => update('height', unitToPx(v, measurementUnit))} min={1} unit={measurementUnit} />
                     )}
                 </div>
 
                 {/* Line length support */}
                 {el.type === 'line' && el.points && (
-                    <NumInput label="Length" value={Math.round(pxToUnit(Math.abs(el.points[2] - el.points[0]), measurementUnit))}
+                    <NumInput label="Length" value={Number(pxToUnit(Math.abs(el.points[2] - el.points[0]), measurementUnit).toFixed(2))}
                         onChange={v => update('points', [0, 0, unitToPx(v, measurementUnit), 0])} min={1} unit={measurementUnit} />
                 )}
 
-                <NumInput label="Rotation" value={Math.round(el.rotation || 0)} onChange={v => updateAndSave('rotation', v)} min={-360} max={360} unit="°" />
+                <NumInput label="Rotation" value={Number((el.rotation || 0).toFixed(1))} onChange={v => updateAndSave('rotation', v)} min={-360} max={360} unit="°" />
 
                 <div className="props-row">
                     <NumInput label="Scale X" value={Number((el.scaleX || 1).toFixed(2))} onChange={v => update('scaleX', v)} step={0.1} />
@@ -181,7 +181,7 @@ export default function PropertiesPanel() {
                             {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
                         </select>
                     </div>
-                    <NumInput label="Font Size" value={Math.round(pxToUnit(el.fontSize || 16, 'pt'))} onChange={v => update('fontSize', unitToPx(v, 'pt'))} min={4} max={200} unit="pt" />
+                    <NumInput label="Font Size" value={Number(pxToUnit(el.fontSize || 16, 'pt').toFixed(1))} onChange={v => update('fontSize', unitToPx(v, 'pt'))} min={4} max={200} unit="pt" />
                     <div className="input-group">
                         <label>Style</label>
                         <div className="flex gap-1">
@@ -238,9 +238,9 @@ export default function PropertiesPanel() {
                         <ColorInput label="Fill Color" value={el.fill} onChange={v => updateAndSave('fill', v)} />
                     <ColorInput label="Stroke Color" value={el.stroke} onChange={v => updateAndSave('stroke', v)} />
                 </div>
-                <NumInput label="Outline Width" value={Math.round(pxToUnit(el.strokeWidth || 0, measurementUnit))} onChange={v => updateAndSave('strokeWidth', unitToPx(v, measurementUnit))} min={0} max={100} unit={measurementUnit} />
+                <NumInput label="Outline Width" value={Number(pxToUnit(el.strokeWidth || 0, measurementUnit).toFixed(2))} onChange={v => updateAndSave('strokeWidth', unitToPx(v, measurementUnit))} min={0} max={100} unit={measurementUnit} />
                 
-                {el.type === 'rect' && <NumInput label="Corner Radius" value={Math.round(pxToUnit(el.cornerRadius || 0, measurementUnit))} onChange={v => updateAndSave('cornerRadius', unitToPx(v, measurementUnit))} min={0} unit={measurementUnit} />}
+                {el.type === 'rect' && <NumInput label="Corner Radius" value={Number(pxToUnit(el.cornerRadius || 0, measurementUnit).toFixed(2))} onChange={v => updateAndSave('cornerRadius', unitToPx(v, measurementUnit))} min={0} unit={measurementUnit} />}
                     
                     {el.type === 'star' && (
                         <div className="props-row">
@@ -267,7 +267,7 @@ export default function PropertiesPanel() {
                 <div className="props-section">
                     <div className="props-label">Line Style</div>
                     <ColorInput label="Color" value={el.stroke} onChange={v => update('stroke', v)} />
-                    <NumInput label="Width" value={Math.round(pxToUnit(el.strokeWidth || 2, measurementUnit))} onChange={v => update('strokeWidth', unitToPx(v, measurementUnit))} min={1} max={100} unit={measurementUnit} />
+                    <NumInput label="Width" value={Number(pxToUnit(el.strokeWidth || 2, measurementUnit).toFixed(2))} onChange={v => update('strokeWidth', unitToPx(v, measurementUnit))} min={1} max={100} unit={measurementUnit} />
                 </div>
             )}
 

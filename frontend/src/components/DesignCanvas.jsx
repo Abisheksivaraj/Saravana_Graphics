@@ -118,7 +118,7 @@ function DimensionLines({ el, zoom }) {
     const extGap = 3 * invZoom;
     const extLen = offset + 6 * invZoom;
 
-    const formatVal = (v) => Number(pxToUnit(v, measurementUnit).toFixed(1));
+    const formatVal = (v) => Number(pxToUnit(v, measurementUnit).toFixed(2));
     const widthLabel = `${formatVal(w)} ${measurementUnit}`;
     const heightLabel = `${formatVal(h)} ${measurementUnit}`;
 
@@ -218,7 +218,7 @@ function GapDimensions({ el1, el2, zoom }) {
     const fontSize = DIM_FONT_SIZE * invZoom;
     const lineWidth = DIM_LINE_WIDTH * invZoom;
 
-    const formatVal = (v) => Number(pxToUnit(v, measurementUnit).toFixed(1));
+    const formatVal = (v) => Number(pxToUnit(v, measurementUnit).toFixed(2));
 
     const renderDistanceLabel = (x, y, val, axis) => {
         const label = `${formatVal(val)} ${measurementUnit}`;
@@ -776,6 +776,7 @@ export default function DesignCanvas({ stageRef, showGrid = true }) {
                 height={canvasHeight * zoom}
                 scaleX={zoom}
                 scaleY={zoom}
+                pixelRatio={window.devicePixelRatio || 2}
                 style={{
                     background: backgroundColor,
                     boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
@@ -785,6 +786,7 @@ export default function DesignCanvas({ stageRef, showGrid = true }) {
                 onMouseDown={handleStageMouseDown}
                 onMouseMove={handleStageMouseMove}
                 onMouseUp={handleStageMouseUp}
+                onMouseLeave={handleStageMouseUp}
                 onTouchStart={handleStageMouseDown}
                 onTouchMove={handleStageMouseMove}
                 onTouchEnd={handleStageMouseUp}
