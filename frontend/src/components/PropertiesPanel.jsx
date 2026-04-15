@@ -1,6 +1,5 @@
-import React from 'react';
 import { useDesignStore } from '../store/designStore';
-import { useUIStore, pxToUnit, unitToPx } from '../store/uiStore';
+import { useUIStore, pxToUnit, unitToPx, hexToCmyk, cmykToHex } from '../store/uiStore';
 import {
     Trash2, Lock, Unlock, Eye, EyeOff,
     BringToFront, SendToBack, ChevronUp, ChevronDown, Copy,
@@ -13,14 +12,38 @@ const FONTS = ['Arial', 'Calibri', 'Times New Roman', 'Courier New', 'Georgia', 
 const BARCODE_FORMATS = ['CODE128', 'CODE39', 'EAN13', 'EAN8', 'UPC', 'ITF14', 'MSI', 'pharmacode'];
 
 function ColorInput({ label, value, onChange }) {
+    const cmyk = hexToCmyk(value || '#000000');
+    
+    const handleCmykChange = (key, val) => {
+        const newCmyk = { ...cmyk, [key]: Number(val) };
+        onChange(cmykToHex(newCmyk.c, newCmyk.m, newCmyk.y, newCmyk.k));
+    };
+
     return (
         <div className="input-group">
             <label>{label}</label>
-            <div className="flex gap-2 items-center">
-                <div className="color-swatch">
-                    <input type="color" value={value || '#000000'} onChange={e => onChange(e.target.value)} />
+            <div className="flex flex-col gap-2 p-2 bg-muted/5 rounded border border-border/50">
+                <div className="flex gap-2 items-center">
+                    <div className="color-swatch ring-1 ring-border">
+                        <input type="color" value={value || '#000000'} onChange={e => onChange(e.target.value.toUpperCase())} />
+                    </div>
+                    <input className="input flex-1" value={value?.toUpperCase() || '#000000'} onChange={e => onChange(e.target.value.toUpperCase())} style={{ fontFamily: 'monospace', fontSize: 12 }} />
                 </div>
-                <input className="input" value={value || '#000000'} onChange={e => onChange(e.target.value)} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+                
+                <div className="grid grid-cols-4 gap-1">
+                    {['c', 'm', 'y', 'k'].map(key => (
+                        <div key={key} className="flex flex-col items-center">
+                            <span className="text-[10px] font-bold uppercase text-muted-foreground">{key}</span>
+                            <input 
+                                type="number" 
+                                className="input h-6 p-0 text-center w-full text-[11px]" 
+                                value={cmyk[key]} 
+                                min="0" max="100"
+                                onChange={e => handleCmykChange(key, e.target.value)}
+                            />
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );
@@ -287,6 +310,20 @@ export default function PropertiesPanel() {
                     </div>
                     <ColorInput label="Bar Color" value={el.fill} onChange={v => update('fill', v)} />
                     
+                    <div className="props-divider" />
+                    <div className="props-label">Number Font</div>
+                    <div className="input-group">
+                        <label>Font Family</label>
+                        <select className="input" value={el.fontFamily || 'Arial'} onChange={e => update('fontFamily', e.target.value)}>
+                            {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+                        </select>
+                    </div>
+                    <NumInput label="Font Size" value={Number(pxToUnit(el.fontSize || 16, 'pt').toFixed(1))} onChange={v => update('fontSize', unitToPx(v, 'pt'))} min={4} max={100} unit="pt" />
+                    <div className="flex gap-1 mt-2">
+                        <button className={`btn btn-xs ${el.fontWeight === 'bold' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => update('fontWeight', el.fontWeight === 'bold' ? 'normal' : 'bold')} style={{ flex: 1, fontWeight: 'bold' }}>Bold</button>
+                        <button className={`btn btn-xs ${el.fontStyle === 'italic' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => update('fontStyle', el.fontStyle === 'italic' ? 'normal' : 'italic')} style={{ flex: 1, fontStyle: 'italic' }}>Italic</button>
+                    </div>
+
                     <div className="props-divider" />
                     <div className="input-group py-2">
                         <label className="font-bold text-primary flex items-center gap-2 mb-2">

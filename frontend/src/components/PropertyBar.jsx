@@ -1,265 +1,253 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDesignStore } from '../store/designStore';
 import { useUIStore, pxToUnit, unitToPx } from '../store/uiStore';
 import {
-    Type, Square, Circle, Minus, Star, Hexagon, Triangle,
-    Bold, Italic, AlignLeft, AlignCenter, AlignRight, Underline,
-    Settings, ZoomIn, ZoomOut, Grid, Maximize2, Palette, Box,
-    ChevronDown, Hash, Move, Trash2, Layers, Layout
+  Bold, Italic, AlignLeft, AlignCenter, AlignRight, AlignJustify,
+  Underline, Type, Zap, Paintbrush, Pipette, MousePointer2
 } from 'lucide-react';
 import './PropertyBar.css';
 
+const FONTS = [
+  'Arial', 'Calibri', 'Times New Roman', 'Courier New',
+  'Georgia', 'Verdana', 'Impact', 'Trebuchet MS',
+  'ZEBRA Swiss Unicode', 'Comic Sans MS', 'Inter', 'Outfit',
+];
+
+const SIZES = [6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
+
+function PropInput({ value, onChange, style = {}, title, min, max }) {
+  const [local, setLocal] = useState(String(value));
+  useEffect(() => setLocal(String(value)), [value]);
+
+  return (
+    <input
+      type="number"
+      className="bt-prop-input"
+      value={local}
+      min={min}
+      max={max}
+      title={title}
+      style={style}
+      onChange={(e) => {
+        setLocal(e.target.value);
+        const n = parseFloat(e.target.value);
+        if (!isNaN(n)) onChange(n);
+      }}
+      onBlur={() => setLocal(String(value))}
+    />
+  );
+}
+
+function ColorBtn({ icon, color, onChange, title }) {
+  return (
+    <div className="bt-color-btn-wrap" title={title}>
+      <input
+        type="color"
+        value={color && color !== 'transparent' ? color : '#000000'}
+        onChange={e => onChange(e.target.value)}
+        className="bt-color-input"
+      />
+      <span className="bt-color-preview-icon">{icon}</span>
+      <div className="bt-color-underline" style={{ backgroundColor: color || '#000' }} />
+    </div>
+  );
+}
+
 export default function PropertyBar() {
-    const {
-        elements, selectedIds, updateElementAndSave,
-        zoom, setZoom, canvasWidth, canvasHeight, setCanvasSize,
-        showGrid, setShowGrid, deleteElement, backgroundColor, setBackgroundColor
-    } = useDesignStore();
-    
-    const { measurementUnit } = useUIStore();
+  const {
+    elements, selectedIds, updateElementAndSave,
+    canvasWidth, canvasHeight, backgroundColor, setBackgroundColor,
+  } = useDesignStore();
+  const { measurementUnit } = useUIStore();
 
-    const selectedEl = selectedIds.length > 0 ? elements.find(e => e.id === selectedIds[0]) : null;
+  const selectedEl = selectedIds.length > 0 ? elements.find(e => e.id === selectedIds[0]) : null;
+  const update = (updates) => selectedIds.forEach(id => updateElementAndSave(id, updates));
+  const fmt = (v) => Number(Number(v).toFixed(2));
 
-    const handleUpdate = (updates) => {
-        selectedIds.forEach(id => updateElementAndSave(id, updates));
-    };
+  return (
+    <div className="bt-prop-bar">
+      {/* Group 1: Font & Size */}
+      <div className="bt-toolbar-group">
+        <div className="bt-toolbar-handle" />
+        <select
+          className="bt-font-select"
+          value={selectedEl?.fontFamily || 'Arial'}
+          onChange={e => update({ fontFamily: e.target.value })}
+          disabled={!selectedEl || (selectedEl.type !== 'text' && selectedEl.type !== 'barcode')}
+        >
+          {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+        </select>
+        <select
+          className="bt-prop-input"
+          style={{ width: 48, marginLeft: 2 }}
+          value={selectedEl ? Math.round(pxToUnit(selectedEl.fontSize || 16, 'pt')) : 12}
+          onChange={e => update({ fontSize: unitToPx(Number(e.target.value), 'pt') })}
+          disabled={!selectedEl || (selectedEl.type !== 'text' && selectedEl.type !== 'barcode')}
+        >
+          {SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
 
-    // --- REUSABLE INPUT FOR FLUID EDITING ---
-    const formatNum = (v) => Number(Number(v).toFixed(2));
+      {/* Group 2: Styles (B, I, U, W) */}
+      <div className="bt-toolbar-group">
+        <div className="bt-toolbar-handle" />
+        <button
+          className={`bt-prop-btn${selectedEl?.fontWeight === 'bold' ? ' active' : ''}`}
+          disabled={!selectedEl || (selectedEl.type !== 'text' && selectedEl.type !== 'barcode')}
+          onClick={() => update({ fontWeight: selectedEl.fontWeight === 'bold' ? 'normal' : 'bold' })}
+          title="Bold"
+        >
+          <Bold size={14} />
+        </button>
+        <button
+          className={`bt-prop-btn${selectedEl?.fontStyle === 'italic' ? ' active' : ''}`}
+          disabled={!selectedEl || (selectedEl.type !== 'text' && selectedEl.type !== 'barcode')}
+          onClick={() => update({ fontStyle: selectedEl.fontStyle === 'italic' ? 'normal' : 'italic' })}
+          title="Italic"
+        >
+          <Italic size={14} />
+        </button>
+        <button
+          className={`bt-prop-btn${selectedEl?.underline ? ' active' : ''}`}
+          disabled={!selectedEl || (selectedEl.type !== 'text' && selectedEl.type !== 'barcode')}
+          onClick={() => update({ underline: !selectedEl.underline })}
+          title="Underline"
+        >
+          <Underline size={14} />
+        </button>
+        <button className="bt-prop-btn" title="Word Processor" disabled={!selectedEl}>
+          <span style={{ fontSize: 13, fontWeight: 900, fontFamily: 'serif' }}>W</span>
+        </button>
+      </div>
 
-    const PropInput = ({ value, onChange, title, type = "number", className = "prop-input", style = {} }) => {
-        const [localValue, setLocalValue] = useState(value);
+      {/* Group 3: Color & Tools */}
+      <div className="bt-toolbar-group">
+        <div className="bt-toolbar-handle" />
+        {selectedEl?.type === 'barcode' ? (
+          <select
+            className="bt-font-select"
+            style={{ minWidth: 100 }}
+            value={selectedEl.barcodeFormat || 'CODE128'}
+            onChange={e => update({ barcodeFormat: e.target.value })}
+            title="Barcode Type"
+          >
+            <option value="CODE128">Code 128</option>
+            <option value="EAN13">EAN-13</option>
+            <option value="EAN8">EAN-8</option>
+            <option value="CODE39">Code 39</option>
+            <option value="CODE93">Code 93</option>
+            <option value="UPC">UPC</option>
+            <option value="ITF">ITF</option>
+          </select>
+        ) : (
+          <>
+            <ColorBtn icon="A" color={selectedEl?.fill || '#000000'} onChange={v => update({ fill: v })} title="Text Color" />
+            <ColorBtn icon={<span style={{ transform: 'rotate(-45deg)', display: 'inline-block' }}>✎</span>} color="transparent" onChange={() => {}} title="Highlight" />
+            <button className="bt-prop-btn" title="Format Painter">
+              <Paintbrush size={14} color="#0078d7" />
+            </button>
+          </>
+        )}
+      </div>
 
-        useEffect(() => {
-            setLocalValue(value);
-        }, [value]);
+      {/* Group 4: Alignment */}
+      <div className="bt-toolbar-group">
+        <div className="bt-toolbar-handle" />
+        <button
+          className={`bt-prop-btn${selectedEl?.textAlign === 'left' || !selectedEl?.textAlign ? ' active' : ''}`}
+          onClick={() => update({ textAlign: 'left' })}
+          disabled={!selectedEl || selectedEl.type !== 'text'}
+        >
+          <AlignLeft size={14} />
+        </button>
+        <button
+          className={`bt-prop-btn${selectedEl?.textAlign === 'center' ? ' active' : ''}`}
+          onClick={() => update({ textAlign: 'center' })}
+          disabled={!selectedEl || selectedEl.type !== 'text'}
+        >
+          <AlignCenter size={14} />
+        </button>
+        <button
+          className={`bt-prop-btn${selectedEl?.textAlign === 'right' ? ' active' : ''}`}
+          onClick={() => update({ textAlign: 'right' })}
+          disabled={!selectedEl || selectedEl.type !== 'text'}
+        >
+          <AlignRight size={14} />
+        </button>
+        <button
+          className={`bt-prop-btn${selectedEl?.textAlign === 'justify' ? ' active' : ''}`}
+          onClick={() => update({ textAlign: 'justify' })}
+          disabled={!selectedEl || selectedEl.type !== 'text'}
+        >
+          <AlignJustify size={14} />
+        </button>
+        <button className="bt-prop-btn" title="Distributed" disabled>
+          <span style={{ transform: 'rotate(90deg)' }}><AlignJustify size={14} /></span>
+        </button>
+        <button className="bt-prop-btn" title="Arc Text" disabled>
+          <span style={{ fontSize: 10 }}>ABC</span>
+        </button>
+      </div>
 
-        const handleChange = (e) => {
+      {/* Group 5: Fill & Line */}
+      <div className="bt-toolbar-group">
+        <div className="bt-toolbar-handle" />
+        <ColorBtn icon="🪣" color={selectedEl?.fill || 'transparent'} onChange={v => update({ fill: v })} title="Fill Color" />
+        <select
+          className="bt-prop-input"
+          style={{ width: 44, marginLeft: 2 }}
+          value={Math.round(pxToUnit(selectedEl?.strokeWidth || 0, 'pt'))}
+          onChange={e => update({ strokeWidth: unitToPx(Number(e.target.value), 'pt') })}
+          disabled={!selectedEl}
+        >
+          {[0, 0.5, 1, 1.5, 2, 3, 4, 6, 8].map(w => <option key={w} value={w}>{w}</option>)}
+        </select>
+        <span className="bt-prop-label">pt</span>
+        <select
+          className="bt-prop-input"
+          style={{ width: 55, marginLeft: 2 }}
+          value={selectedEl?.dash?.length > 0 ? (selectedEl.dash[0] > 5 ? 'dashed' : 'dotted') : 'solid'}
+          onChange={e => {
             const val = e.target.value;
-            setLocalValue(val);
-            if (val !== '' && !isNaN(val)) {
-                onChange(Number(val));
-            }
-        };
+            if (val === 'solid') update({ dash: [] });
+            else if (val === 'dashed') update({ dash: [10, 5] });
+            else if (val === 'dotted') update({ dash: [2, 2] });
+          }}
+          disabled={!selectedEl}
+        >
+          <option value="solid">Solid</option>
+          <option value="dashed">Dashed</option>
+          <option value="dotted">Dotted</option>
+        </select>
+      </div>
 
-        return (
-            <input 
-                type={type}
-                value={localValue}
-                onChange={handleChange}
-                onBlur={() => setLocalValue(value)}
-                className={className}
-                style={style}
-                title={title}
+      {/* Group 6: Dimensions (Adaptive or Fallback) */}
+      <div className="bt-toolbar-group">
+        <div className="bt-toolbar-handle" />
+        {selectedEl ? (
+          <>
+            <span className="bt-prop-label">W:</span>
+            <PropInput
+              value={fmt(pxToUnit(selectedEl.width || 0, measurementUnit))}
+              onChange={v => update({ width: unitToPx(v, measurementUnit) })}
+              style={{ width: 45 }}
+              disabled={selectedEl.type === 'line'}
             />
-        );
-    };
-
-    // --- SUB-COMPONENTS FOR CONTEXTS ---
-
-    const GlobalControls = () => (
-        <div className="prop-section">
-            <div className="prop-group">
-                <Settings size={14} className="text-muted" />
-                <span className="prop-label">Dimensions:</span>
-                <span className="font-bold text-xs" style={{ color: 'var(--primary)' }}>
-                    {formatNum(pxToUnit(canvasWidth, measurementUnit))} × {formatNum(pxToUnit(canvasHeight, measurementUnit))} {measurementUnit}
-                </span>
-            </div>
-            <div className="prop-sep" />
-            <div className="prop-group">
-                <Palette size={14} className="text-muted" />
-                <input type="color" value={backgroundColor} onChange={e => setBackgroundColor(e.target.value)} className="prop-color-picker" title="Page Background" />
-            </div>
-            <div className="prop-sep" />
-            <div className="prop-group">
-                <button className="prop-btn" onClick={() => setZoom(zoom - 0.1)} title="Zoom Out"><ZoomOut size={16} /></button>
-                <span className="prop-value" style={{ width: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
-                <button className="prop-btn" onClick={() => setZoom(zoom + 0.1)} title="Zoom In"><ZoomIn size={16} /></button>
-            </div>
-        </div>
-    );
-
-    const TextControls = ({ el }) => (
-        <div className="prop-section">
-            <div className="prop-group">
-                <select 
-                    className="prop-select" 
-                    value={el.fontFamily || 'Arial'} 
-                    onChange={e => handleUpdate({ fontFamily: e.target.value })}
-                >
-                    <option value="Arial">Arial</option>
-                    <option value="Calibri">Calibri</option>
-                    <option value="Times New Roman">Times New Roman</option>
-                    <option value="Courier New">Courier New</option>
-                    <option value="Georgia">Georgia</option>
-                    <option value="Verdana">Verdana</option>
-                    <option value="Impact">Impact</option>
-                </select>
-                <PropInput 
-                    value={formatNum(pxToUnit(el.fontSize || 16, 'pt'))} 
-                    onChange={v => handleUpdate({ fontSize: unitToPx(v, 'pt') })} 
-                    style={{ width: 50 }}
-                    title="Font Size (pt)"
-                />
-            </div>
-            <div className="prop-sep" />
-            <div className="prop-group">
-                <button className={`prop-btn ${el.fontWeight === 'bold' ? 'active' : ''}`} onClick={() => handleUpdate({ fontWeight: el.fontWeight === 'bold' ? 'normal' : 'bold' })}><Bold size={16} /></button>
-                <button className={`prop-btn ${el.fontStyle === 'italic' ? 'active' : ''}`} onClick={() => handleUpdate({ fontStyle: el.fontStyle === 'italic' ? 'normal' : 'italic' })}><Italic size={16} /></button>
-                <button className={`prop-btn ${el.underline ? 'active' : ''}`} onClick={() => handleUpdate({ underline: !el.underline })}><Underline size={16} /></button>
-            </div>
-            <div className="prop-sep" />
-            <div className="prop-group">
-                <button className={`prop-btn ${el.textAlign === 'left' ? 'active' : ''}`} onClick={() => handleUpdate({ textAlign: 'left' })}><AlignLeft size={16} /></button>
-                <button className={`prop-btn ${el.textAlign === 'center' ? 'active' : ''}`} onClick={() => handleUpdate({ textAlign: 'center' })}><AlignCenter size={16} /></button>
-                <button className={`prop-btn ${el.textAlign === 'right' ? 'active' : ''}`} onClick={() => handleUpdate({ textAlign: 'right' })}><AlignRight size={16} /></button>
-            </div>
-            <div className="prop-sep" />
-            <div className="prop-group">
-                <Palette size={14} className="text-muted" />
-                <input type="color" value={el.fill || '#000000'} onChange={e => handleUpdate({ fill: e.target.value })} className="prop-color-picker" />
-            </div>
-        </div>
-    );
-
-    const ShapeControls = ({ el }) => (
-        <div className="prop-section">
-            <div className="prop-group">
-                <Palette size={14} className="text-muted" />
-                <span className="prop-label">Fill</span>
-                <input type="color" value={el.fill || '#transparent'} onChange={e => handleUpdate({ fill: e.target.value })} className="prop-color-picker" />
-            </div>
-            <div className="prop-sep" />
-            <div className="prop-group">
-                <Box size={14} className="text-muted" />
-                <span className="prop-label">Stroke</span>
-                <input type="color" value={el.stroke || '#000000'} onChange={e => handleUpdate({ stroke: e.target.value })} className="prop-color-picker" />
-                <PropInput 
-                    value={formatNum(pxToUnit(el.strokeWidth || 0, measurementUnit))} 
-                    onChange={v => handleUpdate({ strokeWidth: unitToPx(v, measurementUnit) })} 
-                    style={{ width: 45 }}
-                    title={`Stroke (${measurementUnit})`}
-                />
-            </div>
-            {(['rect', 'ellipse', 'triangle', 'star', 'polygon', 'line', 'barcode', 'qrcode', 'image', 'placeholder'].includes(el.type)) && (
-                <>
-                    <div className="prop-sep" />
-                    <div className="prop-group">
-                        <Maximize2 size={14} className="text-muted" />
-                        <span className="prop-label">W</span>
-                        <PropInput 
-                            value={formatNum(pxToUnit(el.width || (el.radius ? el.radius * 2 : (el.outerRadius ? el.outerRadius * 2 : 0)), measurementUnit))} 
-                            onChange={val => {
-                                const pxVal = unitToPx(val, measurementUnit);
-                                if (el.type === 'circle' || el.type === 'polygon') handleUpdate({ radius: pxVal / 2 });
-                                else if (el.type === 'star') handleUpdate({ outerRadius: pxVal / 2, innerRadius: pxVal / 5 });
-                                else handleUpdate({ width: pxVal });
-                            }} 
-                            style={{ width: 45 }}
-                            title={`Width (${measurementUnit})`}
-                        />
-                        <span className="prop-label">H</span>
-                        <PropInput 
-                            value={formatNum(pxToUnit(el.height || (el.radius ? el.radius * 2 : (el.outerRadius ? el.outerRadius * 2 : 0)), measurementUnit))} 
-                            onChange={val => {
-                                const pxVal = unitToPx(val, measurementUnit);
-                                if (el.type === 'circle' || el.type === 'polygon') handleUpdate({ radius: pxVal / 2 });
-                                else if (el.type === 'star') handleUpdate({ outerRadius: pxVal / 2, innerRadius: pxVal / 5 });
-                                else handleUpdate({ height: pxVal });
-                            }} 
-                            style={{ width: 45 }}
-                            title={`Height (${measurementUnit})`}
-                        />
-                    </div>
-                </>
-            )}
-            {(el.type === 'rect' || el.type === 'circle' || el.type === 'star' || el.type === 'polygon') && (
-                <>
-                    <div className="prop-sep" />
-                    <div className="prop-group">
-                        <Square size={14} className="text-muted" />
-                        <span className="prop-label">Radius</span>
-                        <PropInput 
-                            value={formatNum(pxToUnit(el.cornerRadius || el.radius || el.outerRadius || 0, measurementUnit))} 
-                            onChange={val => {
-                                const pxVal = unitToPx(val, measurementUnit);
-                                if (el.type === 'rect') handleUpdate({ cornerRadius: pxVal });
-                                else if (el.type === 'circle' || el.type === 'polygon') handleUpdate({ radius: pxVal });
-                                else if (el.type === 'star') handleUpdate({ outerRadius: pxVal, innerRadius: pxVal / 2.5 });
-                            }} 
-                            style={{ width: 45 }}
-                            title={`Corner/Shape Radius (${measurementUnit})`}
-                        />
-                    </div>
-                </>
-            )}
-        </div>
-    );
-
-    const BarcodeControls = ({ el }) => (
-        <div className="prop-section">
-            <div className="prop-group">
-                <Hash size={14} className="text-muted" />
-                <span className="prop-label">Data</span>
-                <input 
-                    type="text" 
-                    value={el.barcodeValue || el.qrValue || ''} 
-                    onChange={e => handleUpdate(el.type === 'barcode' ? { barcodeValue: e.target.value } : { qrValue: e.target.value })} 
-                    className="prop-input" 
-                    style={{ width: 150 }}
-                />
-            </div>
-            <div className="prop-sep" />
-            <div className="prop-group">
-                <Palette size={14} className="text-muted" />
-                <input type="color" value={el.fill || '#000000'} onChange={e => handleUpdate({ fill: e.target.value })} className="prop-color-picker" />
-            </div>
-        </div>
-    );
-
-    const PlaceholderControls = ({ el }) => (
-        <div className="prop-section">
-            <div className="prop-group">
-                <Layout size={14} className="text-muted" />
-                <span className="prop-label">Excel Field</span>
-                <input 
-                    type="text" 
-                    value={el.fieldName || ''} 
-                    onChange={e => handleUpdate({ fieldName: e.target.value })} 
-                    className="prop-input" 
-                    style={{ width: 150 }}
-                    placeholder="e.g. SKU, Price"
-                />
-            </div>
-        </div>
-    );
-
-    return (
-        <div className="property-bar">
-            <div className="property-bar-content">
-                {!selectedEl ? (
-                    <GlobalControls />
-                ) : (
-                    <>
-                        <div className="prop-context-label">
-                            {selectedEl.type.toUpperCase()}
-                        </div>
-                        <div className="prop-sep" />
-                        {selectedEl.type === 'text' && <TextControls el={selectedEl} />}
-                        {(['rect', 'circle', 'triangle', 'star', 'polygon', 'line'].includes(selectedEl.type)) && <ShapeControls el={selectedEl} />}
-                        {(['barcode', 'qrcode'].includes(selectedEl.type)) && <BarcodeControls el={selectedEl} />}
-                        {selectedEl.type === 'placeholder' && <PlaceholderControls el={selectedEl} />}
-                        
-                        <div className="prop-push" />
-                        <div className="prop-group">
-                            <button className="prop-btn danger" onClick={() => deleteElement(selectedIds)} title="Delete Selection">
-                                <Trash2 size={16} />
-                            </button>
-                        </div>
-                    </>
-                )}
-            </div>
-        </div>
-    );
+            <span className="bt-prop-label">H:</span>
+            <PropInput
+              value={fmt(pxToUnit(selectedEl.height || 0, measurementUnit))}
+              onChange={v => update({ height: unitToPx(v, measurementUnit) })}
+              style={{ width: 45 }}
+              disabled={selectedEl.type === 'line'}
+            />
+          </>
+        ) : (
+          <>
+            <span className="bt-prop-label">Canvas:</span>
+            <span className="bt-prop-value">{Math.round(canvasWidth)} × {Math.round(canvasHeight)} px</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }

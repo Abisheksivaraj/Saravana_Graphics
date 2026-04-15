@@ -1,0 +1,95 @@
+.bt-comp-panel {
+  width: 190px;
+  min-width: 190px;
+  height: 100%;
+  background: #fff;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  font-family: var(--font-main);
+  font-size: 11.5px;
+  user-select: none;
+}
+
+.bt-comp-header {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  background: #e0e0e0;
+  border-bottom: 1px solid var(--border);
+  gap: 2px;
+  min-height: 24px;
+}
+
+.bt-comp-title {
+  flex: 1;
+  font-size: 11px;
+  font-weight: bold;
+  color: #333;
+}
+
+.bt-comp-pin,
+.bt-comp-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #666;
+  font-size: 10px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+}
+
+.bt-comp-pin:hover,
+.bt-comp-close:hover {
+  background: #ffffff66;
+}
+
+.bt-comp-body {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.bt-tree-item {
+  display: flex;
+  align-items: center;
+  padding: 2px 4px;
+  cursor: default;
+  gap: 4px;
+  min-height: 20px;
+  color: #1a1a1a;
+}
+
+.bt-tree-item:hover {
+  background: #f0f7ff;
+}
+
+.bt-tree-arrow {
+  font-size: 7px;
+  width: 12px;
+  color: #666;
+  transition: transform 0.1s;
+}
+
+.bt-tree-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.bt-tree-icon {
+  font-size: 14px;
+}
+
+.bt-tree-children {
+  padding-left: 14px;
+}
+
+.bt-tree-item.leaf {
+  padding-left: 18px;
+  color: #444;
+}
+

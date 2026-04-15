@@ -1,0 +1,216 @@
+.bt-dialog-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+}
+
+.bt-dialog {
+    background: #f0f0f0;
+    border: 1px solid #707070;
+    box-shadow: 2px 2px 10px rgba(0,0,0,0.3);
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.barcode-props {
+    width: 600px;
+    height: 480px;
+}
+
+.bt-dialog-header {
+    background: #ffffff;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    justify-content: space-between;
+    border-bottom: 1px solid #ccc;
+}
+
+.bt-dialog-title {
+    font-size: 13px;
+    color: #444;
+}
+
+.bt-dialog-close-btn {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.bt-dialog-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+}
+
+.bt-dialog-sidebar {
+    width: 200px;
+    background: #fff;
+    border-right: 1px solid #ccc;
+    padding: 10px 5px;
+    overflow-y: auto;
+}
+
+.bt-tree-item {
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid transparent;
+}
+
+.bt-tree-item.root {
+    font-weight: bold;
+    color: #000;
+}
+
+.bt-tree-item.indent {
+    margin-left: 20px;
+}
+
+.bt-tree-item:hover {
+    background: #e5f1fb;
+    border-color: #70a0e0;
+}
+
+.bt-tree-item.active {
+    background: #cce8ff;
+    border-color: #0078d7;
+}
+
+.bt-tree-icon {
+    font-size: 14px;
+}
+
+.bt-dialog-content {
+    flex: 1;
+    padding: 20px;
+    background: #f5f5f5;
+    overflow-y: auto;
+}
+
+.bt-fieldset {
+    border: 1px solid #ccc;
+    background: #fff;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.bt-fieldset legend {
+    font-size: 12px;
+    color: #004b9c;
+    padding: 0 5px;
+}
+
+.bt-field-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 12px;
+}
+
+.bt-field-row label {
+    width: 90px;
+    color: #333;
+}
+
+.bt-field-group {
+    display: flex;
+    gap: 15px;
+}
+
+.bt-field-row input, 
+.bt-field-row select {
+    height: 22px;
+    border: 1px solid #ccc;
+    padding: 0 5px;
+    font-size: 12px;
+    flex: 1;
+}
+
+.bt-field-row input[type="number"] {
+    width: 60px;
+    flex: none;
+}
+
+.bt-field-row input[type="color"] {
+    width: 40px;
+    height: 24px;
+    padding: 0;
+    flex: none;
+}
+
+.bt-field-row .unit {
+    margin-left: 5px;
+    color: #666;
+}
+
+.bt-field-divider {
+    height: 1px;
+    background: #eee;
+    margin: 15px 0;
+}
+
+.bt-dialog-footer {
+    height: 50px;
+    background: #f0f0f0;
+    border-top: 1px solid #ccc;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 15px;
+    gap: 10px;
+}
+
+.bt-win-btn {
+    min-width: 80px;
+    height: 24px;
+    padding: 0 10px;
+    font-size: 12px;
+    background: #e1e1e1;
+    border: 1px solid #adadad;
+    cursor: pointer;
+}
+
+.bt-win-btn:hover:not(:disabled) {
+    background: #e5f1fb;
+    border-color: #0078d7;
+}
+
+.bt-win-btn.primary {
+    border-color: #0078d7;
+}
+
+.bt-win-btn.active {
+    background: #cce8ff;
+    border-color: #0078d7;
+}
+
+.bt-style-grid {
+    display: flex;
+    gap: 5px;
+}
+
+.bt-info-box {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    background: #fffbe6;
+    border: 1px solid #ffe58f;
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+.bt-info-icon {
+    font-size: 16px;
+}

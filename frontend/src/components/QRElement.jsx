@@ -38,7 +38,7 @@ export default function QRElement({ el, isSelected, onSelect, ...props }) {
     }
 
     return (
-        <Group {...props} onClick={() => onSelect(el.id)} onTap={() => onSelect(el.id)}>
+        <Group {...props} onClick={() => onSelect?.(el.id)} onTap={() => onSelect?.(el.id)}>
             <Rect width={elSize} height={elSize} fill="transparent" />
             {cells}
         </Group>

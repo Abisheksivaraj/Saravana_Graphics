@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { Stage, Layer, Text, Rect, Circle, Ellipse, Line, Image as KImage, Transformer, Group, Star, RegularPolygon, Path } from 'react-konva';
+import { Stage, Layer, Text, Rect, Circle, Ellipse, Line, Arrow, Image as KImage, Transformer, Group, Star, RegularPolygon, Path } from 'react-konva';
 import { useDesignStore } from '../store/designStore';
 import { useUIStore, pxToUnit, unitToPx } from '../store/uiStore';
 import BarcodeElement from './BarcodeElement';
@@ -246,8 +246,8 @@ function GapDimensions({ el1, el2, zoom }) {
                     };
 
                     input.onkeydown = (ev) => { 
-                        if (ev.key === 'Enter') commit(); 
-                        if (ev.key === 'Escape') if (container.contains(input)) container.removeChild(input); 
+                        if (ev.key === 'Enter') { ev.stopPropagation(); commit(); }
+                        if (ev.key === 'Escape') { ev.stopPropagation(); if (container.contains(input)) container.removeChild(input); }
                     };
                     input.onblur = commit;
                 }}
@@ -313,7 +313,7 @@ function GapDimensions({ el1, el2, zoom }) {
     return <Group>{gaps}</Group>;
 }
 
-function ElementWrapper({ el, isSelected, onSelect, onChange }) {
+function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
     const { selectedTool } = useUIStore();
     const shapeRef = useRef();
     const trRef = useRef();
@@ -354,6 +354,7 @@ function ElementWrapper({ el, isSelected, onSelect, onChange }) {
         listening: selectedTool === 'pick' || selectedTool === 'eyedropper' || selectedTool === 'eraser',
         onClick: () => onSelect(el.id),
         onTap: () => onSelect(el.id),
+        onDblClick: () => onDblClick?.(el.id),
         onDragEnd: handleDragEnd,
         onTransformEnd: handleTransformEnd,
     };
@@ -465,7 +466,13 @@ function ElementWrapper({ el, isSelected, onSelect, onChange }) {
                             textarea.value = el.text;
                             textarea.style.cssText = `position:absolute;top:${areaPosition.y}px;left:${areaPosition.x}px;width:${textNode.width() * textNode.scaleX()}px;min-height:40px;font-size:${el.fontSize}px;font-family:${el.fontFamily};background:rgba(255,255,255,0.95);color:#000;border:2px solid #6c63ff;border-radius:4px;padding:4px;resize:none;overflow:hidden;z-index:999;`;
                             textarea.focus();
-                            textarea.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' || ev.key === 'Enter' && !ev.shiftKey) { onChange(el.id, { text: textarea.value }); document.body.removeChild(textarea); } });
+                            textarea.addEventListener('keydown', (ev) => { 
+                                if (ev.key === 'Escape' || (ev.key === 'Enter' && !ev.shiftKey)) { 
+                                    ev.stopPropagation(); 
+                                    onChange(el.id, { text: textarea.value }); 
+                                    if (document.body.contains(textarea)) document.body.removeChild(textarea); 
+                                } 
+                            });
                             textarea.addEventListener('blur', () => { onChange(el.id, { text: textarea.value }); if (document.body.contains(textarea)) document.body.removeChild(textarea); });
                         }}
                     />
@@ -483,13 +490,21 @@ function ElementWrapper({ el, isSelected, onSelect, onChange }) {
             case 'star':
                 return <Star {...commonProps} numPoints={el.numPoints || 5} innerRadius={el.innerRadius || 10} outerRadius={el.outerRadius || 25} fill={el.fill || 'transparent'} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2} />;
             case 'polygon':
-                return <RegularPolygon {...commonProps} sides={el.sides || 6} radius={el.radius || 25} fill={el.fill || 'transparent'} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2} />;
+                return <RegularPolygon {...commonProps} sides={el.sides || 6} radius={el.radius || 25} fill={el.fill || 'transparent'} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2} dash={el.dash} />;
+            case 'diamond':
+                return <RegularPolygon {...commonProps} sides={4} rotation={45} radius={el.radius || 25} fill={el.fill || 'transparent'} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2} dash={el.dash} />;
+            case 'hexagon':
+                return <RegularPolygon {...commonProps} sides={6} radius={el.radius || 25} fill={el.fill || 'transparent'} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2} dash={el.dash} />;
+            case 'octagon':
+                return <RegularPolygon {...commonProps} sides={8} radius={el.radius || 25} fill={el.fill || 'transparent'} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2} dash={el.dash} />;
+            case 'arrow':
+                return <Arrow {...commonProps} points={el.points || [0, 0, 50, 0]} pointerLength={10} pointerWidth={10} fill={el.fill || el.stroke || '#000000'} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2} dash={el.dash} />;
             case 'path':
                 return <Path {...commonProps} data={el.data || 'M 0 0 L 100 0 L 50 100 Z'} fill={el.fill || 'transparent'} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2} />;
             case 'barcode':
-                return <BarcodeElement {...commonProps} el={displayProps} />;
+                return <BarcodeElement {...commonProps} el={displayProps} onSelect={onSelect} />;
             case 'qrcode':
-                return <QRElement {...commonProps} el={displayProps} />;
+                return <QRElement {...commonProps} el={displayProps} onSelect={onSelect} />;
             case 'placeholder':
                 return (
                     <Group {...commonProps}>
@@ -512,7 +527,7 @@ function ElementWrapper({ el, isSelected, onSelect, onChange }) {
     );
 }
 
-export default function DesignCanvas({ stageRef, showGrid = true }) {
+export default function DesignCanvas({ stageRef, showGrid = true, onElementDblClick }) {
     const {
         elements, selectedIds, canvasWidth, canvasHeight, backgroundColor, zoom,
         selectElement, deselectAll, updateElement, updateElementAndSave, addElement,
@@ -617,6 +632,7 @@ export default function DesignCanvas({ stageRef, showGrid = true }) {
         const drawTools = {
             'draw-rect': 'rect', 'draw-circle': 'circle', 'draw-line': 'line',
             'draw-star': 'star', 'draw-polygon': 'polygon', 'draw-triangle': 'triangle',
+            'draw-diamond': 'diamond', 'draw-hexagon': 'hexagon', 'draw-octagon': 'octagon', 'draw-arrow': 'arrow',
             'text': 'text', 'barcode': 'barcode', 'qrcode': 'qrcode', 'placeholder': 'placeholder',
         };
         if (drawTools[selectedTool]) {
@@ -673,9 +689,9 @@ export default function DesignCanvas({ stageRef, showGrid = true }) {
                 const r = Math.max(1, Math.sqrt(dx * dx + dy * dy));
                 updates.outerRadius = r;
                 updates.innerRadius = r / 2.5;
-            } else if (shapeType === 'polygon') {
+            } else if (['polygon', 'hexagon', 'octagon', 'diamond'].includes(shapeType)) {
                 updates.radius = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-            } else if (shapeType === 'line') {
+            } else if (shapeType === 'line' || shapeType === 'arrow') {
                 updates.points = [0, 0, dx, dy];
             } else {
                 updates.width = Math.max(1, Math.abs(dx));
@@ -760,7 +776,7 @@ export default function DesignCanvas({ stageRef, showGrid = true }) {
         if (e.key === 'v') setSelectedTool('pick');
         if (e.key === 't') setSelectedTool('text');
         if (e.key === 'b') setSelectedTool('barcode');
-        if (e.key === 'Escape') { setSelectedTool('pick'); deselectAll(); }
+
     }, [selectedIds, elements]);
 
     useEffect(() => {
@@ -768,8 +784,24 @@ export default function DesignCanvas({ stageRef, showGrid = true }) {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [handleKeyDown]);
 
+    // Corner radius for the label in canvas pixels (unscaled)
+    const CANVAS_RADIUS = 18;
+
     return (
         <div ref={containerRef} className="canvas-wrapper" onClick={(e) => { if (e.target === containerRef.current) deselectAll(); }}>
+            {/* Outer clip div — gives the CSS rounded box + shadow */}
+            <div
+                style={{
+                    borderRadius: CANVAS_RADIUS,
+                    overflow: 'hidden',
+                    boxShadow: '0 6px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.3)',
+                    display: 'block',
+                    lineHeight: 0,
+                    background: backgroundColor,
+                    width: canvasWidth * zoom,
+                    height: canvasHeight * zoom,
+                }}
+            >
             <Stage
                 ref={stageRef}
                 width={canvasWidth * zoom}
@@ -778,9 +810,8 @@ export default function DesignCanvas({ stageRef, showGrid = true }) {
                 scaleY={zoom}
                 pixelRatio={window.devicePixelRatio || 2}
                 style={{
-                    background: backgroundColor,
-                    boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
-                    borderRadius: 2,
+                    background: 'transparent',
+                    display: 'block',
                     cursor: getCursor(),
                 }}
                 onMouseDown={handleStageMouseDown}
@@ -791,16 +822,60 @@ export default function DesignCanvas({ stageRef, showGrid = true }) {
                 onTouchMove={handleStageMouseMove}
                 onTouchEnd={handleStageMouseUp}
             >
-                <Layer>
+                {/* Background layer: fills the rounded rect with the label colour */}
+                <Layer
+                    clipFunc={(ctx) => {
+                        const r = CANVAS_RADIUS;
+                        const w = canvasWidth;
+                        const h = canvasHeight;
+                        ctx.beginPath();
+                        ctx.moveTo(r, 0);
+                        ctx.lineTo(w - r, 0);
+                        ctx.quadraticCurveTo(w, 0, w, r);
+                        ctx.lineTo(w, h - r);
+                        ctx.quadraticCurveTo(w, h, w - r, h);
+                        ctx.lineTo(r, h);
+                        ctx.quadraticCurveTo(0, h, 0, h - r);
+                        ctx.lineTo(0, r);
+                        ctx.quadraticCurveTo(0, 0, r, 0);
+                        ctx.closePath();
+                    }}
+                >
+                    {/* White background rect */}
+                    <Rect
+                        x={0} y={0}
+                        width={canvasWidth}
+                        height={canvasHeight}
+                        fill={backgroundColor}
+                    />
                     {showGrid && <GridLayer width={canvasWidth} height={canvasHeight} />}
                 </Layer>
-                <Layer>
+                {/* Elements layer — also clipped to rounded rect */}
+                <Layer
+                    clipFunc={(ctx) => {
+                        const r = CANVAS_RADIUS;
+                        const w = canvasWidth;
+                        const h = canvasHeight;
+                        ctx.beginPath();
+                        ctx.moveTo(r, 0);
+                        ctx.lineTo(w - r, 0);
+                        ctx.quadraticCurveTo(w, 0, w, r);
+                        ctx.lineTo(w, h - r);
+                        ctx.quadraticCurveTo(w, h, w - r, h);
+                        ctx.lineTo(r, h);
+                        ctx.quadraticCurveTo(0, h, 0, h - r);
+                        ctx.lineTo(0, r);
+                        ctx.quadraticCurveTo(0, 0, r, 0);
+                        ctx.closePath();
+                    }}
+                >
                     {sortedElements.filter(el => el.visible !== false).map(el => (
                         <ElementWrapper
                             key={el.id}
                             el={el}
                             isSelected={selectedIds.includes(el.id)}
                             onSelect={handleElementClick}
+                            onDblClick={onElementDblClick}
                             onChange={(id, updates) => updateElementAndSave(id, updates)}
                         />
                     ))}
@@ -810,9 +885,10 @@ export default function DesignCanvas({ stageRef, showGrid = true }) {
                             boundBoxFunc={(oldBox, newBox) => (newBox.width < 5 || newBox.height < 5 ? oldBox : newBox)}
                             rotateEnabled={true}
                             anchorFill="#ffffff"
-                            anchorStroke="#2563eb"
+                            anchorStroke="#3c8ae8"
                             anchorSize={8}
-                            borderStroke="#2563eb"
+                            borderStroke="#3c8ae8"
+                            borderDash={[4, 2]}
                             borderStrokeWidth={1}
                             onTransformEnd={handleTransformEnd}
                         />
@@ -868,6 +944,7 @@ export default function DesignCanvas({ stageRef, showGrid = true }) {
                     })()}
                 </Layer>
             </Stage>
+            </div>
         </div>
     );
 }

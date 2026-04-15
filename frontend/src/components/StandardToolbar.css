@@ -1,0 +1,125 @@
+.bt-standard-toolbar {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border-toolbar);
+  padding: 1px 4px;
+  gap: 1px;
+  flex-shrink: 0;
+  font-family: var(--font-main);
+  overflow: visible;
+  position: relative;
+  z-index: 1000;
+}
+
+.bt-tb-btn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: default;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.bt-tb-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.6);
+  border-color: #8db2e3;
+}
+
+.bt-tb-btn:active:not(:disabled),
+.bt-tb-btn.active {
+  background: #fdbd67;
+  border-color: #e59324;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.bt-tb-btn:disabled {
+  opacity: 0.4;
+}
+
+.bt-toolbar-group {
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  height: 100%;
+}
+
+.bt-toolbar-handle {
+  width: 3px;
+  height: 20px;
+  margin: 0 3px 0 1px;
+  border-left: 1px dotted #888;
+  border-right: 1px dotted #888;
+}
+
+
+.bt-tb-sep {
+  width: 1px;
+  height: 20px;
+  background: rgba(0,0,0,0.1);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.bt-tb-dropdown-wrap {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.bt-tb-mini-btn {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(0,0,0,0.1);
+  background: #f0f0f0;
+  border-radius: 1px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+}
+
+.bt-tb-mini-btn:hover {
+  background-color: #e0e0e0;
+  border-color: #888;
+}
+
+.bt-tb-mini-select {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(0,0,0,0.1);
+  background: #f0f0f0;
+  border-radius: 1px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  font-size: 0;
+  z-index: 5;
+}
+
+.bt-tb-mini-select:hover {
+  background-color: #e0e0e0;
+  border-color: #888;
+}
+
+.bt-tb-mini-select option {
+  font-size: 11px;
+  background: #fff;
+  color: #000;
+}
+
