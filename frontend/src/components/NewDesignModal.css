@@ -1,0 +1,33 @@
+.new-design-modal {
+    width: 420px;
+}
+
+.bt-modal-desc {
+    font-size: 13px;
+    color: #555;
+    margin-bottom: 10px;
+}
+
+.bt-field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+}
+
+.bt-field-grid .bt-field:last-child {
+    grid-column: span 2;
+}
+
+.bt-template-preview {
+    padding-top: 15px;
+    border-top: 1px solid #eee;
+}
+
+.bt-modal-head {
+    background: linear-gradient(to bottom, #5fa6e8 0%, #3b7fc0 100%) !important;
+}
+
+.bt-btn-ok {
+    background: #0078d7 !important;
+    border-color: #005fa3 !important;
+}

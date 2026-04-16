@@ -1,13 +1,15 @@
 /* Auth.css - Premium Studio Aesthetic */
 :root {
-    --auth-bg: #0f172a;
-    --auth-primary: #7c3aed;
-    --auth-secondary: #c026d3;
-    --auth-accent: #39A3DD;
-    --auth-text: #f8fafc;
-    --auth-text-dim: #94a3b8;
-    --auth-card-bg: rgba(30, 41, 59, 0.7);
-    --auth-input-bg: rgba(15, 23, 42, 0.5);
+:root {
+    --auth-bg: #ffffff;
+    --auth-primary: #f57c00;
+    --auth-secondary: #ff9800;
+    --auth-accent: #ffb74d;
+    --auth-text: #1a1a1a;
+    --auth-text-dim: #666666;
+    --auth-card-bg: #ffffff;
+    --auth-input-bg: #ffffff;
+}
 }
 
 .auth-page {
@@ -101,12 +103,12 @@
 .auth-logo-icon-box {
     width: 44px;
     height: 44px;
-    background: linear-gradient(135deg, var(--auth-primary), var(--auth-secondary));
+    background: linear-gradient(135deg, #f57c00, #ff9800);
     border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 8px 16px rgba(124, 58, 237, 0.3);
+    box-shadow: 0 8px 16px rgba(245, 124, 0, 0.3);
 }
 
 .auth-hero-logo span {
@@ -124,9 +126,7 @@
     font-weight: 900;
     line-height: 1.1;
     margin-bottom: 24px;
-    background: linear-gradient(to right, #ffffff, #94a3b8);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: #1a1a1a;
 }
 
 .auth-hero-subtitle {
@@ -166,9 +166,8 @@
     align-items: center;
     justify-content: center;
     padding: 40px;
-    background: rgba(15, 23, 42, 0.4);
-    backdrop-filter: blur(40px);
-    border-left: 1px solid rgba(255, 255, 255, 0.05);
+    background: #ffffff;
+    border-left: 1px solid #e2e8f0;
 }
 
 .auth-card-modern {
@@ -234,10 +233,10 @@
 .auth-input {
     width: 100%;
     background: var(--auth-input-bg);
-    border: 1.5px solid rgba(255, 255, 255, 0.1);
+    border: 1.5px solid #e2e8f0;
     border-radius: 14px;
     padding: 14px 14px 14px 48px;
-    color: white;
+    color: #1a1a1a;
     font-size: 15px;
     font-weight: 500;
     outline: none;
@@ -246,8 +245,8 @@
 
 .auth-input:focus {
     border-color: var(--auth-primary);
-    background: rgba(30, 41, 59, 0.8);
-    box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.15);
+    background: #ffffff;
+    box-shadow: 0 0 0 4px rgba(245, 124, 0, 0.15);
 }
 
 .auth-input:focus + .input-icon {

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { Layers, Eye, EyeOff, LogIn, Mail, Lock, Zap, Shield, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
+import logo from '../assets/logo.png';
 import './Auth.css';
 
 export default function Login() {
@@ -41,10 +42,7 @@ export default function Login() {
                 <div className="auth-hero">
                     <div className="auth-hero-content">
                         <div className="auth-hero-logo">
-                            <div className="auth-logo-icon-box">
-                                <Layers size={24} color="white" />
-                            </div>
-                            <span>Saravana<b>Graphicss</b></span>
+                            <img src={logo} alt="Saravana Graphics" style={{ height: 100, width: 'auto' }} />
                         </div>
                         <h1 className="auth-hero-title">
                             Pro Level <br />Design Studio.

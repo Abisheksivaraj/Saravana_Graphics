@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useUIStore } from '../store/uiStore';
+import logo from '../assets/logo.png';
 import './Sidebar.css';
 
 const Sidebar = () => {
@@ -39,8 +40,16 @@ const Sidebar = () => {
         <aside className={`db-sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
             <div className="db-sidebar-header">
                 <div className="db-logo">
-                    <div className="db-logo-icon"><Layers size={20} color="white" /></div>
-                    {!isSidebarCollapsed && <span>Saravana<b>Graphicss</b></span>}
+                    <img 
+                        src={logo} 
+                        alt="Saravana" 
+                        style={{ 
+                            height: 36, 
+                            width: 'auto',
+                            display: isSidebarCollapsed ? 'none' : 'block' 
+                        }} 
+                    />
+                    {isSidebarCollapsed && <Layers size={20} color="white" />}
                 </div>
                 <button className="sidebar-toggle" onClick={toggleSidebar}>
                     {isSidebarCollapsed ? <Menu size={20} /> : <ChevronLeft size={20} />}

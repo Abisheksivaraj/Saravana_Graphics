@@ -18,9 +18,9 @@
     flex-direction: column;
 }
 
-.barcode-props {
-    width: 600px;
-    height: 480px;
+.shape-props {
+    width: 620px;
+    height: 520px;
 }
 
 .bt-dialog-header {
@@ -31,6 +31,7 @@
     padding: 0 10px;
     justify-content: space-between;
     border-bottom: 1px solid #ccc;
+    cursor: default;
 }
 
 .bt-dialog-title {
@@ -57,6 +58,11 @@
     border-right: 1px solid #dcdcdc;
     padding: 10px 0;
     overflow-y: auto;
+}
+
+.bt-sidebar-tree {
+    display: flex;
+    flex-direction: column;
 }
 
 .bt-tree-item {
@@ -105,6 +111,28 @@
     overflow: hidden;
 }
 
+.bt-scroll-area {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+/* Custom Scrollbar */
+.bt-scroll-area::-webkit-scrollbar {
+    width: 14px;
+}
+.bt-scroll-area::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+.bt-scroll-area::-webkit-scrollbar-thumb {
+    background: #cdcdcd;
+    border: 3px solid #f1f1f1;
+    border-radius: 10px;
+}
+.bt-scroll-area::-webkit-scrollbar-thumb:hover {
+    background: #a6a6a6;
+}
+
 .bt-fieldset {
     border: 1px solid #e0e0e0;
     background: #fff;
@@ -119,6 +147,7 @@
     color: #0056b3;
     padding: 0 4px;
     font-weight: 600;
+    margin-bottom: 0;
 }
 
 .bt-field-row {
@@ -149,23 +178,57 @@
     background: #fff;
     color: #111;
     outline: none;
+    transition: border-color 0.1s;
+}
+
+.bt-win-input:focus,
+.bt-field-row input:focus,
+.bt-field-row select:focus {
+    border-color: #0078d7;
 }
 
 .bt-field-row input[type="number"] {
-    width: 60px;
-    flex: none;
+    width: 70px;
 }
 
-.bt-field-row input[type="color"] {
-    width: 40px;
-    height: 24px;
-    padding: 0;
-    flex: none;
+.bt-field-row select {
+    width: 160px;
 }
 
 .bt-field-row .unit {
-    margin-left: 5px;
+    margin-left: 6px;
     color: #666;
+    width: 30px;
+}
+
+.bt-cmyk-grid {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.bt-cmyk-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.bt-cmyk-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #666;
+    margin-bottom: 2px;
+}
+
+.bt-cmyk-input {
+    width: 40px;
+    height: 22px;
+    text-align: center;
+    border: 1px solid #ccc;
+    font-size: 10.5px;
+    outline: none;
+    padding: 0;
 }
 
 .bt-field-divider {
@@ -175,24 +238,25 @@
 }
 
 .bt-dialog-footer {
-    height: 50px;
+    height: 44px;
     background: #f0f0f0;
     border-top: 1px solid #ccc;
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    padding: 0 15px;
-    gap: 10px;
+    padding: 0 12px;
+    gap: 8px;
 }
 
 .bt-win-btn {
-    min-width: 80px;
+    min-width: 75px;
     height: 24px;
-    padding: 0 10px;
-    font-size: 12px;
+    padding: 0 12px;
+    font-size: 11.5px;
     background: #e1e1e1;
     border: 1px solid #adadad;
     cursor: pointer;
+    border-radius: 2px;
 }
 
 .bt-win-btn:hover:not(:disabled) {
@@ -202,28 +266,24 @@
 
 .bt-win-btn.primary {
     border-color: #0078d7;
+    background: #e5f1fb;
 }
 
-.bt-win-btn.active {
-    background: #cce8ff;
-    border-color: #0078d7;
+.bt-win-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
 }
 
-.bt-style-grid {
-    display: flex;
-    gap: 5px;
+.mt-2 { margin-top: 8px; }
+.mt-4 { margin-top: 16px; }
+.w-full { width: 100%; }
+
+.bt-field-row input[type="number"] {
+    -moz-appearance: textfield;
 }
 
-.bt-info-box {
-    display: flex;
-    gap: 10px;
-    padding: 10px;
-    background: #fffbe6;
-    border: 1px solid #ffe58f;
-    border-radius: 4px;
-    font-size: 11px;
-}
-
-.bt-info-icon {
-    font-size: 16px;
+.bt-field-row input[type="number"]::-webkit-outer-spin-button,
+.bt-field-row input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }

@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { useDesignStore } from '../store/designStore';
 import './ComponentsPanel.css';
 
 export default function ComponentsPanel({ onToggle }) {
-  const [expanded, setExpanded] = useState({ components: true, samples: false });
+  const { elements, selectedIds, selectElement, deleteElement } = useDesignStore();
+  const [expanded, setExpanded] = useState({ layers: true, components: false, samples: false });
 
   const toggle = (key) => setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
 
@@ -17,6 +19,49 @@ export default function ComponentsPanel({ onToggle }) {
 
       {/* Tree */}
       <div className="bt-comp-body">
+        {/* Design Layers root */}
+        <div
+          className="bt-tree-item root"
+          onClick={() => toggle('layers')}
+        >
+          <span className={`bt-tree-arrow ${expanded.layers ? 'expanded' : ''}`}>▶</span>
+          <span className="bt-tree-icon folder">📂</span>
+          <span>Layers</span>
+        </div>
+        {expanded.layers && (
+          <div className="bt-tree-children">
+            {elements.length === 0 ? (
+              <div className="bt-tree-empty">No objects</div>
+            ) : (
+              [...elements].reverse().map(el => (
+                <div 
+                  key={el.id} 
+                  className={`bt-tree-item leaf ${selectedIds.includes(el.id) ? 'active' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    selectElement(el.id, e.ctrlKey);
+                  }}
+                >
+                  <span className="bt-tree-spacer" />
+                  <span className="bt-tree-icon">
+                    {el.type === 'text' ? '🔤' : el.type === 'barcode' ? '║║' : '⬜'}
+                  </span>
+                  <span className="bt-tree-text">{el.name || el.type}</span>
+                  <button 
+                    className="bt-tree-delete" 
+                    title="Delete Layer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteElement([el.id]);
+                    }}
+                  >
+                    🗑️
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
         {/* Components root */}
         <div
           className="bt-tree-item root"

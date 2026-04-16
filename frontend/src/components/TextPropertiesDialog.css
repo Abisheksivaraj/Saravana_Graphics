@@ -1,0 +1,153 @@
+.text-props {
+    width: 680px;
+    height: 550px;
+}
+
+.bt-label-sm {
+    font-size: 11px;
+    color: #444;
+    margin-bottom: 3px;
+    display: block;
+}
+
+.bt-list-box {
+    border: 1px solid #ccc;
+    background: #fff;
+    overflow-y: auto;
+    display: block;
+}
+
+.bt-list-item {
+    padding: 3px 8px;
+    font-size: 11.5px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 22px;
+    flex-shrink: 0;
+}
+
+.bt-list-item:hover {
+    background: #f0f7ff;
+}
+
+.bt-list-item.active {
+    background: #0078d7;
+    color: #fff;
+}
+
+.bt-font-icon {
+    font-size: 10px;
+    font-weight: 700;
+    color: #444;
+    width: 15px;
+    height: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-style: italic;
+    flex-shrink: 0;
+}
+
+.bt-list-item.active .bt-font-icon {
+    color: #fff;
+}
+
+.bt-font-name {
+    flex-shrink: 0;
+    font-size: 12px;
+}
+
+.bt-font-sub {
+    font-size: 10px;
+    color: #888;
+    margin-left: 4px;
+}
+
+.bt-list-item.active .bt-font-sub {
+    color: #d1e9ff;
+}
+
+.bt-font-preview {
+    margin-left: auto;
+    font-size: 14px;
+    color: #555;
+}
+
+.bt-list-item.active .bt-font-preview {
+    color: #fff;
+}
+
+.bt-sub-tabs {
+    display: flex;
+    border-bottom: 1px solid #ccc;
+    margin-bottom: 15px;
+}
+
+.bt-sub-tab {
+    padding: 3px 12px;
+    font-size: 11px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    border-bottom: none;
+    margin-bottom: -1px;
+}
+
+.bt-sub-tab.active {
+    background: #fff;
+    border-color: #ccc;
+    font-weight: 500;
+}
+
+.bt-preview-box {
+    border: 1px solid #dcdcdc;
+    background: #fdfdfd;
+    padding: 15px;
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.bt-sample-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.bt-field-divider { height: 1px; background: #eee; margin: 15px 0; }
+
+.bt-field-row input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+.bt-field-row input[type="number"]::-webkit-outer-spin-button,
+.bt-field-row input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.bt-font-grid {
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
+}
+
+.bt-font-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.bt-list-box::-webkit-scrollbar {
+    width: 6px;
+}
+
+.bt-list-box::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.bt-list-box::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 3px;
+}

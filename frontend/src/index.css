@@ -6,41 +6,41 @@
 }
 
 :root {
-  /* Brand Colors */
-  --primary: #6c63ff;
-  --primary-dark: #5649e8;
-  --primary-light: #8b85ff;
-  --primary-glow: rgba(108, 99, 255, 0.25);
-  --accent: #ff6584;
-  --accent-dark: #e8527a;
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --danger: #ef4444;
+  /* Brand Colors - Saravana Graphics Orange Palette */
+  --primary: #f57c00;
+  --primary-dark: #e65100;
+  --primary-light: #ffb74d;
+  --primary-glow: rgba(245, 124, 0, 0.15);
+  --accent: #2e7d32; /* Contrast Green */
+  --accent-dark: #1b5e20;
+  --success: #107c10;
+  --warning: #ffb900;
+  --danger: #d13438;
 
-  /* Dark Theme */
-  --bg-primary: #0f0e17;
-  --bg-secondary: #1a1928;
-  --bg-tertiary: #242338;
-  --bg-card: #1e1d2e;
-  --bg-hover: #2a2840;
-  --bg-glass: rgba(255, 255, 255, 0.05);
+  /* High-Contrast White/Orange Theme */
+  --bg-primary: #ffffff;
+  --bg-secondary: #fdfdfd;
+  --bg-tertiary: #fff3e0; /* Subtle orange wash for panels */
+  --bg-card: #ffffff;
+  --bg-hover: #fff8f1;
+  --bg-glass: rgba(245, 124, 0, 0.05);
 
-  /* Text */
-  --text-primary: #fffffe;
-  --text-secondary: #a7a5c6;
-  --text-muted: #6b6980;
-  --text-inverse: #0f0e17;
+  /* Text - High Legibility */
+  --text-primary: #1a1a1a;
+  --text-secondary: #444444;
+  --text-muted: #757575;
+  --text-inverse: #ffffff;
 
   /* Borders */
-  --border: rgba(255, 255, 255, 0.08);
-  --border-light: rgba(255, 255, 255, 0.15);
+  --border: #e0e0e0;
+  --border-light: #f1f1f1;
   --border-focus: var(--primary);
 
-  /* Shadows */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 20px var(--primary-glow);
+  /* Shadows - Warm Professional Shadows */
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 16px rgba(165, 80, 0, 0.06);
+  --shadow-lg: 0 12px 32px rgba(165, 80, 0, 0.1);
+  --shadow-glow: 0 0 12px var(--primary-glow);
 
   /* Sidebar */
   --sidebar-width: 260px;
@@ -49,13 +49,13 @@
 
   /* Transitions */
   --transition: all 0.2s ease;
-  --transition-slow: all 0.35s ease;
+  --transition-slow: all 0.4s ease;
 
   /* Border Radius */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 12px;
+  --radius-xl: 20px;
   --radius-full: 9999px;
 }
 
@@ -108,13 +108,13 @@ a:hover { color: var(--primary); }
 
 /* ===== INPUT SYSTEM ===== */
 .input {
-  background: var(--bg-secondary); border: 1px solid var(--border);
-  color: var(--text-primary); border-radius: var(--radius-sm);
-  padding: 8px 12px; font-size: 13px; font-family: 'Inter', sans-serif;
+  background: #ffffff; border: 1px solid #7a7a7a;
+  color: #000000; border-radius: var(--radius-sm);
+  padding: 6px 12px; font-size: 13px; font-family: 'Segoe UI', sans-serif;
   transition: var(--transition); outline: none; width: 100%;
 }
-.input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-glow); }
-.input::placeholder { color: var(--text-muted); }
+.input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-glow); }
+.input::placeholder { color: #888888; }
 .input-group { display: flex; flex-direction: column; gap: 4px; }
 .input-group label { font-size: 12px; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
 

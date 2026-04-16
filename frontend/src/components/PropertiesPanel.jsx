@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import './PropertiesPanel.css';
 
-const FONTS = ['Arial', 'Calibri', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana', 'Trebuchet MS', 'Impact', 'Comic Sans MS', 'Outfit', 'Inter'];
+const FONTS = ['Arial', 'Calibri', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana', 'Trebuchet MS', 'Impact', 'Comic Sans MS', 'Outfit', 'Inter', 'Rupee Forbidan'];
 const BARCODE_FORMATS = ['CODE128', 'CODE39', 'EAN13', 'EAN8', 'UPC', 'ITF14', 'MSI', 'pharmacode'];
 
 function ColorInput({ label, value, onChange }) {

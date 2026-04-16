@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { Stage, Layer, Text, Rect, Circle, Ellipse, Line, Arrow, Image as KImage, Transformer, Group, Star, RegularPolygon, Path } from 'react-konva';
+import { Stage, Layer, Text, Rect, Circle, Ellipse, Line, Arrow, Image as KImage, Transformer, Group, Star, RegularPolygon, Path, Shape } from 'react-konva';
 import { useDesignStore } from '../store/designStore';
 import { useUIStore, pxToUnit, unitToPx } from '../store/uiStore';
 import BarcodeElement from './BarcodeElement';
@@ -456,35 +456,76 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
                         strokeWidth={el.strokeWidth || 0}
                         width={el.width || 200}
                         wrap="word"
-                        onDblClick={(e) => {
-                            const textNode = e.target;
-                            const stage = textNode.getStage();
-                            const textPosition = textNode.absolutePosition();
-                            const areaPosition = { x: stage.container().offsetLeft + textPosition.x, y: stage.container().offsetTop + textPosition.y };
-                            const textarea = document.createElement('textarea');
-                            document.body.appendChild(textarea);
-                            textarea.value = el.text;
-                            textarea.style.cssText = `position:absolute;top:${areaPosition.y}px;left:${areaPosition.x}px;width:${textNode.width() * textNode.scaleX()}px;min-height:40px;font-size:${el.fontSize}px;font-family:${el.fontFamily};background:rgba(255,255,255,0.95);color:#000;border:2px solid #6c63ff;border-radius:4px;padding:4px;resize:none;overflow:hidden;z-index:999;`;
-                            textarea.focus();
-                            textarea.addEventListener('keydown', (ev) => { 
-                                if (ev.key === 'Escape' || (ev.key === 'Enter' && !ev.shiftKey)) { 
-                                    ev.stopPropagation(); 
-                                    onChange(el.id, { text: textarea.value }); 
-                                    if (document.body.contains(textarea)) document.body.removeChild(textarea); 
-                                } 
-                            });
-                            textarea.addEventListener('blur', () => { onChange(el.id, { text: textarea.value }); if (document.body.contains(textarea)) document.body.removeChild(textarea); });
-                        }}
                     />
                 );
             case 'rect':
-                return <Rect {...commonProps} width={el.width || 50} height={el.height || 40} fill={el.fill || 'transparent'} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2} cornerRadius={el.cornerRadius || 0} />;
+                const isCustomCorner = ['beveled', 'inverted', 'concave'].includes(el.cornerType);
+                if (isCustomCorner) {
+                    return (
+                        <Shape
+                            {...commonProps}
+                            sceneFunc={(context, shape) => {
+                                const w = el.width || 100;
+                                const h = el.height || 100;
+                                const r = Math.min(el.cornerRadius || 0, w / 2, h / 2);
+                                const type = el.cornerType;
+
+                                context.beginPath();
+                                if (type === 'beveled') {
+                                    context.moveTo(r, 0);
+                                    context.lineTo(w - r, 0);
+                                    context.lineTo(w, r);
+                                    context.lineTo(w, h - r);
+                                    context.lineTo(w - r, h);
+                                    context.lineTo(r, h);
+                                    context.lineTo(0, h - r);
+                                    context.lineTo(0, r);
+                                } else if (type === 'inverted') {
+                                    context.moveTo(r, 0);
+                                    context.lineTo(w - r, 0);
+                                    context.lineTo(w - r, r);
+                                    context.lineTo(w, r);
+                                    context.lineTo(w, h - r);
+                                    context.lineTo(w - r, h - r);
+                                    context.lineTo(w - r, h);
+                                    context.lineTo(r, h);
+                                    context.lineTo(r, h - r);
+                                    context.lineTo(0, h - r);
+                                    context.lineTo(0, r);
+                                    context.lineTo(r, r);
+                                } else if (type === 'concave') {
+                                    context.moveTo(r, 0);
+                                    context.lineTo(w - r, 0);
+                                    context.arc(w - r, -r, r, Math.PI / 2, Math.PI, true);
+                                    context.lineTo(w, r);
+                                    context.lineTo(w, h - r);
+                                    context.arc(w + r, h - r, r, Math.PI, -Math.PI / 2, true);
+                                    context.lineTo(w - r, h);
+                                    context.lineTo(r, h);
+                                    context.arc(r, h + r, r, -Math.PI / 2, 0, true);
+                                    context.lineTo(0, h - r);
+                                    context.lineTo(0, r);
+                                    context.arc(-r, r, r, 0, Math.PI / 2, true);
+                                }
+                                context.closePath();
+                                context.fillStrokeShape(shape);
+                            }}
+                            width={el.width || 100}
+                            height={el.height || 100}
+                            fill={el.fill || 'transparent'}
+                            stroke={el.stroke || '#000000'}
+                            strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2}
+                            dash={el.dash}
+                        />
+                    );
+                }
+                return <Rect {...commonProps} width={el.width || 50} height={el.height || 40} fill={el.fill || 'transparent'} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2} cornerRadius={el.cornerRadius || 0} dash={el.dash} />;
             case 'circle':
                 return <Circle {...commonProps} radius={el.radius || 20} fill={el.fill || 'transparent'} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2} />;
             case 'ellipse':
                 return <Ellipse {...commonProps} width={el.width || 60} height={el.height || 40} fill={el.fill || 'transparent'} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2} />;
             case 'line':
-                return <Line {...commonProps} points={el.points || [0, 0, 50, 0]} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2} hitStrokeWidth={10} lineCap="round" lineJoin="round" tension={el.tension || 0} />;
+                return <Line {...commonProps} points={el.points || [0, 0, 50, 0]} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2} hitStrokeWidth={10} lineCap={el.lineCap || 'round'} lineJoin={el.lineJoin || 'round'} tension={el.tension || 0} dash={el.dash} />;
             case 'triangle':
                 return <Line {...commonProps} points={[(el.width || 50) / 2, 0, el.width || 50, el.height || 50, 0, el.height || 50]} closed fill={el.fill || 'transparent'} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth !== undefined ? el.strokeWidth : 2} />;
             case 'star':
@@ -522,8 +563,62 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
     return (
         <>
             {renderShape()}
-            {/* Transformer is now handled at the stage level for multi-selection support */}
         </>
+    );
+}
+
+function InlineTextEditor({ el, zoom, onSave, onCancel }) {
+    const [text, setText] = useState(el.text || '');
+    const textareaRef = useRef();
+
+    useEffect(() => {
+        if (textareaRef.current) {
+            textareaRef.current.focus();
+            textareaRef.current.select();
+        }
+    }, []);
+
+    // Positioning - needs to account for zoom and stage pan
+    const style = {
+        position: 'absolute',
+        top: el.y * zoom,
+        left: el.x * zoom,
+        width: (el.width || 200) * zoom,
+        height: 'auto',
+        minHeight: (el.fontSize || 16) * 1.5 * zoom,
+        fontSize: (el.fontSize || 16) * zoom,
+        fontFamily: el.fontFamily || 'Arial',
+        fontWeight: el.fontWeight || 'normal',
+        fontStyle: el.fontStyle || 'normal',
+        textAlign: el.textAlign || 'left',
+        color: el.fill || '#000',
+        background: 'rgba(255,255,255,0.9)',
+        border: '1px solid #4CAF50',
+        boxShadow: '0 0 10px rgba(0,0,0,0.1)',
+        zIndex: 10000,
+        overflow: 'hidden',
+        resize: 'none',
+        lineHeight: 1.2,
+        padding: 0,
+        margin: 0,
+        outline: 'none',
+    };
+
+    return (
+        <textarea
+            ref={textareaRef}
+            style={style}
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onBlur={() => onSave(text)}
+            onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    onSave(text);
+                }
+                if (e.key === 'Escape') onCancel();
+            }}
+        />
     );
 }
 
@@ -536,7 +631,8 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
     const { selectedTool, setSelectedTool } = useUIStore();
     const containerRef = useRef();
 
-    // Drawing state
+    // In-place editing
+    const [editingTextId, setEditingTextId] = useState(null);
     const [isDrawing, setIsDrawing] = useState(false);
     const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
     const [drawId, setDrawId] = useState(null);
@@ -575,6 +671,15 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
 
         if (selectedTool === 'eraser') return;
 
+        // In-place edit trigger: click on already selected text
+        if (selectedIds.includes(elId) && selectedIds.length === 1) {
+            const el = elements.find(e => e.id === elId);
+            if (el && el.type === 'text') {
+                setEditingTextId(elId);
+                return;
+            }
+        }
+
         // Pass ctrlKey to store for multi-selection
         const ctrlKey = window.event?.ctrlKey || false;
         selectElement(elId, ctrlKey);
@@ -595,11 +700,27 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
     const handleTransformEnd = () => {
         const nodes = trRef.current.nodes();
         nodes.forEach(node => {
-            updateElementAndSave(node.id(), {
+            const updates = {
                 x: node.x(), y: node.y(),
-                scaleX: node.scaleX(), scaleY: node.scaleY(),
                 rotation: node.rotation()
-            });
+            };
+
+            if (node.getClassName() === 'Text') {
+                // For text, we want to update width/height and reset scale
+                const width = node.width() * node.scaleX();
+                const height = node.height() * node.scaleY();
+                updates.width = width;
+                // We keep fontSize the same, let height be determined by wrap
+                // Actually BarTender wrapped text has a fixed width, height is flexible or fixed.
+                // Reset scale
+                node.scaleX(1);
+                node.scaleY(1);
+            } else {
+                updates.scaleX = node.scaleX();
+                updates.scaleY = node.scaleY();
+            }
+
+            updateElementAndSave(node.id(), updates);
         });
     };
 
@@ -635,13 +756,19 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
             'draw-diamond': 'diamond', 'draw-hexagon': 'hexagon', 'draw-octagon': 'octagon', 'draw-arrow': 'arrow',
             'text': 'text', 'barcode': 'barcode', 'qrcode': 'qrcode', 'placeholder': 'placeholder',
         };
-        if (drawTools[selectedTool]) {
-            const shapeType = drawTools[selectedTool];
+
+        const isExtendedTool = selectedTool && selectedTool.startsWith('barcode-');
+        const activeToolKey = isExtendedTool ? 'barcode' : selectedTool;
+        const toolFormat = isExtendedTool ? selectedTool.split('-')[1] : null;
+
+        if (drawTools[activeToolKey]) {
+            const shapeType = drawTools[activeToolKey];
             const newEl = addElement(shapeType, {
                 x: pos.x, y: pos.y,
                 width: 1, height: 1,
                 radius: 1, outerRadius: 1,
                 points: shapeType === 'line' ? [0, 0, 0, 0] : undefined,
+                ...(toolFormat && shapeType === 'barcode' ? { barcodeFormat: toolFormat } : {})
             });
             setDrawId(newEl.id);
             setDrawStart(pos);
@@ -736,12 +863,16 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
                 tension: selectedTool === 'smart-draw' ? 0.4 : 0,
             });
             setFreehandPoints([]);
+            // Switch back to pick tool after drawing
+            setSelectedTool('pick');
         }
 
         // Finalize drag-to-draw
         if (drawId) {
             updateElementAndSave(drawId, {});
             setDrawId(null);
+            // Switch back to pick tool after drawing
+            setSelectedTool('pick');
         }
 
         setIsDrawing(false);
@@ -884,16 +1015,35 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
                             ref={trRef}
                             boundBoxFunc={(oldBox, newBox) => (newBox.width < 5 || newBox.height < 5 ? oldBox : newBox)}
                             rotateEnabled={true}
-                            anchorFill="#ffffff"
-                            anchorStroke="#3c8ae8"
-                            anchorSize={8}
-                            borderStroke="#3c8ae8"
-                            borderDash={[4, 2]}
-                            borderStrokeWidth={1}
+                            // BarTender exact: Green circular handles with blue rotation anchor
+                            anchorFill="white"
+                            anchorStroke="#4CAF50"
+                            anchorSize={7}
+                            anchorCornerRadius={10}
+                            borderStroke="#4CAF50"
+                            borderDash={[]}
+                            borderStrokeWidth={1.2}
+                            rotateAnchorOffset={30}
+                            enabledAnchors={
+                                selectedIds.length === 1 && 
+                                elements.find(e => e.id === selectedIds[0])?.type === 'text'
+                                ? ['middle-left', 'middle-right'] // BarTender wrap text usually just has side handles for width
+                                : ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']
+                            }
+                            // Custom rotation anchor style
+                            anchorStyleFunc={(anchor) => {
+                                if (anchor.hasName('rotater')) {
+                                    anchor.fill('#00c0ff');
+                                    anchor.stroke('#0078d7');
+                                    anchor.cornerRadius(10);
+                                }
+                                return anchor;
+                            }}
                             onTransformEnd={handleTransformEnd}
                         />
                     )}
                 </Layer>
+
 
                 {/* Live freehand preview while drawing */}
                 {freehandPoints.length >= 4 && (
@@ -944,7 +1094,20 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
                     })()}
                 </Layer>
             </Stage>
-            </div>
+
+            {/* Inline Editors (Native HTML over Stage) */}
+            {editingTextId && (
+                <InlineTextEditor 
+                    el={elements.find(e => e.id === editingTextId)} 
+                    zoom={zoom}
+                    onSave={(text) => {
+                        updateElementAndSave(editingTextId, { text });
+                        setEditingTextId(null);
+                    }}
+                    onCancel={() => setEditingTextId(null)}
+                />
+            )}
         </div>
+    </div>
     );
 }

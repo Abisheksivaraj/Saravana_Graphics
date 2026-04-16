@@ -93,3 +93,58 @@
   color: #444;
 }
 
+
+.bt-tree-item.active {
+  background-color: #0078d7;
+  color: #fff;
+}
+
+.bt-tree-item.active .bt-tree-icon {
+  color: #fff;
+}
+
+.bt-tree-empty {
+  padding: 4px 0 4px 40px;
+  font-size: 11px;
+  color: #888;
+  font-style: italic;
+}
+
+.bt-tree-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 4px;
+}
+
+.bt-tree-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d13438;
+}
+
+.bt-tree-item:hover .bt-tree-delete {
+  opacity: 1;
+}
+
+.bt-tree-delete:hover {
+  background: rgba(255, 0, 0, 0.1);
+}
+
+.bt-tree-item.active .bt-tree-delete {
+  color: #fff;
+}
+
+.bt-tree-item.active .bt-tree-delete:hover {
+  background: rgba(255, 255, 255, 0.2);
+}

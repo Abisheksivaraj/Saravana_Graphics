@@ -3,7 +3,10 @@ import { useDesignStore } from '../store/designStore';
 import { useUIStore, pxToUnit, unitToPx } from '../store/uiStore';
 import {
   Bold, Italic, AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  Underline, Type, Zap, Paintbrush, Pipette, MousePointer2
+  Underline, Type, Zap, Paintbrush, Pipette, MousePointer2,
+  Lock, Unlock, Eye, EyeOff, Trash2,
+  Maximize, Minimize, Copy, Move,
+  AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd
 } from 'lucide-react';
 import './PropertyBar.css';
 
@@ -11,6 +14,7 @@ const FONTS = [
   'Arial', 'Calibri', 'Times New Roman', 'Courier New',
   'Georgia', 'Verdana', 'Impact', 'Trebuchet MS',
   'ZEBRA Swiss Unicode', 'Comic Sans MS', 'Inter', 'Outfit',
+  'Rupee Forbidan',
 ];
 
 const SIZES = [6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
@@ -57,6 +61,7 @@ export default function PropertyBar() {
   const {
     elements, selectedIds, updateElementAndSave,
     canvasWidth, canvasHeight, backgroundColor, setBackgroundColor,
+    matchSize, alignElements, duplicateElement, deleteElement
   } = useDesignStore();
   const { measurementUnit } = useUIStore();
 
@@ -193,6 +198,7 @@ export default function PropertyBar() {
       <div className="bt-toolbar-group">
         <div className="bt-toolbar-handle" />
         <ColorBtn icon="🪣" color={selectedEl?.fill || 'transparent'} onChange={v => update({ fill: v })} title="Fill Color" />
+        <ColorBtn icon="🖋️" color={selectedEl?.stroke || '#000000'} onChange={v => update({ stroke: v })} title="Stroke Color" />
         <select
           className="bt-prop-input"
           style={{ width: 44, marginLeft: 2 }}
@@ -219,13 +225,38 @@ export default function PropertyBar() {
           <option value="dashed">Dashed</option>
           <option value="dotted">Dotted</option>
         </select>
+        <div className="bt-prop-sep" />
+        <span className="bt-prop-label">Op:</span>
+        <input
+          type="number"
+          className="bt-prop-input"
+          style={{ width: 40 }}
+          value={Math.round((selectedEl?.opacity || 1) * 100)}
+          min={0}
+          max={100}
+          onChange={e => update({ opacity: Number(e.target.value) / 100 })}
+          disabled={!selectedEl}
+          title="Opacity %"
+        />
       </div>
 
-      {/* Group 6: Dimensions (Adaptive or Fallback) */}
+      {/* Group 6: Position & Size */}
       <div className="bt-toolbar-group">
         <div className="bt-toolbar-handle" />
         {selectedEl ? (
           <>
+            <span className="bt-prop-label">X:</span>
+            <PropInput
+              value={fmt(pxToUnit(selectedEl.x || 0, measurementUnit))}
+              onChange={v => update({ x: unitToPx(v, measurementUnit) })}
+              style={{ width: 45 }}
+            />
+            <span className="bt-prop-label">Y:</span>
+            <PropInput
+              value={fmt(pxToUnit(selectedEl.y || 0, measurementUnit))}
+              onChange={v => update({ y: unitToPx(v, measurementUnit) })}
+              style={{ width: 45 }}
+            />
             <span className="bt-prop-label">W:</span>
             <PropInput
               value={fmt(pxToUnit(selectedEl.width || 0, measurementUnit))}
@@ -240,6 +271,14 @@ export default function PropertyBar() {
               style={{ width: 45 }}
               disabled={selectedEl.type === 'line'}
             />
+            <span className="bt-prop-label">R:</span>
+            <PropInput
+              value={fmt(selectedEl.rotation || 0)}
+              onChange={v => update({ rotation: v })}
+              style={{ width: 40 }}
+              min={-360}
+              max={360}
+            />
           </>
         ) : (
           <>
@@ -248,6 +287,67 @@ export default function PropertyBar() {
           </>
         )}
       </div>
+
+      {/* Group 7: Content & Actions */}
+      {selectedIds.length === 1 && selectedEl && (
+        <div className="bt-toolbar-group">
+          <div className="bt-toolbar-handle" />
+          {selectedEl.type === 'text' && (
+            <input
+              className="bt-prop-input"
+              style={{ width: 120, textAlign: 'left' }}
+              value={selectedEl.text || ''}
+              onChange={e => update({ text: e.target.value })}
+              placeholder="Text content..."
+              title="Text Content"
+            />
+          )}
+          {selectedEl.type === 'barcode' && (
+            <input
+              className="bt-prop-input"
+              style={{ width: 120, textAlign: 'left' }}
+              value={selectedEl.barcodeValue || ''}
+              onChange={e => update({ barcodeValue: e.target.value })}
+              placeholder="Barcode value..."
+              title="Barcode Value"
+            />
+          )}
+          <div className="bt-prop-sep" />
+          <button className={`bt-prop-btn${selectedEl.locked ? ' active' : ''}`} onClick={() => update({ locked: !selectedEl.locked })} title="Lock">
+            {selectedEl.locked ? <Lock size={13} color="#e59324" /> : <Unlock size={13} />}
+          </button>
+          <button className="bt-prop-btn" onClick={() => updateElementAndSave(selectedEl.id, { visible: !selectedEl.visible })} title="Visibility">
+            {selectedEl.visible !== false ? <Eye size={13} /> : <EyeOff size={13} />}
+          </button>
+          <button className="bt-prop-btn" onClick={() => duplicateElement(selectedEl.id)} title="Duplicate">
+            <Copy size={13} />
+          </button>
+          <button className="bt-prop-btn danger" onClick={() => deleteElement(selectedEl.id)} title="Delete">
+            <Trash2 size={13} />
+          </button>
+        </div>
+      )}
+
+      {/* Group 8: Multi-selection Tools */}
+      {selectedIds.length > 1 && (
+        <div className="bt-toolbar-group">
+          <div className="bt-toolbar-handle" />
+          <button className="bt-prop-btn" onClick={() => matchSize('width')} title="Match Width"><Maximize size={13} /></button>
+          <button className="bt-prop-btn" onClick={() => matchSize('height')} title="Match Height"><Maximize size={13} style={{ transform: 'rotate(90deg)' }} /></button>
+          <div className="bt-prop-sep" />
+          <button className="bt-prop-btn" onClick={() => alignElements('left')} title="Align Left"><AlignLeft size={13} /></button>
+          <button className="bt-prop-btn" onClick={() => alignElements('center')} title="Align Horizontal Center"><AlignCenter size={13} /></button>
+          <button className="bt-prop-btn" onClick={() => alignElements('right')} title="Align Right"><AlignRight size={13} /></button>
+          <div className="bt-prop-sep" />
+          <button className="bt-prop-btn" onClick={() => alignElements('top')} title="Align Top"><AlignVerticalJustifyStart size={13} /></button>
+          <button className="bt-prop-btn" onClick={() => alignElements('middle')} title="Align Vertical Middle"><AlignVerticalJustifyCenter size={13} /></button>
+          <button className="bt-prop-btn" onClick={() => alignElements('bottom')} title="Align Bottom"><AlignVerticalJustifyEnd size={13} /></button>
+          <div className="bt-prop-sep" />
+          <button className="bt-prop-btn danger" onClick={() => deleteElement(selectedIds)} title="Delete Selected">
+            <Trash2 size={13} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

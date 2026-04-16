@@ -15,7 +15,10 @@ import { jsPDF } from 'jspdf';
 import BarcodeElement from '../components/BarcodeElement';
 import QRElement from '../components/QRElement';
 import ImageElement from '../components/ImageElement';
+import logo from '../assets/logo.png';
 import './Layout.css';
+
+
 
 // Component to render a single label within the grid
 const LayoutLabel = ({ elements = [], data = {}, mapping = {}, x, y, width, height, isBranding = false, logoImg = null }) => {
@@ -258,7 +261,7 @@ export default function Layout() {
 
     useEffect(() => {
         const img = new window.Image();
-        img.src = '/logo.png';
+        img.src = logo;
         img.onload = () => setLogoImg(img);
     }, []);
 

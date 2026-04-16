@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { useDesignStore } from '../store/designStore';
 import { useUIStore, pxToUnit, unitToPx, hexToCmyk, cmykToHex } from '../store/uiStore';
 import './BarcodePropertiesDialog.css';
@@ -6,7 +7,7 @@ const CATEGORIES = [
     { id: 'symbology', label: 'Symbology and Size', icon: '📊' },
     { id: 'readable', label: 'Human Readable', icon: '123' },
     { id: 'font', label: 'Font', icon: 'A' },
-    { id: 'sources', label: 'Data Sources', icon: '💾' }
+    { id: 'sources', label: 'Enter Value', icon: '💾' }
 ];
 
 const FONTS = ['Arial', 'Calibri', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana', 'Inter', 'Outfit'];

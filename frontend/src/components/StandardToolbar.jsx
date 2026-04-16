@@ -11,21 +11,46 @@ import {
   ChevronLeft, ChevronRight, ChevronDown
 } from 'lucide-react';
 import VirtualShapeSelector from './VirtualShapeSelector';
+import TextObjectSelector from './TextObjectSelector';
+import BarcodeObjectSelector from './BarcodeObjectSelector';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import './StandardToolbar.css';
 
 const Sep = () => <div className="bt-tb-sep" />;
 
-const ToolBtn = ({ icon, label, active, disabled, onClick, title }) => (
+const ToolBtn = ({ icon, label, active, disabled, onClick, title, hasArrow }) => (
   <button
-    className={`bt-tb-btn${active ? ' active' : ''}`}
+    className={`bt-tb-btn${active ? ' active' : ''}${hasArrow ? ' has-arrow' : ''}`}
     onClick={onClick}
     disabled={disabled}
     title={title || label}
   >
     {icon}
+    {hasArrow && <ChevronDown size={8} className="bt-tb-btn-arrow" />}
   </button>
+);
+
+const PremiumBarcodeIcon = ({ size = 20 }) => (
+  <svg width={size} height={size + 8} viewBox="0 0 24 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+    {/* Barcode Stripes */}
+    <rect x="2" y="2" width="2" height="18" fill="black" />
+    <rect x="5" y="2" width="1" height="18" fill="black" />
+    <rect x="7" y="2" width="3" height="18" fill="black" />
+    <rect x="11" y="2" width="1" height="18" fill="black" />
+    <rect x="13" y="2" width="2" height="18" fill="black" />
+    <rect x="16" y="2" width="1" height="18" fill="black" />
+    <rect x="18" y="2" width="3" height="18" fill="black" />
+    
+    {/* "123" Text underneath */}
+    <text x="50%" y="28" textAnchor="middle" fontSize="10" fontWeight="700" fill="indigo" fontFamily="Arial, sans-serif">123</text>
+  </svg>
+);
+
+const PremiumTextIcon = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 2L4 22H7.5L9.2 17H14.8L16.5 22H20L12 2ZM10.2 14L12 8.5L13.8 14H10.2Z" fill="black" />
+  </svg>
 );
 
 const CustomShapesIcon = ({ size = 20 }) => (
@@ -43,10 +68,44 @@ export default function StandardToolbar({ onAction, onImageUpload, showGrid }) {
   } = useDesignStore();
   const { selectedTool, setSelectedTool } = useUIStore();
   const [showShapeSelector, setShowShapeSelector] = React.useState(false);
+  const [showTextSelector, setShowTextSelector] = React.useState(false);
+  const [showBarcodeSelector, setShowBarcodeSelector] = React.useState(false);
   const excelRef = useRef();
   const imageRef = useRef();
+  const toolbarRef = useRef();
+
+  // Click-outside logic to auto-close dropdowns
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (toolbarRef.current && !toolbarRef.current.contains(event.target)) {
+        setShowShapeSelector(false);
+        setShowTextSelector(false);
+        setShowBarcodeSelector(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const isActive = (tool) => selectedTool === tool;
+
+  const toggleTextSelector = () => {
+    setShowTextSelector(!showTextSelector);
+    setShowShapeSelector(false);
+    setShowBarcodeSelector(false);
+  };
+
+  const toggleShapeSelector = () => {
+    setShowShapeSelector(!showShapeSelector);
+    setShowTextSelector(false);
+    setShowBarcodeSelector(false);
+  };
+
+  const toggleBarcodeSelector = () => {
+    setShowBarcodeSelector(!showBarcodeSelector);
+    setShowTextSelector(false);
+    setShowShapeSelector(false);
+  };
 
   const handleExcelUpload = (e) => {
     const file = e.target.files[0];
@@ -70,7 +129,7 @@ export default function StandardToolbar({ onAction, onImageUpload, showGrid }) {
   };
 
   return (
-    <div className="bt-standard-toolbar">
+    <div className="bt-standard-toolbar" ref={toolbarRef}>
       {/* File Group */}
       <div className="bt-toolbar-group">
         <div className="bt-toolbar-handle" />
@@ -117,34 +176,51 @@ export default function StandardToolbar({ onAction, onImageUpload, showGrid }) {
           onClick={() => setSelectedTool('pick')}
           title="Select (V)"
         />
-        <ToolBtn
-          icon={<Type size={16} color="#000" />}
-          active={isActive('text')}
-          onClick={() => setSelectedTool('text')}
-          title="Text (T)"
-        />
-        {/* Barcode Menu */}
-        <div className="bt-tb-dropdown-wrap">
+        <div className="bt-tb-dropdown-wrap" style={{ position: 'relative' }}>
           <ToolBtn
-            icon={<BarChart2 size={16} color="#000" />}
-            active={isActive('barcode')}
+            icon={<PremiumTextIcon />}
+            active={isActive('text')}
+            onClick={() => setSelectedTool('text')}
+            title="Text (T)"
+            hasArrow={true}
+          />
+          {/* Dropdown toggle specifically for the menu */}
+          <div 
+            className="bt-tb-btn-dropdown-trigger" 
+            onClick={() => toggleTextSelector()}
+          />
+          
+          {showTextSelector && (
+            <div style={{ position: 'absolute', top: 28, left: 0, zIndex: 2000 }}>
+              <TextObjectSelector 
+                onSelect={setSelectedTool} 
+                onClose={() => setShowTextSelector(false)} 
+              />
+            </div>
+          )}
+        </div>
+        <div className="bt-tb-dropdown-wrap" style={{ position: 'relative' }}>
+          <ToolBtn
+            icon={<PremiumBarcodeIcon />}
+            active={selectedTool && selectedTool.startsWith('barcode')}
             onClick={() => setSelectedTool('barcode')}
             title="Barcode (B)"
+            hasArrow={true}
           />
-          <select 
-            className="bt-tb-mini-select"
-            onChange={(e) => {
-              setSelectedTool('barcode');
-            }}
-            value="CODE128"
-          >
-            <option value="CODE128">Standard Barcode</option>
-            <option value="CODE128">Code 128</option>
-            <option value="EAN13">EAN-13</option>
-            <option value="EAN8">EAN-8</option>
-            <option value="CODE39">Code 39</option>
-            <option value="CODE93">Code 93</option>
-          </select>
+          {/* Invisible trigger over the chevron area */}
+          <div 
+            className="bt-tb-btn-dropdown-trigger" 
+            onClick={() => toggleBarcodeSelector()}
+          />
+          
+          {showBarcodeSelector && (
+            <div style={{ position: 'absolute', top: 28, left: 0, zIndex: 2000 }}>
+              <BarcodeObjectSelector 
+                onSelect={(tool) => { setSelectedTool(tool); setShowBarcodeSelector(false); }} 
+                onClose={() => setShowBarcodeSelector(false)} 
+              />
+            </div>
+          )}
         </div>
         <ToolBtn icon={<Zap size={16} color="#000" />} onClick={() => {}} title="RFID / Signal" />
         <ToolBtn
@@ -170,7 +246,7 @@ export default function StandardToolbar({ onAction, onImageUpload, showGrid }) {
           />
           <button 
             className="bt-tb-mini-btn" 
-            onClick={() => setShowShapeSelector(!showShapeSelector)}
+            onClick={() => toggleShapeSelector()}
           >
             <ChevronDown size={10} />
           </button>

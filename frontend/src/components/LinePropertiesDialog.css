@@ -1,0 +1,31 @@
+.line-props {
+    width: 600px;
+    height: 480px;
+}
+
+/* Inherit base styles from ShapePropertiesDialog.css */
+/* (Assuming globaly loaded or shared classes exist) */
+
+.bt-field-row label {
+    width: 100px;
+}
+
+.bt-win-input {
+    height: 24px;
+    border: 1px solid #ccc;
+    padding: 0 6px;
+    font-size: 11.5px;
+}
+
+.bt-fieldset {
+    border: 1px solid #e0e0e0;
+    margin-bottom: 15px;
+    padding: 10px 15px;
+    border-radius: 2px;
+}
+
+.bt-fieldset legend {
+    font-size: 11.5px;
+    color: #0056b3;
+    font-weight: 600;
+}

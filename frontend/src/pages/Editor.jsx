@@ -12,6 +12,10 @@ import PropertyBar from '../components/PropertyBar';
 import ComponentsPanel from '../components/ComponentsPanel';
 import PropertiesPanel from '../components/PropertiesPanel';
 import BarcodePropertiesDialog from '../components/BarcodePropertiesDialog';
+import ShapePropertiesDialog from '../components/ShapePropertiesDialog';
+import TextPropertiesDialog from '../components/TextPropertiesDialog';
+import LinePropertiesDialog from '../components/LinePropertiesDialog';
+import NewDesignModal from '../components/NewDesignModal';
 import toast from 'react-hot-toast';
 import './Editor.css';
 
@@ -24,48 +28,43 @@ function HRuler({ widthPx, zoom, scrollLeft }) {
     if (!canvas || widthPx <= 0) return;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = widthPx * dpr;
-    canvas.height = 20 * dpr;
+    canvas.height = 24 * dpr;
     canvas.style.width = widthPx + 'px';
-    canvas.style.height = '20px';
+    canvas.style.height = '24px';
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
 
-    ctx.fillStyle = '#d8d8d8';
-    ctx.fillRect(0, 0, widthPx, 20);
+    ctx.fillStyle = '#f0f0f0';
+    ctx.fillRect(0, 0, widthPx, 24);
 
-    ctx.strokeStyle = '#808080';
+    ctx.strokeStyle = '#666';
     ctx.fillStyle = '#333';
-    ctx.font = '8px Arial';
+    ctx.font = '9px Arial';
     ctx.lineWidth = 1;
 
     const ppi = 96 * zoom;
-    const off = -(scrollLeft || 0);
+    const offset = -(scrollLeft || 0) + 100; // Match padding in bt-canvas-inner
 
-    for (let i = 0; i <= 60; i++) {
-      const x = Math.round(i * ppi + off) + 0.5;
-      if (x < -1 || x > widthPx + 1) continue;
+    // Draw from -20 to 50 inches
+    for (let i = -20; i <= 50; i++) {
+      const x = Math.round(i * ppi + offset) + 0.5;
+      if (x < -ppi || x > widthPx + ppi) continue;
 
-      // Major (inch)
-      ctx.beginPath(); ctx.moveTo(x, 9); ctx.lineTo(x, 20); ctx.stroke();
-      if (i > 0) ctx.fillText(String(i), x + 2, 9);
+      // Major tick (inch)
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 24); ctx.stroke();
+      ctx.fillText(String(i), x + 4, 12);
 
-      // Half inch
-      const xh = x + ppi * 0.5;
-      if (xh > 0 && xh < widthPx) {
-        ctx.beginPath(); ctx.moveTo(Math.round(xh) + 0.5, 13); ctx.lineTo(Math.round(xh) + 0.5, 20); ctx.stroke();
+      // Subdivisions
+      for (let j = 1; j < 8; j++) {
+        const subX = x + (ppi * j / 8);
+        if (subX < 0 || subX > widthPx) continue;
+        const h = j % 4 === 0 ? 12 : (j % 2 === 0 ? 8 : 4);
+        ctx.beginPath();
+        ctx.moveTo(Math.round(subX) + 0.5, 24 - h);
+        ctx.lineTo(Math.round(subX) + 0.5, 24);
+        ctx.stroke();
       }
-
-      // Quarter inches
-      [1, 3].forEach(q => {
-        const xq = x + ppi * q / 4;
-        if (xq > 0 && xq < widthPx) {
-          ctx.beginPath(); ctx.moveTo(Math.round(xq) + 0.5, 16); ctx.lineTo(Math.round(xq) + 0.5, 20); ctx.stroke();
-        }
-      });
     }
-    // Bottom line
-    ctx.strokeStyle = '#aaa';
-    ctx.beginPath(); ctx.moveTo(0, 19.5); ctx.lineTo(widthPx, 19.5); ctx.stroke();
   }, [widthPx, zoom, scrollLeft]);
 
   return <canvas ref={ref} style={{ display: 'block', imageRendering: 'crisp-edges' }} />;
@@ -77,51 +76,46 @@ function VRuler({ heightPx, zoom, scrollTop }) {
     const canvas = ref.current;
     if (!canvas || heightPx <= 0) return;
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = 20 * dpr;
+    canvas.width = 24 * dpr;
     canvas.height = heightPx * dpr;
-    canvas.style.width = '20px';
+    canvas.style.width = '24px';
     canvas.style.height = heightPx + 'px';
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
 
-    ctx.fillStyle = '#d8d8d8';
-    ctx.fillRect(0, 0, 20, heightPx);
+    ctx.fillStyle = '#f0f0f0';
+    ctx.fillRect(0, 0, 24, heightPx);
 
-    ctx.strokeStyle = '#808080';
+    ctx.strokeStyle = '#666';
     ctx.fillStyle = '#333';
-    ctx.font = '8px Arial';
+    ctx.font = '9px Arial';
     ctx.lineWidth = 1;
 
     const ppi = 96 * zoom;
-    const off = -(scrollTop || 0);
+    const offset = -(scrollTop || 0) + 100; // Match padding in bt-canvas-inner
 
-    for (let i = 0; i <= 60; i++) {
-      const y = Math.round(i * ppi + off) + 0.5;
-      if (y < -1 || y > heightPx + 1) continue;
+    for (let i = -20; i <= 80; i++) {
+      const y = Math.round(i * ppi + offset) + 0.5;
+      if (y < -ppi || y > heightPx + ppi) continue;
 
-      ctx.beginPath(); ctx.moveTo(9, y); ctx.lineTo(20, y); ctx.stroke();
-      if (i > 0) {
-        ctx.save();
-        ctx.translate(9, y + 2);
-        ctx.rotate(-Math.PI / 2);
-        ctx.fillText(String(i), 0, 0);
-        ctx.restore();
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(24, y); ctx.stroke();
+      
+      ctx.save();
+      ctx.translate(14, y + 4);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText(String(i), 0, 0);
+      ctx.restore();
+
+      for (let j = 1; j < 8; j++) {
+        const subY = y + (ppi * j / 8);
+        if (subY < 0 || subY > heightPx) continue;
+        const w = j % 4 === 0 ? 12 : (j % 2 === 0 ? 8 : 4);
+        ctx.beginPath();
+        ctx.moveTo(24 - w, Math.round(subY) + 0.5);
+        ctx.lineTo(24, Math.round(subY) + 0.5);
+        ctx.stroke();
       }
-
-      const yh = y + ppi * 0.5;
-      if (yh > 0 && yh < heightPx) {
-        ctx.beginPath(); ctx.moveTo(13, Math.round(yh) + 0.5); ctx.lineTo(20, Math.round(yh) + 0.5); ctx.stroke();
-      }
-
-      [1, 3].forEach(q => {
-        const yq = y + ppi * q / 4;
-        if (yq > 0 && yq < heightPx) {
-          ctx.beginPath(); ctx.moveTo(16, Math.round(yq) + 0.5); ctx.lineTo(20, Math.round(yq) + 0.5); ctx.stroke();
-        }
-      });
     }
-    ctx.strokeStyle = '#aaa';
-    ctx.beginPath(); ctx.moveTo(19.5, 0); ctx.lineTo(19.5, heightPx); ctx.stroke();
   }, [heightPx, zoom, scrollTop]);
 
   return <canvas ref={ref} style={{ display: 'block', imageRendering: 'crisp-edges' }} />;
@@ -192,6 +186,10 @@ export default function Editor() {
   const [scrollPos, setScrollPos] = useState({ x: 0, y: 0 });
   const [editingTitle, setEditingTitle] = useState(false);
   const [showBarcodeProps, setShowBarcodeProps] = useState(null); // stores elementId
+  const [showShapeProps, setShowShapeProps] = useState(null); // stores elementId
+  const [showTextProps, setShowTextProps] = useState(null); // stores elementId
+  const [showLineProps, setShowLineProps] = useState(null); // stores elementId
+  const [showNewModal, setShowNewModal] = useState(false);
 
   const { companies, fetchCompanies } = useCompanyStore();
   const selectedEl = selectedIds.length > 0 ? elements.find(e => e.id === selectedIds[0]) : null;
@@ -212,12 +210,23 @@ export default function Editor() {
 
   const fitToScreen = useCallback(() => {
     if (!canvasAreaRef.current) return;
-    const padding = 80;
+    const padding = 120; // Margin around the label
     const areaW = canvasAreaRef.current.clientWidth - padding;
     const areaH = canvasAreaRef.current.clientHeight - padding;
     if (areaW <= 0 || areaH <= 0) return;
     const newZoom = Math.min(areaW / canvasWidth, areaH / canvasHeight, 8.0);
     setZoom(Number(newZoom.toFixed(2)));
+
+    // Scroll to center
+    setTimeout(() => {
+      if (!canvasAreaRef.current) return;
+      const scrollEl = canvasAreaRef.current;
+      const innerEl = scrollEl.firstChild;
+      if (innerEl) {
+        scrollEl.scrollLeft = (innerEl.clientWidth - scrollEl.clientWidth) / 2;
+        scrollEl.scrollTop = (innerEl.clientHeight - scrollEl.clientHeight) / 2;
+      }
+    }, 50);
   }, [canvasWidth, canvasHeight, setZoom]);
 
   useEffect(() => { fitToScreen(); }, [canvasWidth, canvasHeight]);
@@ -316,7 +325,7 @@ export default function Editor() {
     const ds = useDesignStore.getState();
     switch (action) {
       case 'new':
-        if (window.confirm('Create a new design? Unsaved changes will be lost.')) newDesign('price-tag');
+        setShowNewModal(true);
         break;
       case 'open':
         navigate('/dashboard');
@@ -411,8 +420,16 @@ export default function Editor() {
 
   const handleElementDblClick = (elId) => {
     const el = elements.find(e => e.id === elId);
-    if (el && el.type === 'barcode') {
+    if (!el) return;
+    
+    if (el.type === 'barcode') {
       setShowBarcodeProps(elId);
+    } else if (el.type === 'text') {
+      setShowTextProps(elId);
+    } else if (el.type === 'line') {
+      setShowLineProps(elId);
+    } else if (['rect', 'circle', 'ellipse', 'star', 'polygon', 'diamond', 'hexagon', 'octagon', 'triangle', 'arrow'].includes(el.type)) {
+      setShowShapeProps(elId);
     }
   };
 
@@ -442,7 +459,7 @@ export default function Editor() {
           />
         ) : (
           <span className="bt-titlebar-text" onDoubleClick={() => setEditingTitle(true)}>
-            BarTender Enterprise Automation (Simulating Professional) — [{title || 'Document1'}.btw {isDirty ? '*' : ''}]
+            Saravana Graphicss — [{title || 'Document1'}.btw {isDirty ? '*' : ''}]
           </span>
         )}
         <div style={{ flex: 1 }} />
@@ -478,107 +495,34 @@ export default function Editor() {
 
         {/* Canvas Wrapper: ruler corner + rulers + scrollable canvas */}
         <div className="bt-canvas-wrapper">
-          {/* Corner square (20×20) */}
           <div className="bt-ruler-corner" />
-
-          {/* Horizontal ruler */}
           <div className="bt-ruler-h-wrap">
             <HRuler widthPx={canvasAreaSize.w} zoom={zoom} scrollLeft={scrollPos.x} />
+            <div className="bt-ruler-unit">in</div>
           </div>
 
-          {/* Row: vertical ruler + scrollable canvas */}
-          <div className="bt-canvas-row">
-            <div className="bt-ruler-v-wrap">
-              <VRuler heightPx={canvasAreaSize.h} zoom={zoom} scrollTop={scrollPos.y} />
-            </div>
+          <div className="bt-ruler-v-wrap">
+            <VRuler heightPx={canvasAreaSize.h} zoom={zoom} scrollTop={scrollPos.y} />
+          </div>
 
-            {/* The scrollable blue canvas area */}
-            <div
-              ref={canvasAreaRef}
-              className="bt-canvas-scroll"
-              onScroll={handleCanvasScroll}
-            >
-              <div
-                className="bt-canvas-inner"
-                style={{
-                  width: canvasWidth * zoom + 160,
-                  height: canvasHeight * zoom + 160,
-                }}
-              >
-                <DesignCanvas 
-                  stageRef={stageRef} 
-                  showGrid={showGrid} 
-                  onElementDblClick={handleElementDblClick}
-                />
-              </div>
+          <div
+            ref={canvasAreaRef}
+            className="bt-canvas-scroll"
+            onScroll={handleCanvasScroll}
+          >
+            <div className="bt-canvas-inner">
+              <DesignCanvas 
+                stageRef={stageRef} 
+                showGrid={showGrid} 
+                onElementDblClick={handleElementDblClick}
+              />
             </div>
           </div>
         </div>
 
-        {/* Right-side rotation panel */}
-        <div className="bt-right-panel">
-          <button
-            className="bt-rot-btn"
-            title="Rotate 90°"
-            onClick={() => handleRotate(90)}
-          >90°</button>
-          <button
-            className="bt-rot-btn"
-            title="Rotate 180°"
-            onClick={() => handleRotate(180)}
-          >180°</button>
-          <button
-            className="bt-rot-btn"
-            title="Rotate 270°"
-            onClick={() => handleRotate(270)}
-          >270°</button>
-          <div style={{ flex: 1 }} />
-          {/* Zoom percent shortcuts */}
-          <button className="bt-rot-btn" onClick={fitToScreen} title="Fit">Fit</button>
-        </div>
 
-        {/* Properties Panel (right side, shows on selection) */}
-        {showPropsPanel && (
-          <div className={`bt-props-wrap${selectedIds.length === 0 ? ' bt-props-hidden' : ''}`}>
-            <PropertiesPanel />
-          </div>
-        )}
       </div>
 
-      {/* ── Bottom tab strip ── */}
-      <div className="bt-bottom">
-        <div className="bt-ds-tabs">
-          <button className="bt-ds-tab">Data Sources</button>
-          <button
-            className={`bt-ds-tab${showComponents ? ' active' : ''}`}
-            onClick={() => setShowComponents(c => !c)}
-          >
-            Components
-          </button>
-        </div>
-        <div className="bt-tmpl-tabs">
-          <button
-            className={`bt-tmpl-tab${activeTemplate === 'template' ? ' active' : ''}`}
-            onClick={() => setActiveTemplate('template')}
-          >
-            Template 1
-          </button>
-          <button
-            className={`bt-tmpl-tab${activeTemplate === 'dataentry' ? ' active' : ''}`}
-            onClick={() => setActiveTemplate('dataentry')}
-          >
-            Data Entry Form
-          </button>
-        </div>
-      </div>
-
-      {/* ── Status Bar ── */}
-      <StatusBar
-        zoom={zoom}
-        selectedEl={selectedEl}
-        canvasWidth={canvasWidth}
-        canvasHeight={canvasHeight}
-      />
 
       {/* ── Save Modal ── */}
       {showSaveModal && (
@@ -631,6 +575,33 @@ export default function Editor() {
         <BarcodePropertiesDialog 
           elementId={showBarcodeProps} 
           onClose={() => setShowBarcodeProps(null)} 
+        />
+      )}
+
+      {showShapeProps && (
+        <ShapePropertiesDialog 
+          elementId={showShapeProps} 
+          onClose={() => setShowShapeProps(null)} 
+        />
+      )}
+
+      {showTextProps && (
+        <TextPropertiesDialog 
+          elementId={showTextProps} 
+          onClose={() => setShowTextProps(null)} 
+        />
+      )}
+
+      {showLineProps && (
+        <LinePropertiesDialog 
+          elementId={showLineProps} 
+          onClose={() => setShowLineProps(null)} 
+        />
+      )}
+
+      {showNewModal && (
+        <NewDesignModal 
+          onClose={() => setShowNewModal(false)}
         />
       )}
 

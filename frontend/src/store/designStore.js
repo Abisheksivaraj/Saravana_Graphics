@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { v4 as uuid } from 'uuid';
 
 // Size presets in pixels (at 96 DPI)
@@ -6,7 +7,7 @@ export const SIZE_PRESETS = {
     'custom': { label: 'Custom Size', width: 200, height: 300, unit: 'mm', desc: 'Any size' },
 };
 
-export const useDesignStore = create((set, get) => ({
+export const useDesignStore = create(persist((set, get) => ({
     // Current design state
     designId: null,
     title: 'Untitled Design',
@@ -349,6 +350,19 @@ export const useDesignStore = create((set, get) => ({
             history: [], historyIndex: -1, zoom: 1, pan: { x: 0, y: 0 },
         });
     },
+}), {
+    name: 'bt-design-storage',
+    getStorage: () => localStorage,
+    partialize: (state) => ({
+        designId: state.designId,
+        title: state.title,
+        canvasWidth: state.canvasWidth,
+        canvasHeight: state.canvasHeight,
+        elements: state.elements,
+        backgroundColor: state.backgroundColor,
+        company: state.company,
+        sizePreset: state.sizePreset
+    }),
 }));
 
 function getDefaultProps(type) {

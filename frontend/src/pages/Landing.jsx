@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import logo from '../assets/logo.png';
 import { Layers, Tag, BarChart2, CreditCard, Truck, Shirt, ChevronRight, Zap, Shield, Download } from 'lucide-react';
 import './Landing.css';
 
@@ -27,9 +28,8 @@ export default function Landing() {
             {/* Navbar */}
             <nav className="landing-nav">
                 <div className="landing-nav-inner">
-                    <div className="landing-logo">
-                        <div className="landing-logo-icon"><Layers size={22} color="white" /></div>
-                        <span>Saravana<b>Graphicss</b></span>
+                    <div className="nav-logo">
+                        <img src={logo} alt="Saravana Graphics" style={{ height: 52, width: 'auto' }} />
                     </div>
                     <div className="landing-nav-links">
                         <a href="#features">Features</a>
@@ -56,8 +56,8 @@ export default function Landing() {
                         <span className="hero-gradient">Cards Like a Pro</span>
                     </h1>
                     <p className="hero-desc">
-                        The all-in-one label designer combining Bartender's printing power with CorelDraw's design freedom.
-                        Create price tags, barcodes, QR codes, business cards and more.
+                        An all-in-one label designer combining powerful printing capabilities with complete design flexibility.
+                        Create price tags, barcodes, QR codes, business cards, and more.
                     </p>
                     <div className="hero-actions">
                         <Link to="/register" className="btn btn-primary btn-lg">
@@ -152,9 +152,8 @@ export default function Landing() {
 
             <footer className="landing-footer">
                 <div className="footer-inner">
-                    <div className="landing-logo">
-                        <div className="landing-logo-icon"><Layers size={18} color="white" /></div>
-                        <span>Saravana<b>Graphicss</b></span>
+                    <div className="footer-logo">
+                        <img src={logo} alt="Saravana Graphics" style={{ height: 28, width: 'auto' }} />
                     </div>
                     <p>© 2026 Saravana Graphicss. Professional Label & Card Designer.</p>
                 </div>
