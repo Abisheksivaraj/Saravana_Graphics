@@ -1,0 +1,133 @@
+.bt-cmyk-picker-popup {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10000;
+  background: #f0f0f0;
+  border: 1px solid #999;
+  box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+  width: 250px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 11px;
+}
+
+.bt-cmyk-picker-header {
+  background: #000080;
+  color: white;
+  padding: 3px 5px;
+  font-weight: bold;
+  user-select: none;
+}
+
+.bt-cmyk-picker-body {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bt-cmyk-swatches {
+  display: grid;
+  grid-template-columns: repeat(11, 1fr);
+  gap: 2px;
+  background: #fff;
+  padding: 2px;
+  border: 1px solid #ccc;
+}
+
+.bt-cmyk-swatch {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.bt-cmyk-swatch.active,
+.bt-cmyk-swatch:hover {
+  border: 1px solid #000;
+  box-shadow: 0 0 0 1px #fff inset;
+}
+
+.bt-cmyk-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bt-cmyk-current-color {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.bt-cmyk-color-preview {
+  width: 30px;
+  height: 20px;
+  border: 1px solid #999;
+}
+
+.bt-cmyk-hex-input {
+  width: 60px;
+  padding: 2px;
+  border: 1px solid #ccc;
+  font-size: 11px;
+}
+
+.bt-cmyk-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bt-cmyk-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bt-cmyk-label {
+  font-weight: bold;
+  width: 15px;
+}
+
+.bt-cmyk-range {
+  flex: 1;
+  height: 12px;
+  -webkit-appearance: none;
+  background: transparent;
+}
+
+.bt-cmyk-range::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 6px;
+  background: #ddd;
+  border: 1px solid #bbb;
+  border-radius: 3px;
+}
+
+.bt-cmyk-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 12px;
+  width: 8px;
+  background: #eee;
+  border: 1px solid #666;
+  border-radius: 2px;
+  margin-top: -4px;
+  cursor: pointer;
+}
+
+.bt-cmyk-range.range-c::-webkit-slider-runnable-track { background: linear-gradient(to right, #fff, #00ffff); }
+.bt-cmyk-range.range-m::-webkit-slider-runnable-track { background: linear-gradient(to right, #fff, #ff00ff); }
+.bt-cmyk-range.range-y::-webkit-slider-runnable-track { background: linear-gradient(to right, #fff, #ffff00); }
+.bt-cmyk-range.range-k::-webkit-slider-runnable-track { background: linear-gradient(to right, #fff, #000000); }
+
+.bt-cmyk-num {
+  width: 35px;
+  padding: 2px;
+  border: 1px solid #ccc;
+  font-size: 11px;
+}
+
+.bt-cmyk-pct {
+  color: #666;
+}

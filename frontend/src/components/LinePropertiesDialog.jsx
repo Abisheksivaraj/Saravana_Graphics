@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { useDesignStore } from '../store/designStore';
 import { useUIStore, pxToUnit, unitToPx, hexToCmyk, cmykToHex } from '../store/uiStore';
 import './LinePropertiesDialog.css';
+import CmykColorPicker from './CmykColorPicker';
+import NumericInput from './NumericInput';
 
 const DASH_STYLES = [
-    { id: 'solid', label: '━━━━━━━━', dash: [] },
-    { id: 'dashed', label: '--------', dash: [10, 5] },
-    { id: 'dotted', label: '.........', dash: [2, 2] },
-    { id: 'dash-dot', label: '--- . ---', dash: [10, 2, 2, 2] },
+    { id: 'solid', label: 'Solid', dash: [] },
+    { id: 'dashed', label: 'Dashed', dash: [10, 5] },
+    { id: 'dotted', label: 'Dotted', dash: [2, 2] },
+    { id: 'dash-dot', label: 'Dash-Dot', dash: [10, 2, 2, 2] },
 ];
 
 const CAP_STYLES = [
@@ -21,6 +23,7 @@ export default function LinePropertiesDialog({ elementId, onClose }) {
     const { measurementUnit } = useUIStore();
     const el = elements.find(e => e.id === elementId);
     const [activeTab, setActiveTab] = useState('line'); // 'line', 'position'
+    const [activePicker, setActivePicker] = useState(null);
 
     if (!el || el.type !== 'line') return null;
 
@@ -46,13 +49,18 @@ export default function LinePropertiesDialog({ elementId, onClose }) {
             <div className="bt-field-row" style={{ alignItems: 'flex-start' }}>
                 <label>{label}:</label>
                 <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                        <input 
-                            type="color" 
-                            style={{ width: 40, height: 20, padding: 0, border: '1px solid #999' }}
-                            value={color === 'transparent' ? '#ffffff' : color}
-                            onChange={e => update({ [colorKey]: e.target.value.toUpperCase() })}
+                    <div className="flex items-center gap-2" style={{ position: 'relative' }}>
+                        <button 
+                            style={{ width: 40, height: 20, padding: 0, backgroundColor: color === 'transparent' ? '#ffffff' : color, border: '1px solid #999', cursor: 'pointer' }}
+                            onClick={() => setActivePicker(activePicker === colorKey ? null : colorKey)}
                         />
+                        {activePicker === colorKey && (
+                            <CmykColorPicker 
+                                color={color} 
+                                onChange={newColor => update({ [colorKey]: newColor.toUpperCase() })} 
+                                onClose={() => setActivePicker(null)} 
+                            />
+                        )}
                         <select 
                             className="bt-win-input" 
                             style={{ width: 80 }}
@@ -108,24 +116,30 @@ export default function LinePropertiesDialog({ elementId, onClose }) {
                                     <legend>Line Properties</legend>
                                     <div className="bt-field-row">
                                         <label>Length:</label>
-                                        <input 
-                                            type="number" 
-                                            disabled
-                                            value={Number(pxToUnit(length, measurementUnit).toFixed(3))}
+                                        <NumericInput 
+                                            value={pxToUnit(length, measurementUnit)}
+                                            onChange={v => {
+                                                const newLengthPx = unitToPx(v, measurementUnit);
+                                                const dx = x2 - x1;
+                                                const dy = y2 - y1;
+                                                let angle = Math.atan2(dy, dx);
+                                                if (dx === 0 && dy === 0) angle = 0;
+                                                const newX2 = x1 + newLengthPx * Math.cos(angle);
+                                                const newY2 = y1 + newLengthPx * Math.sin(angle);
+                                                update({ points: [x1, y1, newX2, newY2] });
+                                            }}
                                         />
                                         <span className="unit">{measurementUnit}</span>
                                     </div>
                                     <div className="bt-field-row">
                                         <label>Thickness:</label>
                                         <div className="flex items-center gap-2">
-                                            <input 
-                                                type="number" 
-                                                className="bt-win-input"
+                                            <NumericInput 
                                                 style={{ width: 80 }}
-                                                value={Number(pxToUnit(el.strokeWidth || 1, 'pt').toFixed(1))}
-                                                onChange={e => update({ strokeWidth: unitToPx(Number(e.target.value), 'pt') })}
+                                                value={pxToUnit(el.strokeWidth || 1, 'pt')}
+                                                onChange={v => update({ strokeWidth: unitToPx(v, 'pt') })}
                                             />
-                                            <span className="unit">pt</span>
+                                            <span className="unit">{measurementUnit}</span>
                                         </div>
                                     </div>
                                     {renderColorInput('Color', 'stroke', 'opacity')}
@@ -296,7 +310,8 @@ export default function LinePropertiesDialog({ elementId, onClose }) {
                 </div>
 
                 <div className="bt-dialog-footer">
-                    <button className="bt-win-btn primary" onClick={onClose}>Close</button>
+                    <button className="bt-win-btn primary" onClick={onClose}>Apply</button>
+                    <button className="bt-win-btn" onClick={onClose}>Close</button>
                     <button className="bt-win-btn" disabled>Help</button>
                 </div>
             </div>

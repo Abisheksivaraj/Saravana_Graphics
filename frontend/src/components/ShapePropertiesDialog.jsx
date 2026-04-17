@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useDesignStore } from '../store/designStore';
 import { useUIStore, pxToUnit, unitToPx, hexToCmyk, cmykToHex } from '../store/uiStore';
 import './ShapePropertiesDialog.css';
+import CmykColorPicker from './CmykColorPicker';
+import NumericInput from './NumericInput';
 
 const CORNER_TYPES = [
     { id: 'none', label: 'None' },
@@ -30,6 +32,7 @@ export default function ShapePropertiesDialog({ elementId, onClose }) {
     const { measurementUnit } = useUIStore();
     const el = elements.find(e => e.id === elementId);
     const [activeTab, setActiveTab] = useState('shape'); // 'shape' or 'position'
+    const [activePicker, setActivePicker] = useState(null);
 
     if (!el) return null;
 
@@ -49,13 +52,18 @@ export default function ShapePropertiesDialog({ elementId, onClose }) {
             <div className="bt-field-row" style={{ alignItems: 'flex-start' }}>
                 <label>{label}:</label>
                 <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                        <input 
-                            type="color" 
-                            style={{ width: 40, height: 20, padding: 0, border: '1px solid #999' }}
-                            value={color === 'transparent' ? '#ffffff' : color}
-                            onChange={e => update({ [colorKey]: e.target.value.toUpperCase() })}
+                    <div className="flex items-center gap-2" style={{ position: 'relative' }}>
+                        <button 
+                            style={{ width: 40, height: 20, padding: 0, backgroundColor: color === 'transparent' ? '#ffffff' : color, border: '1px solid #999', cursor: 'pointer' }}
+                            onClick={() => setActivePicker(activePicker === colorKey ? null : colorKey)}
                         />
+                        {activePicker === colorKey && (
+                            <CmykColorPicker 
+                                color={color} 
+                                onChange={newColor => update({ [colorKey]: newColor.toUpperCase() })} 
+                                onClose={() => setActivePicker(null)} 
+                            />
+                        )}
                         <select 
                             className="bt-win-input" 
                             style={{ width: 80 }}
@@ -66,20 +74,7 @@ export default function ShapePropertiesDialog({ elementId, onClose }) {
                             <option value={color === 'transparent' ? '#000000' : color}>{color === 'transparent' ? 'Color' : color}</option>
                         </select>
                     </div>
-                    <div className="bt-cmyk-grid">
-                        {['c', 'm', 'y', 'k'].map(k => (
-                            <div key={k} className="bt-cmyk-item">
-                                <span className="bt-cmyk-label">{k}</span>
-                                <input 
-                                    type="number" 
-                                    className="bt-cmyk-input" 
-                                    value={cmyk[k]} 
-                                    min="0" max="100"
-                                    onChange={e => handleCmyk(k, e.target.value)}
-                                />
-                            </div>
-                        ))}
-                    </div>
+
                     <div className="bt-field-row mt-1" style={{ gap: 8 }}>
                         <label style={{ width: 'auto', minWidth: 0 }}>Transparency:</label>
                         <input 
@@ -138,13 +133,11 @@ export default function ShapePropertiesDialog({ elementId, onClose }) {
                                     <div className="bt-field-group">
                                         <div className="bt-field-row" style={{ flex: 1, marginBottom: 0 }}>
                                             <label style={{ width: 60 }}>Width:</label>
-                                            <input 
-                                                type="number" 
-                                                className="bt-win-input"
+                                            <NumericInput 
                                                 style={{ width: 65 }}
-                                                value={Number(pxToUnit(el.width || (el.radius ? el.radius * 2 : 100), measurementUnit).toFixed(3))}
-                                                onChange={e => {
-                                                    const val = unitToPx(Number(e.target.value), measurementUnit);
+                                                value={pxToUnit(el.width || (el.radius ? el.radius * 2 : 100), measurementUnit)}
+                                                onChange={v => {
+                                                    const val = unitToPx(v, measurementUnit);
                                                     const updates = { width: val };
                                                     if (el.type === 'circle') {
                                                         updates.radius = val / 2;
@@ -159,13 +152,11 @@ export default function ShapePropertiesDialog({ elementId, onClose }) {
                                         </div>
                                         <div className="bt-field-row" style={{ flex: 1, marginBottom: 0 }}>
                                             <label style={{ width: 60 }}>Height:</label>
-                                            <input 
-                                                type="number" 
-                                                className="bt-win-input"
+                                            <NumericInput 
                                                 style={{ width: 65 }}
-                                                value={Number(pxToUnit(el.height || (el.radius ? el.radius * 2 : 100), measurementUnit).toFixed(3))}
-                                                onChange={e => {
-                                                    const val = unitToPx(Number(e.target.value), measurementUnit);
+                                                value={pxToUnit(el.height || (el.radius ? el.radius * 2 : 100), measurementUnit)}
+                                                onChange={v => {
+                                                    const val = unitToPx(v, measurementUnit);
                                                     const updates = { height: val };
                                                     if (el.type === 'circle') {
                                                         updates.radius = val / 2;
@@ -209,12 +200,10 @@ export default function ShapePropertiesDialog({ elementId, onClose }) {
                                     </div>
                                     <div className="bt-field-row">
                                         <label>Corner size:</label>
-                                        <input 
-                                            type="number" 
-                                            className="bt-win-input"
-                                            disabled={['rectangular', 'none'].includes(el.cornerType || (el.cornerRadius > 0 ? 'rounded' : 'rectangular'))}
-                                            value={Number(pxToUnit(el.cornerRadius || 0, measurementUnit).toFixed(3))}
-                                            onChange={e => update({ cornerRadius: unitToPx(Number(e.target.value), measurementUnit) })}
+                                        <NumericInput 
+                                            style={{ width: 65 }}
+                                            value={pxToUnit(el.cornerRadius || 0, measurementUnit)}
+                                            onChange={v => update({ cornerRadius: unitToPx(v, measurementUnit) })}
                                         />
                                         <span className="unit">{measurementUnit}</span>
                                     </div>
@@ -233,10 +222,10 @@ export default function ShapePropertiesDialog({ elementId, onClose }) {
                                     <legend>Line Properties</legend>
                                     <div className="bt-field-row">
                                         <label>Thickness:</label>
-                                        <input 
-                                            type="number" 
-                                            value={Number(pxToUnit(el.strokeWidth || 0, 'pt').toFixed(1))}
-                                            onChange={e => update({ strokeWidth: unitToPx(Number(e.target.value), 'pt') })}
+                                        <NumericInput 
+                                            style={{ width: 65 }}
+                                            value={pxToUnit(el.strokeWidth || 1, 'pt')}
+                                            onChange={v => update({ strokeWidth: unitToPx(v, 'pt') })}
                                         />
                                         <span className="unit">pt</span>
                                     </div>
@@ -280,19 +269,19 @@ export default function ShapePropertiesDialog({ elementId, onClose }) {
                                     </div>
                                     <div className="bt-field-row">
                                         <label>X:</label>
-                                        <input 
-                                            type="number" 
-                                            value={Number(pxToUnit(el.x || 0, measurementUnit).toFixed(3))}
-                                            onChange={e => update({ x: unitToPx(Number(e.target.value), measurementUnit) })}
+                                        <NumericInput 
+                                            style={{ width: 65 }}
+                                            value={pxToUnit(el.x, measurementUnit)}
+                                            onChange={v => update({ x: unitToPx(v, measurementUnit) })}
                                         />
                                         <span className="unit">{measurementUnit}</span>
                                     </div>
                                     <div className="bt-field-row">
                                         <label>Y:</label>
-                                        <input 
-                                            type="number" 
-                                            value={Number(pxToUnit(el.y || 0, measurementUnit).toFixed(3))}
-                                            onChange={e => update({ y: unitToPx(Number(e.target.value), measurementUnit) })}
+                                        <NumericInput 
+                                            style={{ width: 65 }}
+                                            value={pxToUnit(el.y, measurementUnit)}
+                                            onChange={v => update({ y: unitToPx(v, measurementUnit) })}
                                         />
                                         <span className="unit">{measurementUnit}</span>
                                     </div>
@@ -302,6 +291,13 @@ export default function ShapePropertiesDialog({ elementId, onClose }) {
                                     <legend>Rotation</legend>
                                     <div className="bt-field-row">
                                         <label>Angle:</label>
+                                        <NumericInput 
+                                            style={{ width: 65 }}
+                                            value={el.rotation || 0}
+                                            onChange={v => update({ rotation: v })}
+                                            min={-360}
+                                            max={360}
+                                        />
                                         <select 
                                             className="bt-win-input"
                                             style={{ width: 80, flex: 'none' }}
@@ -310,13 +306,6 @@ export default function ShapePropertiesDialog({ elementId, onClose }) {
                                         >
                                             {[0, 90, 180, 270].map(deg => <option key={deg} value={`${deg}°`}>{deg}°</option>)}
                                         </select>
-                                        <input 
-                                            type="number" 
-                                            className="bt-win-input"
-                                            style={{ width: 50, marginLeft: 8 }}
-                                            value={el.rotation !== undefined ? Math.round(el.rotation) : 0}
-                                            onChange={e => update({ rotation: Number(e.target.value) })}
-                                        />
                                         <span className="unit">°</span>
                                     </div>
                                 </fieldset>
@@ -340,7 +329,8 @@ export default function ShapePropertiesDialog({ elementId, onClose }) {
                 </div>
 
                 <div className="bt-dialog-footer">
-                    <button className="bt-win-btn primary" onClick={onClose}>Close</button>
+                    <button className="bt-win-btn primary" onClick={onClose}>Apply</button>
+                    <button className="bt-win-btn" onClick={onClose}>Close</button>
                     <button className="bt-win-btn" disabled>Help</button>
                 </div>
             </div>

@@ -229,14 +229,14 @@ function GapDimensions({ el1, el2, zoom }) {
                     const stage = e.target.getStage();
                     const container = stage.container();
                     const pointerPos = stage.getPointerPosition();
-                    
+
                     const input = document.createElement('input');
                     input.type = 'number';
                     input.value = formatVal(val);
                     input.style.cssText = `position:absolute;top:${pointerPos.y}px;left:${pointerPos.x}px;width:60px;z-index:1000;padding:2px;border:1px solid ${DIM_COLOR};border-radius:4px;`;
                     container.appendChild(input);
                     input.focus();
-                    
+
                     const commit = () => {
                         const newDistPx = unitToPx(Number(input.value), measurementUnit);
                         if (!isNaN(newDistPx)) {
@@ -245,7 +245,7 @@ function GapDimensions({ el1, el2, zoom }) {
                         if (container.contains(input)) container.removeChild(input);
                     };
 
-                    input.onkeydown = (ev) => { 
+                    input.onkeydown = (ev) => {
                         if (ev.key === 'Enter') { ev.stopPropagation(); commit(); }
                         if (ev.key === 'Escape') { ev.stopPropagation(); if (container.contains(input)) container.removeChild(input); }
                     };
@@ -361,12 +361,12 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
 
     const renderShape = () => {
         const previewData = useDesignStore.getState().previewData;
-        
+
         // Smart Data Merging for Live Preview
         let displayProps = { ...el };
         if (previewData && (el.type === 'text' || el.type === 'barcode' || el.type === 'qrcode')) {
             const mode = el.mappingMode || (el.autoFill === false ? 'fixed' : 'smart');
-            
+
             if (el.type === 'text' && el.text) {
                 let text = el.text;
                 if (mode === 'fixed') {
@@ -390,7 +390,7 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
                     const lines = text.split('\n');
                     const processedLines = lines.map(line => {
                         let lineText = line;
-                        
+
                         // 1. Double curly replacements (Highest Priority)
                         Object.keys(previewData).forEach(col => {
                             const placeholder = `{{${col}}}`;
@@ -404,7 +404,7 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
                             const parts = lineText.split(':');
                             const labelPart = parts[0].trim().toLowerCase();
                             const valuePart = parts[1].trim();
-                            
+
                             const matchedHeader = Object.keys(previewData).find(h => h.toLowerCase() === labelPart);
                             if (matchedHeader) {
                                 const newVal = previewData[matchedHeader] !== undefined ? String(previewData[matchedHeader]) : valuePart;
@@ -416,14 +416,14 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
                         const sortedKeys = Object.keys(previewData).sort((a, b) => b.length - a.length);
                         sortedKeys.forEach(col => {
                             const isSafePlaceholder = /[a-zA-Z]/.test(col);
-                            if (!isSafePlaceholder) return; 
+                            if (!isSafePlaceholder) return;
                             const escapedCol = col.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
                             const regex = new RegExp(`\\b${escapedCol}\\b(?![\\s]*:)`, 'gi');
                             if (regex.test(lineText)) {
                                 lineText = lineText.replaceAll(regex, String(previewData[col] ?? ''));
                             }
                         });
-                        
+
                         return lineText;
                     });
                     text = processedLines.join('\n');
@@ -567,7 +567,7 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
     );
 }
 
-function InlineTextEditor({ el, zoom, onSave, onCancel }) {
+function InlineTextEditor({ el, onSave, onCancel }) {
     const [text, setText] = useState(el.text || '');
     const textareaRef = useRef();
 
@@ -578,47 +578,61 @@ function InlineTextEditor({ el, zoom, onSave, onCancel }) {
         }
     }, []);
 
-    // Positioning - needs to account for zoom and stage pan
-    const style = {
-        position: 'absolute',
-        top: el.y * zoom,
-        left: el.x * zoom,
-        width: (el.width || 200) * zoom,
-        height: 'auto',
-        minHeight: (el.fontSize || 16) * 1.5 * zoom,
-        fontSize: (el.fontSize || 16) * zoom,
-        fontFamily: el.fontFamily || 'Arial',
-        fontWeight: el.fontWeight || 'normal',
-        fontStyle: el.fontStyle || 'normal',
-        textAlign: el.textAlign || 'left',
-        color: el.fill || '#000',
-        background: 'rgba(255,255,255,0.9)',
-        border: '1px solid #4CAF50',
-        boxShadow: '0 0 10px rgba(0,0,0,0.1)',
-        zIndex: 10000,
-        overflow: 'hidden',
-        resize: 'none',
-        lineHeight: 1.2,
-        padding: 0,
-        margin: 0,
-        outline: 'none',
-    };
-
     return (
-        <textarea
-            ref={textareaRef}
-            style={style}
-            value={text}
-            onChange={e => setText(e.target.value)}
-            onBlur={() => onSave(text)}
-            onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    onSave(text);
-                }
-                if (e.key === 'Escape') onCancel();
-            }}
-        />
+        <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+        }} onMouseDown={(e) => {
+            if (e.target === e.currentTarget) onSave(text);
+        }}>
+            <div style={{
+                background: '#fff',
+                padding: 16,
+                borderRadius: 8,
+                boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+                width: 400,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12
+            }}>
+                <div style={{ fontWeight: '600', fontSize: 16, color: '#333' }}>Enter Text</div>
+                <textarea
+                    ref={textareaRef}
+                    style={{
+                        width: '100%',
+                        height: 120,
+                        fontSize: 16,
+                        fontFamily: 'Inter, Arial, sans-serif',
+                        padding: 8,
+                        border: '1px solid #ccc',
+                        borderRadius: 4,
+                        resize: 'none',
+                        outline: 'none',
+                    }}
+                    value={text}
+                    onChange={e => setText(e.target.value)}
+                    onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            onSave(text);
+                        }
+                        if (e.key === 'Escape') {
+                            e.preventDefault();
+                            onCancel();
+                        }
+                    }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <button style={{ padding: '6px 16px', background: '#e1dfdd', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit' }} onClick={onCancel}>Cancel</button>
+                    <button style={{ padding: '6px 16px', background: '#0078d7', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit' }} onClick={() => onSave(text)}>Apply</button>
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -652,7 +666,7 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
             case 'freehand': case 'smart-draw': case 'pen': case 'bezier': return 'crosshair';
             case 'eyedropper': return 'copy';
             case 'eraser': return 'cell';
-            case 'draw-rect': case 'draw-circle': case 'draw-line':
+            case 'draw-rect': case 'draw-rect-rounded': case 'draw-circle': case 'draw-line':
             case 'draw-star': case 'draw-polygon': case 'draw-triangle': return 'crosshair';
             default: return 'default';
         }
@@ -751,7 +765,7 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
 
         // Drag-to-draw shapes
         const drawTools = {
-            'draw-rect': 'rect', 'draw-circle': 'circle', 'draw-line': 'line',
+            'draw-rect': 'rect', 'draw-rect-rounded': 'rect', 'draw-circle': 'circle', 'draw-line': 'line',
             'draw-star': 'star', 'draw-polygon': 'polygon', 'draw-triangle': 'triangle',
             'draw-diamond': 'diamond', 'draw-hexagon': 'hexagon', 'draw-octagon': 'octagon', 'draw-arrow': 'arrow',
             'text': 'text', 'barcode': 'barcode', 'qrcode': 'qrcode', 'placeholder': 'placeholder',
@@ -768,7 +782,8 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
                 width: 1, height: 1,
                 radius: 1, outerRadius: 1,
                 points: shapeType === 'line' ? [0, 0, 0, 0] : undefined,
-                ...(toolFormat && shapeType === 'barcode' ? { barcodeFormat: toolFormat } : {})
+                ...(toolFormat && shapeType === 'barcode' ? { barcodeFormat: toolFormat } : {}),
+                ...(activeToolKey === 'draw-rect-rounded' ? { cornerRadius: 15, cornerType: 'rounded' } : {})
             });
             setDrawId(newEl.id);
             setDrawStart(pos);
@@ -807,7 +822,7 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
         if (drawId) {
             const dx = pos.x - drawStart.x;
             const dy = pos.y - drawStart.y;
-            const shapeType = { 'draw-rect': 'rect', 'draw-circle': 'circle', 'draw-line': 'line', 'draw-star': 'star', 'draw-polygon': 'polygon', 'draw-triangle': 'triangle' }[selectedTool];
+            const shapeType = { 'draw-rect': 'rect', 'draw-rect-rounded': 'rect', 'draw-circle': 'circle', 'draw-line': 'line', 'draw-star': 'star', 'draw-polygon': 'polygon', 'draw-triangle': 'triangle' }[selectedTool];
 
             const updates = {};
             if (shapeType === 'circle') {
@@ -870,9 +885,19 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
         // Finalize drag-to-draw
         if (drawId) {
             updateElementAndSave(drawId, {});
+            const currentEl = elements.find(e => e.id === drawId);
             setDrawId(null);
             // Switch back to pick tool after drawing
             setSelectedTool('pick');
+
+            if (currentEl) {
+                if (currentEl.type === 'text') {
+                    // Start inline text editing overlay for new wrapped text like Word
+                    setTimeout(() => setEditingTextId(currentEl.id), 50);
+                } else if (currentEl.type === 'barcode' && onElementDblClick) {
+                    setTimeout(() => onElementDblClick(currentEl.id), 50);
+                }
+            }
         }
 
         setIsDrawing(false);
@@ -901,7 +926,7 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
             return;
         }
 
-        if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (e.key === 'Delete') {
             if (selectedIds.length > 0) deleteElement(selectedIds);
         }
         if (e.key === 'v') setSelectedTool('pick');
@@ -933,181 +958,162 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
                     height: canvasHeight * zoom,
                 }}
             >
-            <Stage
-                ref={stageRef}
-                width={canvasWidth * zoom}
-                height={canvasHeight * zoom}
-                scaleX={zoom}
-                scaleY={zoom}
-                pixelRatio={window.devicePixelRatio || 2}
-                style={{
-                    background: 'transparent',
-                    display: 'block',
-                    cursor: getCursor(),
-                }}
-                onMouseDown={handleStageMouseDown}
-                onMouseMove={handleStageMouseMove}
-                onMouseUp={handleStageMouseUp}
-                onMouseLeave={handleStageMouseUp}
-                onTouchStart={handleStageMouseDown}
-                onTouchMove={handleStageMouseMove}
-                onTouchEnd={handleStageMouseUp}
-            >
-                {/* Background layer: fills the rounded rect with the label colour */}
-                <Layer
-                    clipFunc={(ctx) => {
-                        const r = CANVAS_RADIUS;
-                        const w = canvasWidth;
-                        const h = canvasHeight;
-                        ctx.beginPath();
-                        ctx.moveTo(r, 0);
-                        ctx.lineTo(w - r, 0);
-                        ctx.quadraticCurveTo(w, 0, w, r);
-                        ctx.lineTo(w, h - r);
-                        ctx.quadraticCurveTo(w, h, w - r, h);
-                        ctx.lineTo(r, h);
-                        ctx.quadraticCurveTo(0, h, 0, h - r);
-                        ctx.lineTo(0, r);
-                        ctx.quadraticCurveTo(0, 0, r, 0);
-                        ctx.closePath();
+                <Stage
+                    ref={stageRef}
+                    width={canvasWidth * zoom}
+                    height={canvasHeight * zoom}
+                    scaleX={zoom}
+                    scaleY={zoom}
+                    pixelRatio={window.devicePixelRatio || 2}
+                    style={{
+                        background: 'transparent',
+                        display: 'block',
+                        cursor: getCursor(),
                     }}
+                    onMouseDown={handleStageMouseDown}
+                    onMouseMove={handleStageMouseMove}
+                    onMouseUp={handleStageMouseUp}
+                    onMouseLeave={handleStageMouseUp}
+                    onTouchStart={handleStageMouseDown}
+                    onTouchMove={handleStageMouseMove}
+                    onTouchEnd={handleStageMouseUp}
                 >
-                    {/* White background rect */}
-                    <Rect
-                        x={0} y={0}
-                        width={canvasWidth}
-                        height={canvasHeight}
-                        fill={backgroundColor}
-                    />
-                    {showGrid && <GridLayer width={canvasWidth} height={canvasHeight} />}
-                </Layer>
-                {/* Elements layer — also clipped to rounded rect */}
-                <Layer
-                    clipFunc={(ctx) => {
-                        const r = CANVAS_RADIUS;
-                        const w = canvasWidth;
-                        const h = canvasHeight;
-                        ctx.beginPath();
-                        ctx.moveTo(r, 0);
-                        ctx.lineTo(w - r, 0);
-                        ctx.quadraticCurveTo(w, 0, w, r);
-                        ctx.lineTo(w, h - r);
-                        ctx.quadraticCurveTo(w, h, w - r, h);
-                        ctx.lineTo(r, h);
-                        ctx.quadraticCurveTo(0, h, 0, h - r);
-                        ctx.lineTo(0, r);
-                        ctx.quadraticCurveTo(0, 0, r, 0);
-                        ctx.closePath();
-                    }}
-                >
-                    {sortedElements.filter(el => el.visible !== false).map(el => (
-                        <ElementWrapper
-                            key={el.id}
-                            el={el}
-                            isSelected={selectedIds.includes(el.id)}
-                            onSelect={handleElementClick}
-                            onDblClick={onElementDblClick}
-                            onChange={(id, updates) => updateElementAndSave(id, updates)}
+                    {/* Background layer: fills the rounded rect with the label colour */}
+                    <Layer
+                        clipFunc={(ctx) => {
+                            const r = CANVAS_RADIUS;
+                            const w = canvasWidth;
+                            const h = canvasHeight;
+                            ctx.beginPath();
+                            ctx.moveTo(r, 0);
+                            ctx.lineTo(w - r, 0);
+                            ctx.quadraticCurveTo(w, 0, w, r);
+                            ctx.lineTo(w, h - r);
+                            ctx.quadraticCurveTo(w, h, w - r, h);
+                            ctx.lineTo(r, h);
+                            ctx.quadraticCurveTo(0, h, 0, h - r);
+                            ctx.lineTo(0, r);
+                            ctx.quadraticCurveTo(0, 0, r, 0);
+                            ctx.closePath();
+                        }}
+                    >
+                        {/* White background rect */}
+                        <Rect
+                            x={0} y={0}
+                            width={canvasWidth}
+                            height={canvasHeight}
+                            fill={backgroundColor}
                         />
-                    ))}
-                    {selectedIds.length > 0 && (
-                        <Transformer
-                            ref={trRef}
-                            boundBoxFunc={(oldBox, newBox) => (newBox.width < 5 || newBox.height < 5 ? oldBox : newBox)}
-                            rotateEnabled={true}
-                            // BarTender exact: Green circular handles with blue rotation anchor
-                            anchorFill="white"
-                            anchorStroke="#4CAF50"
-                            anchorSize={7}
-                            anchorCornerRadius={10}
-                            borderStroke="#4CAF50"
-                            borderDash={[]}
-                            borderStrokeWidth={1.2}
-                            rotateAnchorOffset={30}
-                            enabledAnchors={
-                                selectedIds.length === 1 && 
-                                elements.find(e => e.id === selectedIds[0])?.type === 'text'
-                                ? ['middle-left', 'middle-right'] // BarTender wrap text usually just has side handles for width
-                                : ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']
-                            }
-                            // Custom rotation anchor style
-                            anchorStyleFunc={(anchor) => {
-                                if (anchor.hasName('rotater')) {
-                                    anchor.fill('#00c0ff');
-                                    anchor.stroke('#0078d7');
-                                    anchor.cornerRadius(10);
+                        {showGrid && <GridLayer width={canvasWidth} height={canvasHeight} />}
+                    </Layer>
+                    {/* Elements layer — also clipped to rounded rect */}
+                    <Layer
+                        clipFunc={(ctx) => {
+                            const r = CANVAS_RADIUS;
+                            const w = canvasWidth;
+                            const h = canvasHeight;
+                            ctx.beginPath();
+                            ctx.moveTo(r, 0);
+                            ctx.lineTo(w - r, 0);
+                            ctx.quadraticCurveTo(w, 0, w, r);
+                            ctx.lineTo(w, h - r);
+                            ctx.quadraticCurveTo(w, h, w - r, h);
+                            ctx.lineTo(r, h);
+                            ctx.quadraticCurveTo(0, h, 0, h - r);
+                            ctx.lineTo(0, r);
+                            ctx.quadraticCurveTo(0, 0, r, 0);
+                            ctx.closePath();
+                        }}
+                    >
+                        {sortedElements.filter(el => el.visible !== false).map(el => (
+                            <ElementWrapper
+                                key={el.id}
+                                el={el}
+                                isSelected={selectedIds.includes(el.id)}
+                                onSelect={handleElementClick}
+                                onDblClick={onElementDblClick}
+                                onChange={(id, updates) => updateElementAndSave(id, updates)}
+                            />
+                        ))}
+                        {selectedIds.length > 0 && (
+                            <Transformer
+                                ref={trRef}
+                                boundBoxFunc={(oldBox, newBox) => (newBox.width < 5 || newBox.height < 5 ? oldBox : newBox)}
+                                rotateEnabled={true}
+                                // BarTender exact: Green circular handles with blue rotation anchor
+                                anchorFill="white"
+                                anchorStroke="#4CAF50"
+                                anchorSize={7}
+                                anchorCornerRadius={10}
+                                borderStroke="#4CAF50"
+                                borderDash={[]}
+                                borderStrokeWidth={1.2}
+                                rotateAnchorOffset={30}
+                                enabledAnchors={
+                                    selectedIds.length === 1 &&
+                                        elements.find(e => e.id === selectedIds[0])?.type === 'text'
+                                        ? ['middle-left', 'middle-right'] // BarTender wrap text usually just has side handles for width
+                                        : ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']
                                 }
-                                return anchor;
-                            }}
-                            onTransformEnd={handleTransformEnd}
-                        />
+                                // Custom rotation anchor style
+                                anchorStyleFunc={(anchor) => {
+                                    if (anchor.hasName('rotater')) {
+                                        anchor.fill('#00c0ff');
+                                        anchor.stroke('#0078d7');
+                                        anchor.cornerRadius(10);
+                                    }
+                                    return anchor;
+                                }}
+                                onTransformEnd={handleTransformEnd}
+                            />
+                        )}
+                    </Layer>
+
+
+                    {/* Live freehand preview while drawing */}
+                    {freehandPoints.length >= 4 && (
+                        <Layer>
+                            <Line
+                                points={freehandPoints}
+                                stroke="#000000"
+                                strokeWidth={2}
+                                lineCap="round"
+                                lineJoin="round"
+                                tension={selectedTool === 'smart-draw' ? 0.4 : 0}
+                            />
+                        </Layer>
                     )}
-                </Layer>
+
+                    {/* Live eraser preview while dragging */}
+                    {isErasing && eraserPoints.length >= 4 && (
+                        <Layer>
+                            <Line
+                                points={eraserPoints}
+                                stroke={backgroundColor}
+                                strokeWidth={ERASER_SIZE}
+                                lineCap="round"
+                                lineJoin="round"
+                                tension={0}
+                            />
+                        </Layer>
+                    )}
 
 
-                {/* Live freehand preview while drawing */}
-                {freehandPoints.length >= 4 && (
-                    <Layer>
-                        <Line
-                            points={freehandPoints}
-                            stroke="#000000"
-                            strokeWidth={2}
-                            lineCap="round"
-                            lineJoin="round"
-                            tension={selectedTool === 'smart-draw' ? 0.4 : 0}
-                        />
-                    </Layer>
+                </Stage>
+
+                {/* Inline Editors (Native HTML over Stage) */}
+                {editingTextId && (
+                    <InlineTextEditor
+                        el={elements.find(e => e.id === editingTextId)}
+                        zoom={zoom}
+                        onSave={(text) => {
+                            updateElementAndSave(editingTextId, { text });
+                            setEditingTextId(null);
+                        }}
+                        onCancel={() => setEditingTextId(null)}
+                    />
                 )}
-
-                {/* Live eraser preview while dragging */}
-                {isErasing && eraserPoints.length >= 4 && (
-                    <Layer>
-                        <Line
-                            points={eraserPoints}
-                            stroke={backgroundColor}
-                            strokeWidth={ERASER_SIZE}
-                            lineCap="round"
-                            lineJoin="round"
-                            tension={0}
-                        />
-                    </Layer>
-                )}
-
-                {/* CAD-Style Dimension Annotations */}
-                <Layer>
-                    {(() => {
-                        const activeId = drawId || selectedIds[0];
-                        if (!activeId) return null;
-                        const activeEl = elements.find(el => el.id === activeId);
-                        if (!activeEl) return null;
-                        
-                        return (
-                            <>
-                                <DimensionLines el={activeEl} zoom={zoom} />
-                                {selectedIds.length === 2 && (() => {
-                                    const el2 = elements.find(el => el.id === selectedIds[1]);
-                                    if (el2) return <GapDimensions el1={activeEl} el2={el2} zoom={zoom} />;
-                                    return null;
-                                })()}
-                            </>
-                        );
-                    })()}
-                </Layer>
-            </Stage>
-
-            {/* Inline Editors (Native HTML over Stage) */}
-            {editingTextId && (
-                <InlineTextEditor 
-                    el={elements.find(e => e.id === editingTextId)} 
-                    zoom={zoom}
-                    onSave={(text) => {
-                        updateElementAndSave(editingTextId, { text });
-                        setEditingTextId(null);
-                    }}
-                    onCancel={() => setEditingTextId(null)}
-                />
-            )}
+            </div>
         </div>
-    </div>
     );
 }

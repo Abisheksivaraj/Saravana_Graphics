@@ -7,12 +7,15 @@ import {
     Maximize, Minimize, Database
 } from 'lucide-react';
 import './PropertiesPanel.css';
+import CmykColorPicker from './CmykColorPicker';
+import React, { useState } from 'react';
 
-const FONTS = ['Arial', 'Calibri', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana', 'Trebuchet MS', 'Impact', 'Comic Sans MS', 'Outfit', 'Inter', 'Rupee Forbidan'];
+const FONTS = ['Arial', 'Calibri', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana', 'Trebuchet MS', 'Impact', 'Comic Sans MS', 'Outfit', 'Inter', 'Rupee Forbidan', 'OCR-A', 'OCR-B', 'OCR A Extended', 'OCR-B 10 BT'];
 const BARCODE_FORMATS = ['CODE128', 'CODE39', 'EAN13', 'EAN8', 'UPC', 'ITF14', 'MSI', 'pharmacode'];
 
 function ColorInput({ label, value, onChange }) {
     const cmyk = hexToCmyk(value || '#000000');
+    const [colorPickerOpen, setColorPickerOpen] = useState(false);
     
     const handleCmykChange = (key, val) => {
         const newCmyk = { ...cmyk, [key]: Number(val) };
@@ -23,26 +26,23 @@ function ColorInput({ label, value, onChange }) {
         <div className="input-group">
             <label>{label}</label>
             <div className="flex flex-col gap-2 p-2 bg-muted/5 rounded border border-border/50">
-                <div className="flex gap-2 items-center">
-                    <div className="color-swatch ring-1 ring-border">
-                        <input type="color" value={value || '#000000'} onChange={e => onChange(e.target.value.toUpperCase())} />
+                <div className="flex gap-2 items-center" style={{ position: 'relative' }}>
+                    <div className="color-swatch ring-1 ring-border" style={{ overflow: 'visible', position: 'relative' }}>
+                        <button 
+                            style={{ width: '100%', height: '100%', padding: 0, backgroundColor: value || '#000000', border: 'none', cursor: 'pointer' }}
+                            onClick={() => setColorPickerOpen(!colorPickerOpen)}
+                        />
+                        {colorPickerOpen && (
+                            <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 100 }}>
+                                <CmykColorPicker 
+                                    color={value} 
+                                    onChange={newColor => onChange(newColor.toUpperCase())} 
+                                    onClose={() => setColorPickerOpen(false)} 
+                                />
+                            </div>
+                        )}
                     </div>
                     <input className="input flex-1" value={value?.toUpperCase() || '#000000'} onChange={e => onChange(e.target.value.toUpperCase())} style={{ fontFamily: 'monospace', fontSize: 12 }} />
-                </div>
-                
-                <div className="grid grid-cols-4 gap-1">
-                    {['c', 'm', 'y', 'k'].map(key => (
-                        <div key={key} className="flex flex-col items-center">
-                            <span className="text-[10px] font-bold uppercase text-muted-foreground">{key}</span>
-                            <input 
-                                type="number" 
-                                className="input h-6 p-0 text-center w-full text-[11px]" 
-                                value={cmyk[key]} 
-                                min="0" max="100"
-                                onChange={e => handleCmykChange(key, e.target.value)}
-                            />
-                        </div>
-                    ))}
                 </div>
             </div>
         </div>

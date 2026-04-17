@@ -18,6 +18,7 @@ export const useDesignStore = create(persist((set, get) => ({
     elements: [],
     company: '',
     selectedIds: [], // Array of IDs for multi-selection
+    clipboard: [], // Array of element objects
     isSaving: false,
     isDirty: false,
 
@@ -262,6 +263,45 @@ export const useDesignStore = create(persist((set, get) => ({
         if (!el) return;
         const newEl = { ...el, id: uuid(), x: el.x + 20, y: el.y + 20, zIndex: get().elements.length };
         set((s) => ({ elements: [...s.elements, newEl], selectedIds: [newEl.id], isDirty: true }));
+        get().saveHistory();
+        return newEl;
+    },
+
+    copy: () => {
+        const { selectedIds, elements } = get();
+        if (selectedIds.length === 0) return;
+        const toCopy = elements.filter(el => selectedIds.includes(el.id))
+                               .map(el => JSON.parse(JSON.stringify(el)));
+        set({ clipboard: toCopy });
+    },
+
+    cut: () => {
+        const { selectedIds, elements } = get();
+        if (selectedIds.length === 0) return;
+        const toCopy = elements.filter(el => selectedIds.includes(el.id))
+                               .map(el => JSON.parse(JSON.stringify(el)));
+        get().deleteElement(selectedIds);
+        set({ clipboard: toCopy });
+    },
+
+    paste: () => {
+        const { clipboard, elements } = get();
+        if (!clipboard || clipboard.length === 0) return;
+        
+        const newEls = clipboard.map((el, i) => ({
+            ...el,
+            id: uuid(),
+            x: el.x + 20,
+            y: el.y + 20,
+            zIndex: elements.length + i,
+            name: `${el.name}_copy`
+        }));
+
+        set(s => ({ 
+            elements: [...s.elements, ...newEls],
+            selectedIds: newEls.map(ne => ne.id),
+            isDirty: true 
+        }));
         get().saveHistory();
     },
 

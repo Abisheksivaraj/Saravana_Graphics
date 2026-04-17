@@ -9,50 +9,160 @@ import {
   AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd
 } from 'lucide-react';
 import './PropertyBar.css';
+import CmykColorPicker from './CmykColorPicker';
+import NumericInput from './NumericInput';
 
 const FONTS = [
   'Arial', 'Calibri', 'Times New Roman', 'Courier New',
   'Georgia', 'Verdana', 'Impact', 'Trebuchet MS',
   'ZEBRA Swiss Unicode', 'Comic Sans MS', 'Inter', 'Outfit',
-  'Rupee Forbidan',
+  'Rupee Forbidan', 'OCR-A', 'OCR-B', 'OCR A Extended', 'OCR-B 10 BT'
 ];
 
 const SIZES = [6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
 
 function PropInput({ value, onChange, style = {}, title, min, max }) {
-  const [local, setLocal] = useState(String(value));
-  useEffect(() => setLocal(String(value)), [value]);
-
   return (
-    <input
-      type="number"
-      className="bt-prop-input"
-      value={local}
+    <NumericInput
+      value={value}
+      onChange={onChange}
+      style={style}
+      title={title}
       min={min}
       max={max}
-      title={title}
-      style={style}
-      onChange={(e) => {
-        setLocal(e.target.value);
-        const n = parseFloat(e.target.value);
-        if (!isNaN(n)) onChange(n);
-      }}
-      onBlur={() => setLocal(String(value))}
+      className="bt-prop-input"
     />
   );
 }
 
-function ColorBtn({ icon, color, onChange, title }) {
+function TypeableSelect({ value, options, onChange, style = {}, className, fallback = '', type = 'text', width }) {
+  const [local, setLocal] = useState(String(value || fallback));
+  const [open, setOpen] = useState(false);
+  const [isFiltering, setIsFiltering] = useState(false);
+  const ref = React.useRef(null);
+
+  useEffect(() => {
+    setLocal(String(value || fallback));
+    setIsFiltering(false);
+  }, [value, fallback]);
+
+  useEffect(() => {
+    const handleOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
+  const commit = (val) => {
+    setLocal(String(val));
+    setOpen(false);
+    if (type === 'number') {
+      const n = parseFloat(val);
+      if (!isNaN(n)) onChange(n);
+    } else {
+      onChange(val);
+    }
+  };
+
   return (
-    <div className="bt-color-btn-wrap" title={title}>
+    <div ref={ref} style={{ position: 'relative', display: 'flex', width: width || 'auto' }}>
       <input
-        type="color"
-        value={color && color !== 'transparent' ? color : '#000000'}
-        onChange={e => onChange(e.target.value)}
-        className="bt-color-input"
+        type={type === 'number' ? 'text' : type}
+        className={className}
+        style={{ ...style, flex: 1, margin: 0, width: '100%' }}
+        value={local}
+        onFocus={(e) => { e.target.select(); setOpen(true); setIsFiltering(false); }}
+        onClick={() => { setOpen(true); setIsFiltering(false); }}
+        onChange={(e) => {
+          setLocal(e.target.value);
+          setOpen(true);
+          setIsFiltering(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            commit(local);
+          }
+        }}
+        onBlur={() => {
+           // We timeout the blur so click on dropdown item fires first.
+           setTimeout(() => {
+             if (local.trim() === '' || (type==='number' && isNaN(parseFloat(local)))) {
+                setLocal(String(value || fallback));
+                onChange(value || fallback);
+             } else {
+                commit(local);
+             }
+           }, 150);
+        }}
       />
-      <span className="bt-color-preview-icon">{icon}</span>
-      <div className="bt-color-underline" style={{ backgroundColor: color || '#000' }} />
+      <button 
+        style={{ width: 16, border: '1px solid #a0b8d8', borderLeft: 'none', background: '#e1f0fa', cursor: 'pointer', padding: 0 }}
+        onClick={() => { setOpen(!open); setIsFiltering(false); }}
+        tabIndex={-1}
+      >
+        <svg width="8" height="6" viewBox="0 0 10 5" fill="none" style={{ margin: 'auto' }}>
+          <path d="M0 0L5 5L10 0H0Z" fill="#333" />
+        </svg>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, width: '100%', 
+          maxHeight: 200, overflowY: 'auto', background: '#fff', border: '1px solid #a0b8d8', 
+          zIndex: 9999, boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+        }}>
+          {options.filter(o => !isFiltering || String(o).toLowerCase().includes(local.toLowerCase())).map(opt => (
+            <div 
+              key={opt}
+              style={{ padding: '2px 6px', fontSize: 12, cursor: 'pointer', fontFamily: type==='text' ? opt : 'inherit' }}
+              onMouseDown={(e) => { e.preventDefault(); commit(opt); }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0078d7'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ColorBtn({ icon, color, onChange, title }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="bt-color-btn-wrap" title={title} style={{ position: 'relative' }}>
+      <button 
+        className="bt-color-btn" 
+        onClick={() => setOpen(!open)}
+        style={{ 
+          background: 'transparent', 
+          border: 'none', 
+          cursor: 'pointer', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center',
+          padding: '2px 4px'
+        }}
+      >
+        <span className="bt-color-preview-icon">{icon}</span>
+        <div className="bt-color-underline" style={{ 
+          backgroundColor: color && color !== 'transparent' ? color : '#000', 
+          width: '12px', 
+          height: '3px', 
+          marginTop: '2px' 
+        }} />
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 1000 }}>
+          <CmykColorPicker
+            color={color}
+            onChange={onChange}
+            onClose={() => setOpen(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -74,23 +184,26 @@ export default function PropertyBar() {
       {/* Group 1: Font & Size */}
       <div className="bt-toolbar-group">
         <div className="bt-toolbar-handle" />
-        <select
+        <TypeableSelect
+          options={FONTS}
           className="bt-font-select"
-          value={selectedEl?.fontFamily || 'Arial'}
-          onChange={e => update({ fontFamily: e.target.value })}
-          disabled={!selectedEl || (selectedEl.type !== 'text' && selectedEl.type !== 'barcode')}
-        >
-          {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
-        </select>
-        <select
+          style={{ cursor: 'text' }}
+          width={140}
+          value={selectedEl?.fontFamily}
+          fallback="Arial"
+          onChange={v => update({ fontFamily: v })}
+        />
+
+        <TypeableSelect
+          options={SIZES}
+          type="number"
           className="bt-prop-input"
-          style={{ width: 48, marginLeft: 2 }}
+          style={{ cursor: 'text', marginLeft: 2 }}
+          width={50}
           value={selectedEl ? Math.round(pxToUnit(selectedEl.fontSize || 16, 'pt')) : 12}
-          onChange={e => update({ fontSize: unitToPx(Number(e.target.value), 'pt') })}
-          disabled={!selectedEl || (selectedEl.type !== 'text' && selectedEl.type !== 'barcode')}
-        >
-          {SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+          fallback={12}
+          onChange={v => update({ fontSize: unitToPx(v, 'pt') })}
+        />
       </div>
 
       {/* Group 2: Styles (B, I, U, W) */}
@@ -102,7 +215,7 @@ export default function PropertyBar() {
           onClick={() => update({ fontWeight: selectedEl.fontWeight === 'bold' ? 'normal' : 'bold' })}
           title="Bold"
         >
-          <Bold size={14} />
+          <Bold size={18} />
         </button>
         <button
           className={`bt-prop-btn${selectedEl?.fontStyle === 'italic' ? ' active' : ''}`}
@@ -110,7 +223,7 @@ export default function PropertyBar() {
           onClick={() => update({ fontStyle: selectedEl.fontStyle === 'italic' ? 'normal' : 'italic' })}
           title="Italic"
         >
-          <Italic size={14} />
+          <Italic size={18} />
         </button>
         <button
           className={`bt-prop-btn${selectedEl?.underline ? ' active' : ''}`}
@@ -118,38 +231,22 @@ export default function PropertyBar() {
           onClick={() => update({ underline: !selectedEl.underline })}
           title="Underline"
         >
-          <Underline size={14} />
-        </button>
-        <button className="bt-prop-btn" title="Word Processor" disabled={!selectedEl}>
-          <span style={{ fontSize: 13, fontWeight: 900, fontFamily: 'serif' }}>W</span>
+          <Underline size={18} />
         </button>
       </div>
 
       {/* Group 3: Color & Tools */}
       <div className="bt-toolbar-group">
-        <div className="bt-toolbar-handle" />
         {selectedEl?.type === 'barcode' ? (
-          <select
-            className="bt-font-select"
-            style={{ minWidth: 100 }}
-            value={selectedEl.barcodeFormat || 'CODE128'}
-            onChange={e => update({ barcodeFormat: e.target.value })}
-            title="Barcode Type"
-          >
-            <option value="CODE128">Code 128</option>
-            <option value="EAN13">EAN-13</option>
-            <option value="EAN8">EAN-8</option>
-            <option value="CODE39">Code 39</option>
-            <option value="CODE93">Code 93</option>
-            <option value="UPC">UPC</option>
-            <option value="ITF">ITF</option>
-          </select>
+          <BarcodeFormatSelect 
+            value={selectedEl.barcodeFormat || 'CODE128'} 
+            onChange={v => update({ barcodeFormat: v })} 
+          />
         ) : (
           <>
-            <ColorBtn icon="A" color={selectedEl?.fill || '#000000'} onChange={v => update({ fill: v })} title="Text Color" />
-            <ColorBtn icon={<span style={{ transform: 'rotate(-45deg)', display: 'inline-block' }}>✎</span>} color="transparent" onChange={() => {}} title="Highlight" />
+            <ColorBtn icon={<span style={{ fontWeight: 'bold' }}>A</span>} color={selectedEl?.fill || '#000000'} onChange={v => update({ fill: v })} title="Text Color" />
             <button className="bt-prop-btn" title="Format Painter">
-              <Paintbrush size={14} color="#0078d7" />
+              <Paintbrush size={18} color="#0078d7" />
             </button>
           </>
         )}
@@ -163,34 +260,28 @@ export default function PropertyBar() {
           onClick={() => update({ textAlign: 'left' })}
           disabled={!selectedEl || selectedEl.type !== 'text'}
         >
-          <AlignLeft size={14} />
+          <AlignLeft size={18} />
         </button>
         <button
           className={`bt-prop-btn${selectedEl?.textAlign === 'center' ? ' active' : ''}`}
           onClick={() => update({ textAlign: 'center' })}
           disabled={!selectedEl || selectedEl.type !== 'text'}
         >
-          <AlignCenter size={14} />
+          <AlignCenter size={18} />
         </button>
         <button
           className={`bt-prop-btn${selectedEl?.textAlign === 'right' ? ' active' : ''}`}
           onClick={() => update({ textAlign: 'right' })}
           disabled={!selectedEl || selectedEl.type !== 'text'}
         >
-          <AlignRight size={14} />
+          <AlignRight size={18} />
         </button>
         <button
           className={`bt-prop-btn${selectedEl?.textAlign === 'justify' ? ' active' : ''}`}
           onClick={() => update({ textAlign: 'justify' })}
           disabled={!selectedEl || selectedEl.type !== 'text'}
         >
-          <AlignJustify size={14} />
-        </button>
-        <button className="bt-prop-btn" title="Distributed" disabled>
-          <span style={{ transform: 'rotate(90deg)' }}><AlignJustify size={14} /></span>
-        </button>
-        <button className="bt-prop-btn" title="Arc Text" disabled>
-          <span style={{ fontSize: 10 }}>ABC</span>
+          <AlignJustify size={18} />
         </button>
       </div>
 
@@ -314,16 +405,16 @@ export default function PropertyBar() {
           )}
           <div className="bt-prop-sep" />
           <button className={`bt-prop-btn${selectedEl.locked ? ' active' : ''}`} onClick={() => update({ locked: !selectedEl.locked })} title="Lock">
-            {selectedEl.locked ? <Lock size={13} color="#e59324" /> : <Unlock size={13} />}
+            {selectedEl.locked ? <Lock size={16} color="#e59324" /> : <Unlock size={16} />}
           </button>
           <button className="bt-prop-btn" onClick={() => updateElementAndSave(selectedEl.id, { visible: !selectedEl.visible })} title="Visibility">
-            {selectedEl.visible !== false ? <Eye size={13} /> : <EyeOff size={13} />}
+            {selectedEl.visible !== false ? <Eye size={16} /> : <EyeOff size={16} />}
           </button>
           <button className="bt-prop-btn" onClick={() => duplicateElement(selectedEl.id)} title="Duplicate">
-            <Copy size={13} />
+            <Copy size={16} />
           </button>
           <button className="bt-prop-btn danger" onClick={() => deleteElement(selectedEl.id)} title="Delete">
-            <Trash2 size={13} />
+            <Trash2 size={16} />
           </button>
         </div>
       )}
@@ -331,22 +422,155 @@ export default function PropertyBar() {
       {/* Group 8: Multi-selection Tools */}
       {selectedIds.length > 1 && (
         <div className="bt-toolbar-group">
-          <div className="bt-toolbar-handle" />
-          <button className="bt-prop-btn" onClick={() => matchSize('width')} title="Match Width"><Maximize size={13} /></button>
-          <button className="bt-prop-btn" onClick={() => matchSize('height')} title="Match Height"><Maximize size={13} style={{ transform: 'rotate(90deg)' }} /></button>
+          <button className="bt-prop-btn" onClick={() => matchSize('width')} title="Match Width"><Maximize size={18} /></button>
+          <button className="bt-prop-btn" onClick={() => matchSize('height')} title="Match Height"><Maximize size={18} style={{ transform: 'rotate(90deg)' }} /></button>
           <div className="bt-prop-sep" />
-          <button className="bt-prop-btn" onClick={() => alignElements('left')} title="Align Left"><AlignLeft size={13} /></button>
-          <button className="bt-prop-btn" onClick={() => alignElements('center')} title="Align Horizontal Center"><AlignCenter size={13} /></button>
-          <button className="bt-prop-btn" onClick={() => alignElements('right')} title="Align Right"><AlignRight size={13} /></button>
+          <button className="bt-prop-btn" onClick={() => alignElements('left')} title="Align Left"><AlignLeft size={18} /></button>
+          <button className="bt-prop-btn" onClick={() => alignElements('center')} title="Align Horizontal Center"><AlignCenter size={18} /></button>
+          <button className="bt-prop-btn" onClick={() => alignElements('right')} title="Align Right"><AlignRight size={18} /></button>
           <div className="bt-prop-sep" />
-          <button className="bt-prop-btn" onClick={() => alignElements('top')} title="Align Top"><AlignVerticalJustifyStart size={13} /></button>
-          <button className="bt-prop-btn" onClick={() => alignElements('middle')} title="Align Vertical Middle"><AlignVerticalJustifyCenter size={13} /></button>
-          <button className="bt-prop-btn" onClick={() => alignElements('bottom')} title="Align Bottom"><AlignVerticalJustifyEnd size={13} /></button>
-          <div className="bt-prop-sep" />
-          <button className="bt-prop-btn danger" onClick={() => deleteElement(selectedIds)} title="Delete Selected">
-            <Trash2 size={13} />
-          </button>
+          <button className="bt-prop-btn" onClick={() => alignElements('top')} title="Align Top"><AlignVerticalJustifyStart size={18} /></button>
+          <button className="bt-prop-btn" onClick={() => alignElements('middle')} title="Align Vertical Middle"><AlignVerticalJustifyCenter size={18} /></button>
+          <button className="bt-prop-btn" onClick={() => alignElements('bottom')} title="Align Bottom"><AlignVerticalJustifyEnd size={18} /></button>
         </div>
+      )}
+    </div>
+  );
+}
+
+function BarcodeFormatSelect({ value, onChange }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    const handleOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
+  const IconBarcode1D = () => (
+     <svg width="16" height="12" viewBox="0 0 16 12" fill="none" style={{ marginRight: 6 }}>
+        <rect x="0" y="0" width="2" height="12" fill="#333" />
+        <rect x="3" y="0" width="1" height="12" fill="#333" />
+        <rect x="5" y="0" width="3" height="12" fill="#333" />
+        <rect x="9" y="0" width="1" height="12" fill="#333" />
+        <rect x="11" y="0" width="2" height="12" fill="#333" />
+        <rect x="14" y="0" width="2" height="12" fill="#333" />
+     </svg>
+  );
+
+  const IconBarcode2D = () => (
+     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ marginRight: 10, marginLeft: 2 }}>
+        <rect x="0" y="0" width="5" height="5" fill="#333" />
+        <rect x="7" y="0" width="5" height="5" fill="#333" />
+        <rect x="0" y="7" width="5" height="5" fill="#333" />
+        <rect x="7" y="7" width="2" height="2" fill="#333" />
+        <rect x="10" y="7" width="2" height="2" fill="#333" />
+        <rect x="7" y="10" width="2" height="2" fill="#333" />
+        <rect x="10" y="10" width="2" height="2" fill="#333" />
+        <rect x="1" y="1" width="3" height="3" fill="#fff" />
+        <rect x="8" y="1" width="3" height="3" fill="#fff" />
+        <rect x="1" y="8" width="3" height="3" fill="#fff" />
+        <rect x="2" y="2" width="1" height="1" fill="#333" />
+        <rect x="9" y="2" width="1" height="1" fill="#333" />
+        <rect x="2" y="9" width="1" height="1" fill="#333" />
+     </svg>
+  );
+
+  const formats1D = [
+     { id: 'CODE128', label: 'Code 128' },
+     { id: 'EAN13', label: 'EAN-13' },
+     { id: 'UPC', label: 'UPC-A' },
+     { id: 'CODE39', label: 'Code 39' },
+     { id: 'EAN8', label: 'EAN-8' },
+     { id: 'CODE93', label: 'Code 93' },
+     { id: 'ITF', label: 'ITF' }
+  ];
+
+  const currentLabel = formats1D.find(f => f.id === value)?.label || value;
+
+  return (
+    <div ref={ref} style={{ position: 'relative', width: 140 }}>
+      <button 
+         className="bt-font-select" 
+         style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 6px', height: 24, cursor: 'pointer', textAlign: 'left', background: '#fff' }}
+         onClick={() => setOpen(!open)}
+      >
+         <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
+             <IconBarcode1D />
+             <span style={{ fontSize: 12, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{currentLabel}</span>
+         </div>
+         <svg width="8" height="6" viewBox="0 0 10 5" fill="none"><path d="M0 0L5 5L10 0H0Z" fill="#333"/></svg>
+      </button>
+      
+      {open && (
+         <div style={{
+            position: 'absolute', top: '100%', left: 0, width: 220,
+            background: '#f9f9f9', border: '1px solid #ccc', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            zIndex: 9999, maxHeight: 400, overflowY: 'auto', paddingTop: 4, paddingBottom: 4
+         }}>
+             <div style={{ padding: '4px 8px', fontSize: 11, fontWeight: 'bold', color: '#666', background: '#e1e1e1' }}>General Purpose Barcodes</div>
+             {formats1D.map(f => (
+                 <div 
+                    key={f.id}
+                    style={{ padding: '6px 8px', display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: 12, background: value === f.id ? '#e1f0fa' : 'transparent', justifyContent: 'space-between' }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#ddefe9'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = value === f.id ? '#e1f0fa' : 'transparent'}
+                    onClick={() => { onChange(f.id); setOpen(false); }}
+                 >
+                     <div style={{ display: 'flex', alignItems: 'center' }}>
+                         <IconBarcode1D />
+                     </div>
+                     <div style={{ flex: 1, textAlign: 'right', paddingRight: 4, fontFamily: 'Segoe UI, Arial' }}>
+                         {f.label}
+                     </div>
+                 </div>
+             ))}
+             
+             <div style={{ padding: '4px 8px', fontSize: 11, fontWeight: 'bold', color: '#666', background: '#e1e1e1', marginTop: 4 }}>2D Symbologies</div>
+             {/* Read only 2D Symbologies to match UI screenshot exactly, warns users to use Toolbar */}
+             <div 
+                 style={{ padding: '6px 8px', display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: 12, justifyContent: 'space-between' }}
+                 onMouseEnter={e => e.currentTarget.style.backgroundColor = '#ddefe9'}
+                 onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                 onClick={() => { setOpen(false); alert('To add a QR Code, please use the QR Code tool from the left toolbar.'); }}
+             >
+                 <div style={{ display: 'flex', alignItems: 'center' }}>
+                     <IconBarcode2D />
+                 </div>
+                 <div style={{ flex: 1, textAlign: 'right', paddingRight: 4, fontFamily: 'Segoe UI, Arial' }}>
+                     QR Code
+                 </div>
+             </div>
+             <div 
+                 style={{ padding: '6px 8px', display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: 12, justifyContent: 'space-between' }}
+                 onMouseEnter={e => e.currentTarget.style.backgroundColor = '#ddefe9'}
+                 onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                 onClick={() => { setOpen(false); alert('Data Matrix is not currently supported in this version.'); }}
+             >
+                 <div style={{ display: 'flex', alignItems: 'center' }}>
+                     <IconBarcode2D />
+                 </div>
+                 <div style={{ flex: 1, textAlign: 'right', paddingRight: 4, fontFamily: 'Segoe UI, Arial' }}>
+                     Data Matrix
+                 </div>
+             </div>
+             <div 
+                 style={{ padding: '6px 8px', display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: 12, justifyContent: 'space-between' }}
+                 onMouseEnter={e => e.currentTarget.style.backgroundColor = '#ddefe9'}
+                 onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                 onClick={() => { setOpen(false); alert('PDF417 is not currently supported in this version.'); }}
+             >
+                 <div style={{ display: 'flex', alignItems: 'center' }}>
+                     <IconBarcode2D />
+                 </div>
+                 <div style={{ flex: 1, textAlign: 'right', paddingRight: 4, fontFamily: 'Segoe UI, Arial' }}>
+                     PDF417
+                 </div>
+             </div>
+         </div>
       )}
     </div>
   );

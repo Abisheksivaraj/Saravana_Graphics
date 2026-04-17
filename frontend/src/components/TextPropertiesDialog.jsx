@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useDesignStore } from '../store/designStore';
 import { useUIStore, pxToUnit, unitToPx, hexToCmyk, cmykToHex } from '../store/uiStore';
 import './TextPropertiesDialog.css';
+import CmykColorPicker from './CmykColorPicker';
+import NumericInput from './NumericInput';
 
 import { FONTS, FONT_STYLES, POINT_SIZES } from '../constants/fonts';
 
@@ -10,6 +12,8 @@ export default function TextPropertiesDialog({ elementId, onClose }) {
     const { measurementUnit } = useUIStore();
     const el = elements.find(e => e.id === elementId);
     const [activeTab, setActiveTab] = useState('font');
+    const [fontSearch, setFontSearch] = useState(el.fontFamily || 'Arial');
+    const [colorPickerOpen, setColorPickerOpen] = useState(false);
 
     if (!el) return null;
 
@@ -29,13 +33,18 @@ export default function TextPropertiesDialog({ elementId, onClose }) {
             <div className="bt-field-row" style={{ alignItems: 'flex-start' }}>
                 <label style={{ width: 100 }}>{label}:</label>
                 <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                        <input 
-                            type="color" 
-                            style={{ width: 40, height: 20, padding: 0 }}
-                            value={color === 'transparent' ? '#ffffff' : color}
-                            onChange={e => update({ [colorKey]: e.target.value.toUpperCase() })}
+                    <div className="flex items-center gap-2" style={{ position: 'relative' }}>
+                        <button 
+                            style={{ width: 40, height: 20, padding: 0, backgroundColor: color === 'transparent' ? '#ffffff' : color, border: '1px solid #999', cursor: 'pointer' }}
+                            onClick={() => setColorPickerOpen(!colorPickerOpen)}
                         />
+                        {colorPickerOpen && (
+                            <CmykColorPicker 
+                                color={color} 
+                                onChange={newColor => update({ [colorKey]: newColor.toUpperCase() })} 
+                                onClose={() => setColorPickerOpen(false)} 
+                            />
+                        )}
                         <select 
                             className="bt-toolbar-select font-family-select"
                             value={el.fontFamily || 'Arial'}
@@ -55,20 +64,7 @@ export default function TextPropertiesDialog({ elementId, onClose }) {
                             ))}
                         </select>
                     </div>
-                    <div className="bt-cmyk-grid">
-                        {['c', 'm', 'y', 'k'].map(k => (
-                            <div key={k} className="bt-cmyk-item">
-                                <span className="bt-cmyk-label">{k}</span>
-                                <input 
-                                    type="number" 
-                                    className="bt-cmyk-input" 
-                                    value={cmyk[k]} 
-                                    min="0" max="100"
-                                    onChange={e => handleCmyk(k, e.target.value)}
-                                />
-                            </div>
-                        ))}
-                    </div>
+
                     <div className="bt-field-row mt-1" style={{ gap: 8 }}>
                         <span style={{ fontSize: 10, color: '#666' }}>Transparency:</span>
                         <input 
@@ -125,10 +121,23 @@ export default function TextPropertiesDialog({ elementId, onClose }) {
                                 <div className="bt-font-grid">
                                     <div className="bt-font-col" style={{ width: 220 }}>
                                         <label className="bt-label-sm">Typeface:</label>
-                                        <input type="text" className="bt-win-input w-full mb-1" value={el.fontFamily || 'Arial'} readOnly />
+                                        <input 
+                                            type="text" 
+                                            className="bt-win-input w-full mb-1" 
+                                            value={fontSearch} 
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setFontSearch(val);
+                                                // auto-select if exact match
+                                                const match = FONTS.find(f => f.name.toLowerCase() === val.toLowerCase());
+                                                if (match) update({ fontFamily: match.name });
+                                            }}
+                                            onFocus={(e) => e.target.select()}
+                                            placeholder="Search fonts..."
+                                        />
                                         <div className="bt-list-box" style={{ height: 200 }}>
-                                            {FONTS.map(f => (
-                                                <div key={f.name} className={`bt-list-item bt-font-item ${el.fontFamily === f.name ? 'active' : ''}`} onClick={() => update({ fontFamily: f.name })}>
+                                            {FONTS.filter(f => !fontSearch || f.name.toLowerCase().includes(fontSearch.toLowerCase())).map(f => (
+                                                <div key={f.name} className={`bt-list-item bt-font-item ${el.fontFamily === f.name ? 'active' : ''}`} onClick={() => { update({ fontFamily: f.name }); setFontSearch(f.name); }}>
                                                     <span className="bt-font-icon">{f.type}</span>
                                                     <span className="bt-font-name" style={{ fontFamily: f.name }}>{f.name}</span>
                                                     {f.sub && <span className="bt-font-sub">{f.sub}</span>}
@@ -151,14 +160,12 @@ export default function TextPropertiesDialog({ elementId, onClose }) {
                                     </div>
                                     <div className="bt-font-col w-20">
                                         <label className="bt-label-sm">Point Size:</label>
-                                        <input 
-                                            type="number" 
+                                        <NumericInput 
                                             className="bt-win-input w-full mb-1" 
-                                            step="0.01"
-                                            min="0"
-                                            max="1000"
-                                            value={pxToUnit(el.fontSize || 16, 'pt').toFixed(2)} 
-                                            onChange={e => update({ fontSize: unitToPx(Number(e.target.value), 'pt') })} 
+                                            value={pxToUnit(el.fontSize || 16, 'pt')} 
+                                            onChange={v => update({ fontSize: unitToPx(v, 'pt') })}
+                                            min={0}
+                                            max={1000}
                                         />
                                         <div className="bt-list-box" style={{ height: 200 }}>
                                             {POINT_SIZES.map(s => (
@@ -269,21 +276,17 @@ export default function TextPropertiesDialog({ elementId, onClose }) {
                                     <legend>Position</legend>
                                     <div className="bt-field-row">
                                         <label>X:</label>
-                                        <input 
-                                            type="number" 
-                                            className="bt-win-input"
-                                            value={Number(pxToUnit(el.x || 0, measurementUnit).toFixed(3))}
-                                            onChange={e => update({ x: unitToPx(Number(e.target.value), measurementUnit) })}
+                                        <NumericInput 
+                                            value={pxToUnit(el.x || 0, measurementUnit)}
+                                            onChange={v => update({ x: unitToPx(v, measurementUnit) })}
                                         />
                                         <span className="unit">{measurementUnit}</span>
                                     </div>
                                     <div className="bt-field-row">
                                         <label>Y:</label>
-                                        <input 
-                                            type="number" 
-                                            className="bt-win-input"
-                                            value={Number(pxToUnit(el.y || 0, measurementUnit).toFixed(3))}
-                                            onChange={e => update({ y: unitToPx(Number(e.target.value), measurementUnit) })}
+                                        <NumericInput 
+                                            value={pxToUnit(el.y || 0, measurementUnit)}
+                                            onChange={v => update({ y: unitToPx(v, measurementUnit) })}
                                         />
                                         <span className="unit">{measurementUnit}</span>
                                     </div>
@@ -292,12 +295,12 @@ export default function TextPropertiesDialog({ elementId, onClose }) {
                                     <legend>Rotation</legend>
                                     <div className="bt-field-row">
                                         <label>Angle:</label>
-                                        <input 
-                                            type="number" 
-                                            className="bt-win-input"
+                                        <NumericInput 
                                             style={{ width: 60 }}
-                                            value={Math.round(el.rotation || 0)}
-                                            onChange={e => update({ rotation: Number(e.target.value) })}
+                                            value={el.rotation || 0}
+                                            onChange={v => update({ rotation: v })}
+                                            min={-360}
+                                            max={360}
                                         />
                                         <span className="unit">°</span>
                                     </div>
@@ -329,7 +332,8 @@ export default function TextPropertiesDialog({ elementId, onClose }) {
                 </div>
 
                 <div className="bt-dialog-footer">
-                    <button className="bt-win-btn primary" onClick={onClose}>Close</button>
+                    <button className="bt-win-btn primary" onClick={onClose}>Apply</button>
+                    <button className="bt-win-btn" onClick={onClose}>Close</button>
                     <button className="bt-win-btn" disabled>Help</button>
                 </div>
             </div>

@@ -10,7 +10,7 @@
   flex-shrink: 0;
   font-family: var(--font-main);
   font-size: 12px;
-  overflow: hidden;
+  overflow: visible;
   user-select: none;
 }
 
@@ -55,6 +55,15 @@
   text-align: center;
   color: #1a1a1a;
   border-radius: 1px;
+}
+
+.bt-prop-input::-webkit-outer-spin-button,
+.bt-prop-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.bt-prop-input[type=number] {
+  -moz-appearance: textfield;
 }
 
 .bt-prop-btn {

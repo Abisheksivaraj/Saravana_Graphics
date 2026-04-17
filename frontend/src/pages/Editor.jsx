@@ -289,7 +289,11 @@ export default function Editor() {
         navigate(`/editor/${res.data.design._id}`, { replace: true });
       }
       setDirty(false);
-      if (!silent) { toast.success('Design saved!'); setShowSaveModal(false); }
+      if (!silent) { 
+        toast.success('Design saved!'); 
+        setShowSaveModal(false); 
+        navigate('/dashboard');
+      }
     } catch { if (!silent) toast.error('Failed to save'); }
     finally { setIsSaving(false); }
   };
@@ -337,6 +341,9 @@ export default function Editor() {
       case 'exit': navigate('/dashboard'); break;
       case 'undo': undo(); break;
       case 'redo': redo(); break;
+      case 'cut': ds.cut(); break;
+      case 'copy': ds.copy(); break;
+      case 'paste': ds.paste(); break;
       case 'delete': if (selectedIds.length) deleteElement(selectedIds); break;
       case 'zoom-in': setZoom(Math.min(8, zoom + 0.25)); break;
       case 'zoom-out': setZoom(Math.max(0.1, zoom - 0.25)); break;
@@ -381,7 +388,10 @@ export default function Editor() {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSave(false); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
-      if ((e.ctrlKey || e.metaKey) && e.key === '=') { e.preventDefault(); setZoom(Math.min(8, zoom + 0.1)); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') { e.preventDefault(); ds.copy(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'x') { e.preventDefault(); ds.cut(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') { e.preventDefault(); ds.paste(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(Math.min(8, zoom + 0.1)); }
       if ((e.ctrlKey || e.metaKey) && e.key === '-') { e.preventDefault(); setZoom(Math.max(0.1, zoom - 0.1)); }
       if (e.key === 'Escape') {
         if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
@@ -403,12 +413,23 @@ export default function Editor() {
           ds.deselectAll();
           return;
         }
-
-        navigate('/dashboard');
       }
     };
+    
+    const handleWheel = (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        setZoom(Math.min(8, Math.max(0.1, zoom + delta)));
+      }
+    };
+
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      window.removeEventListener('keydown', handler);
+      window.removeEventListener('wheel', handleWheel);
+    };
   }, [zoom]);
 
   const handleRotate = (deg) => {
@@ -463,6 +484,14 @@ export default function Editor() {
           </span>
         )}
         <div style={{ flex: 1 }} />
+        <button 
+          className={`bt-titlebar-save-btn${isDirty ? ' dirty' : ''}`} 
+          onClick={() => handleSave(false)}
+          disabled={isSaving}
+          title="Save Design (Ctrl+S)"
+        >
+          {isSaving ? 'Saving...' : 'Save'}
+        </button>
         <button className="bt-titlebar-action" onClick={() => navigate('/dashboard')} title="Back to Dashboard">
           ← Dashboard
         </button>

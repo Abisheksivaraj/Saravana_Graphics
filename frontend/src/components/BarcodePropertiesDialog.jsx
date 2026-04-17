@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useDesignStore } from '../store/designStore';
 import { useUIStore, pxToUnit, unitToPx, hexToCmyk, cmykToHex } from '../store/uiStore';
 import './BarcodePropertiesDialog.css';
+import CmykColorPicker from './CmykColorPicker';
 
 const CATEGORIES = [
     { id: 'symbology', label: 'Symbology and Size', icon: '📊' },
@@ -10,14 +11,107 @@ const CATEGORIES = [
     { id: 'sources', label: 'Enter Value', icon: '💾' }
 ];
 
-const FONTS = ['Arial', 'Calibri', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana', 'Inter', 'Outfit'];
+const FONTS = ['Arial', 'Calibri', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana', 'Inter', 'Outfit', 'OCR-A', 'OCR-B', 'OCR A Extended', 'OCR-B 10 BT'];
 const BARCODE_FORMATS = ['CODE128', 'CODE39', 'EAN13', 'EAN8', 'UPC', 'ITF14'];
+
+function TypeableSelect({ value, options, onChange, style = {}, className, fallback = '', type = 'text', width }) {
+  const [local, setLocal] = useState(String(value || fallback));
+  const [open, setOpen] = useState(false);
+  const [isFiltering, setIsFiltering] = useState(false);
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    setLocal(String(value || fallback));
+    setIsFiltering(false);
+  }, [value, fallback]);
+
+  React.useEffect(() => {
+    const handleOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
+  const commit = (val) => {
+    setLocal(String(val));
+    setOpen(false);
+    if (type === 'number') {
+      const n = parseFloat(val);
+      if (!isNaN(n)) onChange(n);
+    } else {
+      onChange(val);
+    }
+  };
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'flex', width: width || '100%' }}>
+      <input
+        type={type === 'number' ? 'text' : type}
+        className={className}
+        style={{ ...style, flex: 1, margin: 0, width: '100%' }}
+        value={local}
+        onFocus={() => { setOpen(true); setIsFiltering(false); }}
+        onClick={() => { setOpen(true); setIsFiltering(false); }}
+        onChange={(e) => {
+          setLocal(e.target.value);
+          setOpen(true);
+          setIsFiltering(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            commit(local);
+          }
+        }}
+        onBlur={() => {
+           setTimeout(() => {
+             if (local.trim() === '' || (type==='number' && isNaN(parseFloat(local)))) {
+                setLocal(String(value || fallback));
+                onChange(value || fallback);
+             } else {
+                commit(local);
+             }
+           }, 150);
+        }}
+      />
+      <button 
+        style={{ width: 16, border: '1px solid #a0b8d8', borderLeft: 'none', background: '#e1f0fa', cursor: 'pointer', padding: 0 }}
+        onClick={() => { setOpen(!open); setIsFiltering(false); }}
+        tabIndex={-1}
+      >
+        <svg width="8" height="6" viewBox="0 0 10 5" fill="none" style={{ margin: 'auto' }}>
+          <path d="M0 0L5 5L10 0H0Z" fill="#333" />
+        </svg>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, width: '100%', 
+          maxHeight: 200, overflowY: 'auto', background: '#fff', border: '1px solid #a0b8d8', 
+          zIndex: 9999, boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+        }}>
+          {options.filter(o => !isFiltering || String(o).toLowerCase().includes(local.toLowerCase())).map(opt => (
+            <div 
+              key={opt}
+              style={{ padding: '2px 6px', fontSize: 12, cursor: 'pointer', fontFamily: type==='text' ? opt : 'inherit' }}
+              onMouseDown={(e) => { e.preventDefault(); commit(opt); }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0078d7'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function BarcodePropertiesDialog({ elementId, onClose }) {
     const { elements, updateElementAndSave } = useDesignStore();
     const { measurementUnit } = useUIStore();
     const el = elements.find(e => e.id === elementId);
     const [activeTab, setActiveTab] = useState('symbology');
+    const [colorPickerOpen, setColorPickerOpen] = useState(false);
 
     if (!el) return null;
 
@@ -89,41 +183,24 @@ export default function BarcodePropertiesDialog({ elementId, onClose }) {
                                 <div className="bt-field-row mt-4" style={{ alignItems: 'flex-start' }}>
                                     <label>Bar Color:</label>
                                     <div className="flex flex-col gap-2">
-                                        <div className="flex items-center gap-2">
-                                            <input 
-                                                type="color" 
-                                                style={{ width: 40, height: 24, padding: 0 }}
-                                                value={el.fill || '#000000'}
-                                                onChange={e => update({ fill: e.target.value.toUpperCase() })}
+                                        <div className="flex items-center gap-2" style={{ position: 'relative' }}>
+                                            <button 
+                                                style={{ width: 40, height: 24, padding: 0, backgroundColor: el.fill || '#000000', border: '1px solid #999', cursor: 'pointer' }}
+                                                onClick={() => setColorPickerOpen(!colorPickerOpen)}
                                             />
+                                            {colorPickerOpen && (
+                                                <CmykColorPicker 
+                                                    color={el.fill} 
+                                                    onChange={newColor => update({ fill: newColor.toUpperCase() })} 
+                                                    onClose={() => setColorPickerOpen(false)} 
+                                                />
+                                            )}
                                             <input 
                                                 className="bt-win-input"
                                                 style={{ width: 80, fontSize: 11, fontFamily: 'monospace' }}
                                                 value={el.fill?.toUpperCase() || '#000000'}
                                                 onChange={e => update({ fill: e.target.value.toUpperCase() })}
                                             />
-                                        </div>
-                                        <div className="grid grid-cols-4 gap-1">
-                                            {(() => {
-                                                const cmyk = hexToCmyk(el.fill || '#000000');
-                                                const handleCmyk = (k, v) => {
-                                                    const nc = { ...cmyk, [k]: Number(v) };
-                                                    update({ fill: cmykToHex(nc.c, nc.m, nc.y, nc.k) });
-                                                };
-                                                return ['c', 'm', 'y', 'k'].map(k => (
-                                                    <div key={k} className="flex flex-col items-center">
-                                                        <span className="text-[9px] font-bold uppercase">{k}</span>
-                                                        <input 
-                                                            type="number" 
-                                                            className="bt-win-input" 
-                                                            style={{ width: 35, height: 18, textAlign: 'center', fontSize: 10, padding: 0 }}
-                                                            value={cmyk[k]} 
-                                                            min="0" max="100"
-                                                            onChange={e => handleCmyk(k, e.target.value)}
-                                                        />
-                                                    </div>
-                                                ));
-                                            })()}
                                         </div>
                                     </div>
                                 </div>
@@ -155,19 +232,26 @@ export default function BarcodePropertiesDialog({ elementId, onClose }) {
                                 <legend>Number Font</legend>
                                 <div className="bt-field-row">
                                     <label>Family:</label>
-                                    <select 
-                                        value={el.fontFamily || 'Arial'} 
-                                        onChange={e => update({ fontFamily: e.target.value })}
-                                    >
-                                        {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
-                                    </select>
+                                    <TypeableSelect
+                                        options={FONTS}
+                                        className="bt-win-input"
+                                        style={{ width: '100%' }}
+                                        value={el.fontFamily} 
+                                        fallback="Arial"
+                                        onChange={v => update({ fontFamily: v })}
+                                    />
                                 </div>
                                 <div className="bt-field-row">
                                     <label>Size:</label>
-                                    <input 
-                                        type="number" 
+                                    <TypeableSelect 
+                                        options={[6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72]}
+                                        type="number"
+                                        className="bt-win-input"
+                                        style={{ width: '100%' }}
+                                        width={60}
                                         value={Number(pxToUnit(el.fontSize || 16, 'pt').toFixed(1))}
-                                        onChange={e => update({ fontSize: unitToPx(Number(e.target.value), 'pt') })}
+                                        fallback={12}
+                                        onChange={v => update({ fontSize: unitToPx(v, 'pt') })}
                                     />
                                     <span className="unit">pt</span>
                                 </div>
@@ -205,7 +289,8 @@ export default function BarcodePropertiesDialog({ elementId, onClose }) {
                 </div>
 
                 <div className="bt-dialog-footer">
-                    <button className="bt-win-btn primary" onClick={onClose}>Close</button>
+                    <button className="bt-win-btn primary" onClick={onClose}>Apply</button>
+                    <button className="bt-win-btn" onClick={onClose}>Close</button>
                     <button className="bt-win-btn" disabled>Help</button>
                 </div>
             </div>

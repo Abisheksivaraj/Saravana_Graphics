@@ -57,6 +57,10 @@ export const FONTS = [
     { name: '@Malgun Gothic', type: 'O', sub: 'Korean', sample: '맑은 고딕' },
     { name: '@Meiryo', type: 'O', sub: 'Japanese', sample: 'メイリオ' },
     { name: '@Yu Gothic', type: 'O', sub: 'Japanese', sample: '游ゴシック' },
+    { name: 'OCR-A', type: 'O' },
+    { name: 'OCR-B', type: 'O' },
+    { name: 'OCR A Extended', type: 'O' },
+    { name: 'OCR-B 10 BT', type: 'O' },
 ];
 
 export const FONT_STYLES = ['Regular', 'Italic', 'Bold', 'Bold Italic'];

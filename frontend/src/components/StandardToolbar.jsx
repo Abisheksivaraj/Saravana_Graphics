@@ -133,37 +133,32 @@ export default function StandardToolbar({ onAction, onImageUpload, showGrid }) {
       {/* File Group */}
       <div className="bt-toolbar-group">
         <div className="bt-toolbar-handle" />
-        <ToolBtn icon={<FilePlus size={16} color="#0078d7" />} onClick={() => onAction?.('new')} title="New (Ctrl+N)" />
-        <ToolBtn icon={<FolderOpen size={16} color="#e8b01a" />} onClick={() => onAction?.('open')} title="Open (Ctrl+O)" />
-        <ToolBtn icon={<Save size={16} color="#2a5a9b" />} onClick={() => onAction?.('save')} title="Save (Ctrl+S)" />
-        <ToolBtn icon={<FileSpreadsheet size={16} color="#217346" />} onClick={() => excelRef.current?.click()} title="Import Data" />
-        <ToolBtn icon={<Printer size={16} color="#444" />} onClick={() => onAction?.('print')} title="Print (Ctrl+P)" />
-        <ToolBtn icon={<Eye size={16} color="#555" />} onClick={() => onAction?.('fit')} title="Print Preview" />
-        <ToolBtn icon={<Maximize2 size={16} color="#555" />} onClick={() => onAction?.('fit')} title="Zoom to Fit" />
+        <ToolBtn icon={<FilePlus size={20} color="#0078d7" />} onClick={() => onAction?.('new')} title="New" />
+        <ToolBtn icon={<Printer size={20} color="#444" />} onClick={() => onAction?.('print')} title="Print" />
       </div>
 
       {/* Edit Group */}
       <div className="bt-toolbar-group">
         <div className="bt-toolbar-handle" />
-        <ToolBtn icon={<Scissors size={16} color="#c00" />} onClick={() => onAction?.('cut')} title="Cut (Ctrl+X)" />
-        <ToolBtn icon={<Copy size={16} color="#555" />} onClick={() => onAction?.('copy')} title="Copy (Ctrl+C)" />
-        <ToolBtn icon={<Clipboard size={16} color="#855" />} onClick={() => onAction?.('paste')} title="Paste (Ctrl+V)" />
+        <ToolBtn icon={<Scissors size={20} color="#c00" />} onClick={() => onAction?.('cut')} title="Cut" />
+        <ToolBtn icon={<Copy size={20} color="#555" />} onClick={() => onAction?.('copy')} title="Copy" />
+        <ToolBtn icon={<Clipboard size={20} color="#855" />} onClick={() => onAction?.('paste')} title="Paste" />
       </div>
 
       {/* History Group */}
       <div className="bt-toolbar-group">
         <div className="bt-toolbar-handle" />
         <ToolBtn
-          icon={<Undo2 size={16} color="#333" />}
+          icon={<Undo2 size={20} color="#333" />}
           onClick={undo}
           disabled={historyIndex <= 0}
-          title="Undo (Ctrl+Z)"
+          title="Undo"
         />
         <ToolBtn
-          icon={<Redo2 size={16} color="#333" />}
+          icon={<Redo2 size={20} color="#333" />}
           onClick={redo}
           disabled={historyIndex >= history.length - 1}
-          title="Redo (Ctrl+Y)"
+          title="Redo"
         />
       </div>
 
@@ -171,50 +166,38 @@ export default function StandardToolbar({ onAction, onImageUpload, showGrid }) {
       <div className="bt-toolbar-group">
         <div className="bt-toolbar-handle" />
         <ToolBtn
-          icon={<MousePointer2 size={16} color="#ff9900" />}
+          icon={<MousePointer2 size={20} color="#ff9900" />}
           active={isActive('pick')}
           onClick={() => setSelectedTool('pick')}
-          title="Select (V)"
+          title="Selection Tool"
         />
         <div className="bt-tb-dropdown-wrap" style={{ position: 'relative' }}>
           <ToolBtn
-            icon={<PremiumTextIcon />}
+            icon={<PremiumTextIcon size={26} />}
             active={isActive('text')}
             onClick={() => setSelectedTool('text')}
-            title="Text (T)"
+            title="Text Tool"
             hasArrow={true}
           />
-          {/* Dropdown toggle specifically for the menu */}
-          <div 
-            className="bt-tb-btn-dropdown-trigger" 
-            onClick={() => toggleTextSelector()}
-          />
-          
+          <div className="bt-tb-btn-dropdown-trigger" onClick={() => toggleTextSelector()} />
           {showTextSelector && (
-            <div style={{ position: 'absolute', top: 28, left: 0, zIndex: 2000 }}>
-              <TextObjectSelector 
-                onSelect={setSelectedTool} 
-                onClose={() => setShowTextSelector(false)} 
-              />
+            <div style={{ position: 'absolute', top: 32, left: 0, zIndex: 2000 }}>
+              <TextObjectSelector onSelect={setSelectedTool} onClose={() => setShowTextSelector(false)} />
             </div>
           )}
         </div>
+        
         <div className="bt-tb-dropdown-wrap" style={{ position: 'relative' }}>
           <ToolBtn
-            icon={<PremiumBarcodeIcon />}
+            icon={<PremiumBarcodeIcon size={24} />}
             active={selectedTool && selectedTool.startsWith('barcode')}
             onClick={() => setSelectedTool('barcode')}
-            title="Barcode (B)"
+            title="Barcode Tool"
             hasArrow={true}
           />
-          {/* Invisible trigger over the chevron area */}
-          <div 
-            className="bt-tb-btn-dropdown-trigger" 
-            onClick={() => toggleBarcodeSelector()}
-          />
-          
+          <div className="bt-tb-btn-dropdown-trigger" onClick={() => toggleBarcodeSelector()} />
           {showBarcodeSelector && (
-            <div style={{ position: 'absolute', top: 28, left: 0, zIndex: 2000 }}>
+            <div style={{ position: 'absolute', top: 32, left: 0, zIndex: 2000 }}>
               <BarcodeObjectSelector 
                 onSelect={(tool) => { setSelectedTool(tool); setShowBarcodeSelector(false); }} 
                 onClose={() => setShowBarcodeSelector(false)} 
@@ -222,78 +205,53 @@ export default function StandardToolbar({ onAction, onImageUpload, showGrid }) {
             </div>
           )}
         </div>
-        <ToolBtn icon={<Zap size={16} color="#000" />} onClick={() => {}} title="RFID / Signal" />
-        <ToolBtn
-          icon={<Minus size={16} color="#000" />}
-          active={isActive('draw-line')}
-          onClick={() => setSelectedTool('draw-line')}
-          title="Line"
-        />
 
-        {/* Virtual Shapes Menu */}
         <div className="bt-tb-dropdown-wrap" style={{ position: 'relative' }}>
           <ToolBtn
-            icon={<CustomShapesIcon size={18} />}
-            active={['draw-rect', 'draw-circle', 'draw-star', 'draw-triangle', 'draw-diamond', 'draw-hexagon', 'draw-octagon', 'draw-arrow-right', 'draw-arrow-bidir'].some(t => isActive(t))}
-            onClick={() => {
-              if (selectedTool.startsWith('draw-')) {
-                setShowShapeSelector(!showShapeSelector);
-              } else {
-                setSelectedTool('draw-rect');
-              }
-            }}
-            title="Shapes"
+            icon={<CustomShapesIcon size={24} />}
+            active={['draw-rect', 'draw-rect-rounded', 'draw-circle', 'draw-star', 'draw-triangle'].some(t => isActive(t))}
+            onClick={() => setSelectedTool('draw-rect')}
+            title="Shape Tools"
           />
-          <button 
-            className="bt-tb-mini-btn" 
-            onClick={() => toggleShapeSelector()}
-          >
-            <ChevronDown size={10} />
-          </button>
-          
+          <button className="bt-tb-mini-btn" onClick={() => toggleShapeSelector()}><ChevronDown size={10} /></button>
           {showShapeSelector && (
-            <div style={{ position: 'absolute', top: 28, left: 0, zIndex: 2000 }}>
-              <VirtualShapeSelector 
-                onSelect={setSelectedTool} 
-                onClose={() => setShowShapeSelector(false)} 
-              />
-            </div>
+             <div style={{ position: 'absolute', top: 32, left: 0, zIndex: 2000 }}>
+               <VirtualShapeSelector onSelect={setSelectedTool} onClose={() => setShowShapeSelector(false)} />
+             </div>
           )}
         </div>
 
         <ToolBtn
-          icon={<ImageIcon size={16} color="#c44" />}
-          onClick={() => imageRef.current?.click()}
-          title="Insert Picture"
+          icon={<Minus size={22} color="#000" />}
+          active={isActive('draw-line')}
+          onClick={() => setSelectedTool('draw-line')}
+          title="Line Tool"
         />
         <ToolBtn
-          icon={<QrCode size={16} color="#000" />}
-          active={isActive('qrcode')}
-          onClick={() => setSelectedTool('qrcode')}
-          title="QR Code"
+          icon={<ImageIcon size={22} color="#c44" />}
+          onClick={() => imageRef.current?.click()}
+          title="Insert Image"
         />
-        <ToolBtn icon={<Box size={16} color="#555" />} onClick={() => {}} title="Layout" />
-        <ToolBtn icon={<Camera size={16} color="#555" />} onClick={() => {}} title="Scan / Camera" />
       </div>
 
       {/* View/Zoom Group */}
       <div className="bt-toolbar-group">
         <div className="bt-toolbar-handle" />
         <ToolBtn
-          icon={<ZoomIn size={16} color="#333" />}
+          icon={<ZoomIn size={20} color="#333" />}
           onClick={() => setZoom(Math.min(8, zoom + 0.25))}
-          title="Zoom In (Ctrl++)"
+          title="Zoom In"
         />
         <ToolBtn
-          icon={<ZoomOut size={16} color="#333" />}
+          icon={<ZoomOut size={20} color="#333" />}
           onClick={() => setZoom(Math.max(0.1, zoom - 0.25))}
-          title="Zoom Out (Ctrl+-)"
+          title="Zoom Out"
         />
         <ToolBtn
-          icon={<Grid size={16} color="#0078d7" />}
+          icon={<Grid size={20} color="#0078d7" />}
           active={showGrid}
           onClick={() => onAction?.('grid')}
-          title="Toggle Grid"
+          title="Show Grid"
         />
       </div>
 

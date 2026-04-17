@@ -1,6 +1,5 @@
 /* Auth.css - Premium Studio Aesthetic */
 :root {
-:root {
     --auth-bg: #ffffff;
     --auth-primary: #f57c00;
     --auth-secondary: #ff9800;
@@ -9,7 +8,6 @@
     --auth-text-dim: #666666;
     --auth-card-bg: #ffffff;
     --auth-input-bg: #ffffff;
-}
 }
 
 .auth-page {
@@ -278,8 +276,9 @@
 .auth-btn {
     width: 100%;
     padding: 16px;
-    background: linear-gradient(135deg, var(--auth-primary), var(--auth-secondary));
-    color: white;
+    background: #f57c00; /* Fallback */
+    background: linear-gradient(135deg, #f57c00 0%, #ff9800 100%) !important;
+    color: #ffffff !important;
     border: none;
     border-radius: 14px;
     font-size: 15px;
@@ -293,12 +292,12 @@
     gap: 10px;
     transition: all 0.3s;
     margin-top: 8px;
-    box-shadow: 0 10px 20px -5px rgba(124, 58, 237, 0.4);
+    box-shadow: 0 10px 20px -5px rgba(245, 124, 0, 0.4);
 }
 
 .auth-btn:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 15px 30px -5px rgba(124, 58, 237, 0.5);
+    box-shadow: 0 15px 30px -5px rgba(245, 124, 0, 0.5);
     filter: brightness(1.1);
 }
 
