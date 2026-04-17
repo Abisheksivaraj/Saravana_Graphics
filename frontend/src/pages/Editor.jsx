@@ -17,6 +17,10 @@ import TextPropertiesDialog from '../components/TextPropertiesDialog';
 import LinePropertiesDialog from '../components/LinePropertiesDialog';
 import NewDesignModal from '../components/NewDesignModal';
 import toast from 'react-hot-toast';
+import {
+  AlignLeft, AlignCenter, AlignRight,
+  AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd
+} from 'lucide-react';
 import './Editor.css';
 
 /* ─────────────────── Ruler Components ─────────────────── */
@@ -173,7 +177,7 @@ export default function Editor() {
     setIsSaving, setDirty, addElement, undo, redo, historyIndex, history,
     company, setBackgroundColor, deleteElement,
     bringToFront, sendToBack, bringForward, sendBackward,
-    alignElements,
+    alignElements, distributeElements
   } = useDesignStore();
 
   const [showGrid, setShowGrid] = useState(false);
@@ -385,6 +389,9 @@ export default function Editor() {
   // ── Keyboard shortcuts ──
   useEffect(() => {
     const handler = (e) => {
+      // Allow natural copy/cut/paste/select-all inside text boxes
+      if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+
       if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSave(false); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
@@ -394,8 +401,6 @@ export default function Editor() {
       if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(Math.min(8, zoom + 0.1)); }
       if ((e.ctrlKey || e.metaKey) && e.key === '-') { e.preventDefault(); setZoom(Math.max(0.1, zoom - 0.1)); }
       if (e.key === 'Escape') {
-        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
-        
         if (showSaveModal) {
           setShowSaveModal(false);
           return;
@@ -546,6 +551,50 @@ export default function Editor() {
                 onElementDblClick={handleElementDblClick}
               />
             </div>
+            
+            {selectedIds.length > 1 && (
+              <div style={{
+                position: 'fixed',
+                bottom: 40,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: '#fff',
+                padding: '10px 16px',
+                borderRadius: '8px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                zIndex: 1000
+              }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#333', marginRight: 8, fontFamily: 'Segoe UI, sans-serif' }}>
+                  Align to First Selected:
+                </span>
+                <button className="bt-prop-btn" onClick={() => alignElements('left')} title="Align Left"><AlignLeft size={20} /></button>
+                <button className="bt-prop-btn" onClick={() => alignElements('center')} title="Align Horizontal Center"><AlignCenter size={20} /></button>
+                <button className="bt-prop-btn" onClick={() => alignElements('right')} title="Align Right"><AlignRight size={20} /></button>
+                <div className="bt-prop-sep" style={{ height: 24 }} />
+                <button className="bt-prop-btn" onClick={() => alignElements('top')} title="Align Top"><AlignVerticalJustifyStart size={20} /></button>
+                <button className="bt-prop-btn" onClick={() => alignElements('middle')} title="Align Vertical Middle"><AlignVerticalJustifyCenter size={20} /></button>
+                <button className="bt-prop-btn" onClick={() => alignElements('bottom')} title="Align Bottom"><AlignVerticalJustifyEnd size={20} /></button>
+
+                {selectedIds.length >= 3 && (
+                  <>
+                    <div className="bt-prop-sep" style={{ height: 24, marginLeft: 4, marginRight: 4 }} />
+                    <button className="bt-prop-btn" onClick={() => distributeElements('x')} title="Distribute Horizontally (Equal Gaps)">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 22V2m16 20V2M8 12h8m-8-4v8m8-8v8"/>
+                      </svg>
+                    </button>
+                    <button className="bt-prop-btn" onClick={() => distributeElements('y')} title="Distribute Vertically (Equal Gaps)">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 4H2m20 16H2M12 8v8m-4-8h8m-8 8h8"/>
+                      </svg>
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

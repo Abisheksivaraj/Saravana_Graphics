@@ -6,7 +6,8 @@ import {
   Underline, Type, Zap, Paintbrush, Pipette, MousePointer2,
   Lock, Unlock, Eye, EyeOff, Trash2,
   Maximize, Minimize, Copy, Move,
-  AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd
+  AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd,
+  ChevronUp, ChevronDown, ChevronsUp, ChevronsDown
 } from 'lucide-react';
 import './PropertyBar.css';
 import CmykColorPicker from './CmykColorPicker';
@@ -171,7 +172,8 @@ export default function PropertyBar() {
   const {
     elements, selectedIds, updateElementAndSave,
     canvasWidth, canvasHeight, backgroundColor, setBackgroundColor,
-    matchSize, alignElements, duplicateElement, deleteElement
+    matchSize, alignElements, duplicateElement, deleteElement,
+    bringToFront, sendToBack, bringForward, sendBackward, distributeElements
   } = useDesignStore();
   const { measurementUnit } = useUIStore();
 
@@ -283,6 +285,34 @@ export default function PropertyBar() {
         >
           <AlignJustify size={18} />
         </button>
+
+        {selectedEl?.type === 'text' && (
+          <>
+            <div className="bt-prop-sep" style={{ height: 20 }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
+              <span style={{ fontSize: 11, color: '#555', fontFamily: 'Segoe UI' }} title="Letter Spacing (Tighten/Widen)">↔️</span>
+              <NumericInput 
+                className="bt-prop-input" 
+                style={{ width: 44, fontSize: 11 }}
+                value={selectedEl.letterSpacing || 0} 
+                onChange={v => update({ letterSpacing: v })}
+                min={-50} max={100}
+                title="Letter Spacing"
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
+              <span style={{ fontSize: 11, color: '#555', fontFamily: 'Segoe UI' }} title="Line Height">↕️</span>
+              <NumericInput 
+                className="bt-prop-input" 
+                style={{ width: 44, fontSize: 11 }}
+                value={selectedEl.lineHeight || 1.2} 
+                onChange={v => update({ lineHeight: v })}
+                min={0.5} max={5}
+                title="Line Height"
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Group 5: Fill & Line */}
@@ -403,6 +433,16 @@ export default function PropertyBar() {
               title="Barcode Value"
             />
           )}
+          {selectedEl.type === 'qrcode' && (
+            <input
+              className="bt-prop-input"
+              style={{ width: 120, textAlign: 'left' }}
+              value={selectedEl.qrValue || ''}
+              onChange={e => update({ qrValue: e.target.value })}
+              placeholder="QR value..."
+              title="QR Code Value"
+            />
+          )}
           <div className="bt-prop-sep" />
           <button className={`bt-prop-btn${selectedEl.locked ? ' active' : ''}`} onClick={() => update({ locked: !selectedEl.locked })} title="Lock">
             {selectedEl.locked ? <Lock size={16} color="#e59324" /> : <Unlock size={16} />}
@@ -432,6 +472,41 @@ export default function PropertyBar() {
           <button className="bt-prop-btn" onClick={() => alignElements('top')} title="Align Top"><AlignVerticalJustifyStart size={18} /></button>
           <button className="bt-prop-btn" onClick={() => alignElements('middle')} title="Align Vertical Middle"><AlignVerticalJustifyCenter size={18} /></button>
           <button className="bt-prop-btn" onClick={() => alignElements('bottom')} title="Align Bottom"><AlignVerticalJustifyEnd size={18} /></button>
+          
+          {selectedIds.length >= 3 && (
+            <>
+              <div className="bt-prop-sep" />
+              <button className="bt-prop-btn" onClick={() => distributeElements('x')} title="Distribute Horizontally">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 22V2m16 20V2M8 12h8m-8-4v8m8-8v8"/>
+                </svg>
+              </button>
+              <button className="bt-prop-btn" onClick={() => distributeElements('y')} title="Distribute Vertically">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 4H2m20 16H2M12 8v8m-4-8h8m-8 8h8"/>
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Group 9: Arrange Layering */}
+      {selectedIds.length > 0 && (
+        <div className="bt-toolbar-group">
+          <div className="bt-toolbar-handle" />
+          <button className="bt-prop-btn" onClick={() => selectedIds.forEach(id => bringToFront(id))} title="Bring to Front">
+            <ChevronsUp size={18} />
+          </button>
+          <button className="bt-prop-btn" onClick={() => selectedIds.forEach(id => bringForward(id))} title="Bring Forward">
+            <ChevronUp size={18} />
+          </button>
+          <button className="bt-prop-btn" onClick={() => selectedIds.forEach(id => sendBackward(id))} title="Send Backward">
+            <ChevronDown size={18} />
+          </button>
+          <button className="bt-prop-btn" onClick={() => selectedIds.forEach(id => sendToBack(id))} title="Send to Back">
+            <ChevronsDown size={18} />
+          </button>
         </div>
       )}
     </div>

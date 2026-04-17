@@ -159,32 +159,77 @@ export const useDesignStore = create(persist((set, get) => ({
         const ref = elements.find(e => e.id === referenceId);
         if (!ref) return;
 
-        const getDim = (el, dim) => {
-            if (el.type === 'circle') return el.radius * 2;
-            return el[dim] || 0;
-        };
+        const rB = getElementBounds(ref);
 
         set(s => ({
             elements: s.elements.map(el => {
                 if (!selectedIds.slice(1).includes(el.id)) return el;
-                const eW = getDim(el, 'width');
-                const eH = getDim(el, 'height');
-                const rW = getDim(ref, 'width');
-                const rH = getDim(ref, 'height');
+                const eB = getElementBounds(el);
+
+                let newX = el.x;
+                let newY = el.y;
 
                 switch(type) {
-                    case 'top': return { ...el, y: ref.y };
-                    case 'bottom': return { ...el, y: ref.y + rH - eH };
-                    case 'left': return { ...el, x: ref.x };
-                    case 'right': return { ...el, x: ref.x + rW - eW };
-                    case 'center': return { ...el, x: ref.x + rW/2 - eW/2 };
-                    case 'middle': return { ...el, y: ref.y + rH/2 - eH/2 };
-                    default: return el;
+                    case 'top': newY = rB.y + (el.y - eB.y); break;
+                    case 'bottom': newY = rB.y + rB.h - eB.h + (el.y - eB.y); break;
+                    case 'left': newX = rB.x + (el.x - eB.x); break;
+                    case 'right': newX = rB.x + rB.w - eB.w + (el.x - eB.x); break;
+                    case 'center': newX = rB.x + rB.w/2 - eB.w/2 + (el.x - eB.x); break;
+                    case 'middle': newY = rB.y + rB.h/2 - eB.h/2 + (el.y - eB.y); break;
                 }
+                return { ...el, x: newX, y: newY };
             }),
             isDirty: true
         }));
         get().saveHistory();
+    },
+
+    distributeElements: (axis) => {
+        const { selectedIds, elements } = get();
+        if (selectedIds.length < 3) return;
+
+        const selectedEls = elements.filter(e => selectedIds.includes(e.id)).map(el => ({
+            el,
+            b: getElementBounds(el)
+        }));
+
+        selectedEls.sort((a, b) => a.b[axis] - b.b[axis]);
+
+        const first = selectedEls[0];
+        const last = selectedEls[selectedEls.length - 1];
+        
+        const totalSizeProp = axis === 'x' ? 'w' : 'h';
+        const totalDistance = last.b[axis] + last.b[totalSizeProp] - first.b[axis];
+        
+        const sumOfElementSizes = selectedEls.reduce((sum, item) => sum + item.b[totalSizeProp], 0);
+        const totalGapSpace = totalDistance - sumOfElementSizes;
+        const gap = totalGapSpace / (selectedEls.length - 1);
+
+        let currentPos = first.b[axis];
+        
+        const updates = {};
+        selectedEls.forEach((item, index) => {
+            if (index === 0) {
+               currentPos += item.b[totalSizeProp] + gap;
+               return;
+            }
+            if (index === selectedEls.length - 1) return;
+            
+            const diff = currentPos - item.b[axis];
+            updates[item.el.id] = { 
+                [axis]: item.el[axis] + diff
+            };
+            
+            currentPos += item.b[totalSizeProp] + gap;
+        });
+
+        if (Object.keys(updates).length > 0) {
+            set(s => ({
+                elements: s.elements.map(el => updates[el.id] ? { ...el, ...updates[el.id] } : el),
+                isDirty: true
+            }));
+            get().saveHistory();
+        }
     },
 
     setElementDistance: (refId, targetId, axis, newDistance) => {
@@ -193,22 +238,8 @@ export const useDesignStore = create(persist((set, get) => ({
         const target = elements.find(e => e.id === targetId);
         if (!ref || !target) return;
 
-        const getBounds = (el) => {
-            const sx = el.scaleX || 1;
-            const sy = el.scaleY || 1;
-            let x = el.x, y = el.y, w = 0, h = 0;
-            if (el.type === 'circle') {
-                const r = (el.radius || 50) * Math.max(sx, sy);
-                x -= r; y -= r; w = r * 2; h = r * 2;
-            } else {
-                w = (el.width || 100) * sx;
-                h = (el.height || 100) * sy;
-            }
-            return { x, y, w, h };
-        };
-
-        const rB = getBounds(ref);
-        const tB = getBounds(target);
+        const rB = getElementBounds(ref);
+        const tB = getElementBounds(target);
         const updates = {};
 
         if (axis === 'x') {
@@ -404,6 +435,85 @@ export const useDesignStore = create(persist((set, get) => ({
         sizePreset: state.sizePreset
     }),
 }));
+
+export function getElementBounds(el) {
+    const sx = el.scaleX || 1;
+    const sy = el.scaleY || 1;
+    let x = el.x || 0;
+    let y = el.y || 0;
+    let w = 0, h = 0;
+
+    switch (el.type) {
+        case 'rect':
+        case 'image':
+            w = (el.width || 100) * sx;
+            h = (el.height || 80) * sy;
+            break;
+        case 'text':
+            w = (el.width || 200) * sx;
+            h = (el.fontSize || 16) * sy * 1.2;
+            break;
+        case 'circle':
+            const r = (el.radius || 50) * Math.max(sx, sy);
+            x = x - r;
+            y = y - r;
+            w = r * 2;
+            h = r * 2;
+            break;
+        case 'ellipse':
+            const ew = (el.width || 120) * sx / 2;
+            const eh = (el.height || 80) * sy / 2;
+            x = x - ew;
+            y = y - eh;
+            w = ew * 2;
+            h = eh * 2;
+            break;
+        case 'star':
+            const or = (el.outerRadius || 50) * Math.max(sx, sy);
+            x = x - or;
+            y = y - or;
+            w = or * 2;
+            h = or * 2;
+            break;
+        case 'polygon':
+            const pr = (el.radius || 50) * Math.max(sx, sy);
+            x = x - pr;
+            y = y - pr;
+            w = pr * 2;
+            h = pr * 2;
+            break;
+        case 'triangle':
+            w = (el.width || 100) * sx;
+            h = (el.height || 100) * sy;
+            break;
+        case 'line':
+            if (el.points && el.points.length >= 4) {
+                const dx = Math.abs(el.points[2] - el.points[0]) * sx;
+                const dy = Math.abs(el.points[3] - el.points[1]) * sy;
+                w = dx;
+                h = dy;
+                if (el.points[2] < el.points[0]) x = x - dx;
+                if (el.points[3] < el.points[1]) y = y - dy;
+            }
+            break;
+        case 'barcode':
+            w = (el.width || 200) * sx;
+            h = (el.height || 80) * sy;
+            break;
+        case 'qrcode':
+            w = (el.width || 100) * sx;
+            h = (el.height || 100) * sy;
+            break;
+        case 'placeholder':
+            w = (el.width || 100) * sx;
+            h = (el.height || 100) * sy;
+            break;
+        default:
+            w = (el.width || 100) * sx;
+            h = (el.height || 100) * sy;
+    }
+    return { x, y, w: Math.abs(w), h: Math.abs(h) };
+}
 
 function getDefaultProps(type) {
     switch (type) {

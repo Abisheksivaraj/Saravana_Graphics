@@ -455,7 +455,9 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
                         stroke={el.stroke && el.stroke !== 'transparent' ? el.stroke : undefined}
                         strokeWidth={el.strokeWidth || 0}
                         width={el.width || 200}
-                        wrap="word"
+                        wrap="none"
+                        letterSpacing={el.letterSpacing || 0}
+                        lineHeight={el.lineHeight || 1.2}
                     />
                 );
             case 'rect':
@@ -716,24 +718,10 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
         nodes.forEach(node => {
             const updates = {
                 x: node.x(), y: node.y(),
-                rotation: node.rotation()
+                rotation: node.rotation(),
+                scaleX: node.scaleX(),
+                scaleY: node.scaleY()
             };
-
-            if (node.getClassName() === 'Text') {
-                // For text, we want to update width/height and reset scale
-                const width = node.width() * node.scaleX();
-                const height = node.height() * node.scaleY();
-                updates.width = width;
-                // We keep fontSize the same, let height be determined by wrap
-                // Actually BarTender wrapped text has a fixed width, height is flexible or fixed.
-                // Reset scale
-                node.scaleX(1);
-                node.scaleY(1);
-            } else {
-                updates.scaleX = node.scaleX();
-                updates.scaleY = node.scaleY();
-            }
-
             updateElementAndSave(node.id(), updates);
         });
     };
