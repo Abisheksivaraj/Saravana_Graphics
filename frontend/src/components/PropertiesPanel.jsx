@@ -64,7 +64,7 @@ export default function PropertiesPanel() {
         selectedIds, elements, canvasWidth, canvasHeight, backgroundColor,
         updateElement, updateElementAndSave, deleteElement, duplicateElement, duplicateAllElements,
         bringForward, sendBackward, bringToFront, sendToBack, toggleLock, toggleVisibility,
-        setBackgroundColor, setCanvasSize, sizePreset, newDesign,
+        setBackgroundColor, setCanvasSize, setCanvasRadius, sizePreset, newDesign,
         matchSize, alignElements
     } = useDesignStore();
 
@@ -89,6 +89,7 @@ export default function PropertiesPanel() {
                         </span>
                     </div>
                     <ColorInput label="Background Color" value={backgroundColor} onChange={setBackgroundColor} />
+                    <NumInput label="Corner Radius" value={Number(pxToUnit(useDesignStore.getState().canvasRadius || 0, measurementUnit).toFixed(2))} onChange={v => setCanvasRadius(unitToPx(v, measurementUnit))} unit={measurementUnit} />
                 </div>
 
                 <div className="props-section" style={{ borderTop: '1px solid var(--border)' }}>

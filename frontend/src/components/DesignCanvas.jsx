@@ -454,7 +454,6 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
                         fill={el.fill || '#000000'}
                         stroke={el.stroke && el.stroke !== 'transparent' ? el.stroke : undefined}
                         strokeWidth={el.strokeWidth || 0}
-                        width={el.width || 200}
                         wrap="none"
                         letterSpacing={el.letterSpacing || 0}
                         lineHeight={el.lineHeight || 1.2}
@@ -640,7 +639,7 @@ function InlineTextEditor({ el, onSave, onCancel }) {
 
 export default function DesignCanvas({ stageRef, showGrid = true, onElementDblClick }) {
     const {
-        elements, selectedIds, canvasWidth, canvasHeight, backgroundColor, zoom,
+        elements, selectedIds, canvasWidth, canvasHeight, canvasRadius, backgroundColor, zoom,
         selectElement, deselectAll, updateElement, updateElementAndSave, addElement,
         setZoom, deleteElement
     } = useDesignStore();
@@ -928,15 +927,15 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [handleKeyDown]);
 
-    // Corner radius for the label in canvas pixels (unscaled)
-    const CANVAS_RADIUS = 18;
+    // Canvas corner radius from store
+    const CANVAS_RADIUS = canvasRadius || 0;
 
     return (
         <div ref={containerRef} className="canvas-wrapper" onClick={(e) => { if (e.target === containerRef.current) deselectAll(); }}>
             {/* Outer clip div — gives the CSS rounded box + shadow */}
             <div
                 style={{
-                    borderRadius: CANVAS_RADIUS,
+                    borderRadius: CANVAS_RADIUS * zoom,
                     overflow: 'hidden',
                     boxShadow: '0 6px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.3)',
                     display: 'block',

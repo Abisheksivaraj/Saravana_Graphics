@@ -13,6 +13,7 @@ export const useDesignStore = create(persist((set, get) => ({
     title: 'Untitled Design',
     canvasWidth: 200,
     canvasHeight: 300,
+    canvasRadius: 0,
     backgroundColor: '#ffffff',
     sizePreset: 'custom',
     elements: [],
@@ -38,6 +39,7 @@ export const useDesignStore = create(persist((set, get) => ({
         set({ canvasWidth: width, canvasHeight: height, sizePreset: preset, isDirty: true });
         get().saveHistory();
     },
+    setCanvasRadius: (radius) => set({ canvasRadius: radius, isDirty: true }),
     setBackgroundColor: (color) => set({ backgroundColor: color, isDirty: true }),
     setZoom: (zoom) => set({ zoom: Math.max(0.1, Math.min(8, zoom)) }),
     setPan: (pan) => set({ pan }),
@@ -53,6 +55,7 @@ export const useDesignStore = create(persist((set, get) => ({
             title: design.title,
             canvasWidth: design.canvasWidth,
             canvasHeight: design.canvasHeight,
+            canvasRadius: design.canvasRadius || 0,
             backgroundColor: design.backgroundColor || '#ffffff',
             sizePreset: design.sizePreset || 'custom',
             elements: design.elements || [],
@@ -415,7 +418,7 @@ export const useDesignStore = create(persist((set, get) => ({
 
         set({
             designId: null, title: 'Untitled Design',
-            canvasWidth: width, canvasHeight: height,
+            canvasWidth: width, canvasHeight: height, canvasRadius: 0,
             backgroundColor: '#ffffff', sizePreset: preset,
             elements: [], company: currentCompany, selectedIds: [], isDirty: false,
             history: [], historyIndex: -1, zoom: 1, pan: { x: 0, y: 0 },
@@ -429,6 +432,7 @@ export const useDesignStore = create(persist((set, get) => ({
         title: state.title,
         canvasWidth: state.canvasWidth,
         canvasHeight: state.canvasHeight,
+        canvasRadius: state.canvasRadius,
         elements: state.elements,
         backgroundColor: state.backgroundColor,
         company: state.company,

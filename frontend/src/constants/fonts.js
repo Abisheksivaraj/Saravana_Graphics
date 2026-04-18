@@ -64,4 +64,4 @@ export const FONTS = [
 ];
 
 export const FONT_STYLES = ['Regular', 'Italic', 'Bold', 'Bold Italic'];
-export const POINT_SIZES = [6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
+export const POINT_SIZES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];

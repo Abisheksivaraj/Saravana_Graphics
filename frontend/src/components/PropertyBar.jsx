@@ -20,7 +20,7 @@ const FONTS = [
   'Rupee Forbidan', 'OCR-A', 'OCR-B', 'OCR A Extended', 'OCR-B 10 BT'
 ];
 
-const SIZES = [6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
+const SIZES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
 
 function PropInput({ value, onChange, style = {}, title, min, max }) {
   return (
@@ -202,10 +202,11 @@ export default function PropertyBar() {
           className="bt-prop-input"
           style={{ cursor: 'text', marginLeft: 2 }}
           width={50}
-          value={selectedEl ? Math.round(pxToUnit(selectedEl.fontSize || 16, 'pt')) : 12}
+          value={selectedEl ? Number(pxToUnit(selectedEl.fontSize || 16, 'pt').toFixed(2)) : 12}
           fallback={12}
           onChange={v => update({ fontSize: unitToPx(v, 'pt') })}
         />
+        <span className="bt-prop-label" style={{ marginLeft: 4 }}>pt</span>
       </div>
 
       {/* Group 2: Styles (B, I, U, W) */}

@@ -56,9 +56,12 @@ export default function TextPropertiesDialog({ elementId, onClose }) {
                         </select>
                         <select 
                             className="bt-toolbar-select font-size-select"
-                            value={Math.round(pxToUnit(el.fontSize || 16, 'pt'))}
+                            value={Number(pxToUnit(el.fontSize || 16, 'pt').toFixed(2))}
                             onChange={(e) => update({ fontSize: unitToPx(Number(e.target.value), 'pt') })}
                         >
+                            <option value={Number(pxToUnit(el.fontSize || 16, 'pt').toFixed(2))} style={{ display: 'none' }}>
+                                {Number(pxToUnit(el.fontSize || 16, 'pt').toFixed(2))}
+                            </option>
                             {POINT_SIZES.map(s => (
                                 <option key={s} value={s}>{s}</option>
                             ))}
@@ -169,7 +172,7 @@ export default function TextPropertiesDialog({ elementId, onClose }) {
                                         />
                                         <div className="bt-list-box" style={{ height: 200 }}>
                                             {POINT_SIZES.map(s => (
-                                                <div key={s} className={`bt-list-item ${Math.round(pxToUnit(el.fontSize || 16, 'pt')) === s ? 'active' : ''}`} onClick={() => update({ fontSize: unitToPx(s, 'pt') })}>
+                                                <div key={s} className={`bt-list-item ${Number(pxToUnit(el.fontSize || 16, 'pt').toFixed(2)) === s ? 'active' : ''}`} onClick={() => update({ fontSize: unitToPx(s, 'pt') })}>
                                                     {s}
                                                 </div>
                                             ))}
