@@ -8,7 +8,10 @@ import {
   Scissors, Copy, Clipboard, Undo2, Redo2,
   ZoomIn, ZoomOut, Maximize2, Grid, Star, Pen, Eraser,
   Search, Monitor, Camera, Box, Zap,
-  ChevronLeft, ChevronRight, ChevronDown
+  ChevronLeft, ChevronRight, ChevronDown,
+  Lock, Unlock, EyeOff, Trash2, Maximize,
+  AlignLeft, AlignCenter, AlignRight,
+  AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd
 } from 'lucide-react';
 import VirtualShapeSelector from './VirtualShapeSelector';
 import TextObjectSelector from './TextObjectSelector';
@@ -64,8 +67,10 @@ const CustomShapesIcon = ({ size = 20 }) => (
 export default function StandardToolbar({ onAction, onImageUpload, showGrid }) {
   const {
     undo, redo, historyIndex, history, zoom, setZoom,
-    addElement, elements, selectedIds
+    addElement, elements, selectedIds,
+    updateElementAndSave, duplicateElement, deleteElement, matchSize, alignElements, distributeElements
   } = useDesignStore();
+  const selectedEl = selectedIds.length > 0 ? elements.find(e => e.id === selectedIds[0]) : null;
   const { selectedTool, setSelectedTool } = useUIStore();
   const [showShapeSelector, setShowShapeSelector] = React.useState(false);
   const [showTextSelector, setShowTextSelector] = React.useState(false);
@@ -254,6 +259,71 @@ export default function StandardToolbar({ onAction, onImageUpload, showGrid }) {
           title="Show Grid"
         />
       </div>
+
+      {/* Alignment & Actions Group */}
+      {selectedIds.length > 0 && (
+        <div className="bt-toolbar-group">
+          <div className="bt-toolbar-handle" />
+          
+          {/* Action Buttons */}
+          <ToolBtn 
+            icon={selectedIds.length === 1 && selectedEl?.locked ? <Lock size={18} color="#e59324" /> : <Unlock size={18} />}
+            active={selectedIds.length === 1 && selectedEl?.locked}
+            onClick={() => { if (selectedIds.length === 1 && selectedEl) updateElementAndSave(selectedEl.id, { locked: !selectedEl.locked }); }}
+            title="Lock"
+          />
+          <ToolBtn
+            icon={selectedIds.length === 1 && selectedEl?.visible === false ? <EyeOff size={18} /> : <Eye size={18} />}
+            onClick={() => { if (selectedIds.length === 1 && selectedEl) updateElementAndSave(selectedEl.id, { visible: !selectedEl.visible }); }}
+            title="Visibility"
+          />
+          <ToolBtn
+            icon={<Copy size={18} />}
+            onClick={() => { if (selectedIds.length === 1 && selectedEl) duplicateElement(selectedEl.id); }}
+            title="Duplicate"
+          />
+          <ToolBtn
+            icon={<Trash2 size={18} color="#c00" />}
+            onClick={() => { if (selectedIds.length > 0) deleteElement(selectedIds); }}
+            title="Delete"
+          />
+
+          <Sep />
+
+          {/* Alignment Tools */}
+          {selectedIds.length > 1 && (
+            <>
+              <ToolBtn icon={<Maximize size={18} />} onClick={() => matchSize('width')} title="Match Width" />
+              <ToolBtn icon={<Maximize size={18} style={{ transform: 'rotate(90deg)' }} />} onClick={() => matchSize('height')} title="Match Height" />
+              <Sep />
+            </>
+          )}
+
+          <ToolBtn icon={<AlignLeft size={18} />} onClick={() => alignElements('left')} title="Align Left" />
+          <ToolBtn icon={<AlignCenter size={18} />} onClick={() => alignElements('center')} title="Align Horizontal Center" />
+          <ToolBtn icon={<AlignRight size={18} />} onClick={() => alignElements('right')} title="Align Right" />
+          <Sep />
+          <ToolBtn icon={<AlignVerticalJustifyStart size={18} />} onClick={() => alignElements('top')} title="Align Top" />
+          <ToolBtn icon={<AlignVerticalJustifyCenter size={18} />} onClick={() => alignElements('middle')} title="Align Vertical Middle" />
+          <ToolBtn icon={<AlignVerticalJustifyEnd size={18} />} onClick={() => alignElements('bottom')} title="Align Bottom" />
+          
+          {selectedIds.length >= 3 && (
+            <>
+              <Sep />
+              <ToolBtn
+                icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22V2m16 20V2M8 12h8m-8-4v8m8-8v8"/></svg>}
+                onClick={() => distributeElements('x')}
+                title="Distribute Horizontally"
+              />
+              <ToolBtn
+                icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 4H2m20 16H2M12 8v8m-4-8h8m-8 8h8"/></svg>}
+                onClick={() => distributeElements('y')}
+                title="Distribute Vertically"
+              />
+            </>
+          )}
+        </div>
+      )}
 
       {/* Hidden inputs */}
       <input

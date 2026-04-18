@@ -212,6 +212,18 @@ export default function Editor() {
     }
   }, [id]);
 
+  // Always ensure history is initialized from current elements after store hydration
+  useEffect(() => {
+    const state = useDesignStore.getState();
+    if (state.elements.length > 0 && state.history.length === 1 && 
+        JSON.stringify(state.history[0]) !== JSON.stringify(state.elements)) {
+      useDesignStore.setState({ 
+        history: [JSON.parse(JSON.stringify(state.elements))], 
+        historyIndex: 0 
+      });
+    }
+  }, []);
+
   const fitToScreen = useCallback(() => {
     if (!canvasAreaRef.current) return;
     const padding = 120; // Margin around the label
@@ -390,14 +402,23 @@ export default function Editor() {
   useEffect(() => {
     const handler = (e) => {
       // Allow natural copy/cut/paste/select-all inside text boxes
-      if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+      if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
+        if (e.key === 'Escape') {
+          document.activeElement.blur();
+          return;
+        }
+        return;
+      }
 
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSave(false); }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'c') { e.preventDefault(); ds.copy(); }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'x') { e.preventDefault(); ds.cut(); }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'v') { e.preventDefault(); ds.paste(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 's' || e.code === 'KeyS')) { e.preventDefault(); handleSave(false); }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'z' || e.code === 'KeyZ')) { 
+        e.preventDefault(); 
+        if (e.shiftKey) redo(); else undo(); 
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || e.code === 'KeyY')) { e.preventDefault(); redo(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c' || e.code === 'KeyC')) { e.preventDefault(); ds.copy(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'x' || e.code === 'KeyX')) { e.preventDefault(); ds.cut(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'v' || e.code === 'KeyV')) { e.preventDefault(); ds.paste(); }
       if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(Math.min(8, zoom + 0.1)); }
       if ((e.ctrlKey || e.metaKey) && e.key === '-') { e.preventDefault(); setZoom(Math.max(0.1, zoom - 0.1)); }
       if (e.key === 'Escape') {
@@ -411,12 +432,10 @@ export default function Editor() {
 
         if (ui.selectedTool !== 'pick') {
           ui.setSelectedTool('pick');
-          return;
         }
 
         if (ds.selectedIds.length > 0) {
           ds.deselectAll();
-          return;
         }
       }
     };
@@ -568,7 +587,7 @@ export default function Editor() {
                 zIndex: 1000
               }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: '#333', marginRight: 8, fontFamily: 'Segoe UI, sans-serif' }}>
-                  Align to First Selected:
+                  Align to Label:
                 </span>
                 <button className="bt-prop-btn" onClick={() => alignElements('left')} title="Align Left"><AlignLeft size={20} /></button>
                 <button className="bt-prop-btn" onClick={() => alignElements('center')} title="Align Horizontal Center"><AlignCenter size={20} /></button>

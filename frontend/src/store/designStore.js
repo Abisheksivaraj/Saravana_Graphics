@@ -29,8 +29,8 @@ export const useDesignStore = create(persist((set, get) => ({
     previewData: null, // First row of Excel data for live preview
 
     // History (undo/redo)
-    history: [],
-    historyIndex: -1,
+    history: [[]],
+    historyIndex: 0,
 
     // Actions
     setTitle: (title) => set({ title, isDirty: true }),
@@ -61,8 +61,8 @@ export const useDesignStore = create(persist((set, get) => ({
             elements: design.elements || [],
             company: design.company || '',
             isDirty: false,
-            history: [],
-            historyIndex: -1,
+            history: [JSON.parse(JSON.stringify(design.elements || []))],
+            historyIndex: 0,
         });
     },
 
@@ -156,31 +156,30 @@ export const useDesignStore = create(persist((set, get) => ({
     },
 
     alignElements: (type) => {
-        const { selectedIds, elements } = get();
-        if (selectedIds.length < 2) return;
-        const referenceId = selectedIds[0];
-        const ref = elements.find(e => e.id === referenceId);
-        if (!ref) return;
-
-        const rB = getElementBounds(ref);
+        const { selectedIds, elements, canvasWidth, canvasHeight } = get();
+        if (selectedIds.length === 0) return;
 
         set(s => ({
             elements: s.elements.map(el => {
-                if (!selectedIds.slice(1).includes(el.id)) return el;
+                if (!selectedIds.includes(el.id)) return el;
                 const eB = getElementBounds(el);
 
                 let newX = el.x;
                 let newY = el.y;
 
                 switch(type) {
-                    case 'top': newY = rB.y + (el.y - eB.y); break;
-                    case 'bottom': newY = rB.y + rB.h - eB.h + (el.y - eB.y); break;
-                    case 'left': newX = rB.x + (el.x - eB.x); break;
-                    case 'right': newX = rB.x + rB.w - eB.w + (el.x - eB.x); break;
-                    case 'center': newX = rB.x + rB.w/2 - eB.w/2 + (el.x - eB.x); break;
-                    case 'middle': newY = rB.y + rB.h/2 - eB.h/2 + (el.y - eB.y); break;
+                    case 'center': newX = canvasWidth/2 - eB.w/2 + (el.x - eB.x); break;
+                    case 'middle': newY = canvasHeight/2 - eB.h/2 + (el.y - eB.y); break;
+                    case 'left': newX = 0 + (el.x - eB.x); break;
+                    case 'right': newX = canvasWidth - eB.w + (el.x - eB.x); break;
+                    case 'top': newY = 0 + (el.y - eB.y); break;
+                    case 'bottom': newY = canvasHeight - eB.h + (el.y - eB.y); break;
                 }
-                return { ...el, x: newX, y: newY };
+
+                // If aligning horizontally, also update text content alignment
+                const textUpdate = (el.type === 'text' && ['left', 'center', 'right'].includes(type)) ? { textAlign: type } : {};
+
+                return { ...el, x: newX, y: newY, ...textUpdate };
             }),
             isDirty: true
         }));
@@ -397,14 +396,24 @@ export const useDesignStore = create(persist((set, get) => ({
     undo: () => {
         const { historyIndex, history } = get();
         if (historyIndex > 0) {
-            set({ elements: JSON.parse(JSON.stringify(history[historyIndex - 1])), historyIndex: historyIndex - 1, isDirty: true });
+            set({ 
+                elements: JSON.parse(JSON.stringify(history[historyIndex - 1])), 
+                historyIndex: historyIndex - 1, 
+                selectedIds: [],
+                isDirty: true 
+            });
         }
     },
 
     redo: () => {
         const { historyIndex, history } = get();
         if (historyIndex < history.length - 1) {
-            set({ elements: JSON.parse(JSON.stringify(history[historyIndex + 1])), historyIndex: historyIndex + 1, isDirty: true });
+            set({ 
+                elements: JSON.parse(JSON.stringify(history[historyIndex + 1])), 
+                historyIndex: historyIndex + 1, 
+                selectedIds: [],
+                isDirty: true 
+            });
         }
     },
 
@@ -421,7 +430,7 @@ export const useDesignStore = create(persist((set, get) => ({
             canvasWidth: width, canvasHeight: height, canvasRadius: 0,
             backgroundColor: '#ffffff', sizePreset: preset,
             elements: [], company: currentCompany, selectedIds: [], isDirty: false,
-            history: [], historyIndex: -1, zoom: 1, pan: { x: 0, y: 0 },
+            history: [[]], historyIndex: 0, zoom: 1, pan: { x: 0, y: 0 },
         });
     },
 }), {
@@ -454,7 +463,21 @@ export function getElementBounds(el) {
             h = (el.height || 80) * sy;
             break;
         case 'text':
-            w = (el.width || 200) * sx;
+            const baseW = (() => {
+                try {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const fStyle = el.fontStyle === 'italic' ? 'italic' : 'normal';
+                    const fWeight = el.fontWeight === 'bold' ? 'bold' : 'normal';
+                    const fSize = el.fontSize || 16;
+                    const fFamily = el.fontFamily || 'Arial';
+                    ctx.font = `${fStyle} ${fWeight} ${fSize}px "${fFamily}"`;
+                    return ctx.measureText(el.text || 'Text').width;
+                } catch (e) {
+                    return 200;
+                }
+            })();
+            w = baseW * sx;
             h = (el.fontSize || 16) * sy * 1.2;
             break;
         case 'circle':
