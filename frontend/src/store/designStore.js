@@ -186,6 +186,25 @@ export const useDesignStore = create(persist((set, get) => ({
         get().saveHistory();
     },
 
+    straightenElements: () => {
+        const { selectedIds, elements } = get();
+        if (selectedIds.length < 2) return;
+        // Use the first selected element as the reference
+        const refId = selectedIds[0];
+        const refEl = elements.find(e => e.id === refId);
+        if (!refEl) return;
+        const refY = refEl.y;
+
+        set(s => ({
+            elements: s.elements.map(el => {
+                if (!selectedIds.includes(el.id) || el.id === refId) return el;
+                return { ...el, y: refY };
+            }),
+            isDirty: true
+        }));
+        get().saveHistory();
+    },
+
     distributeElements: (axis) => {
         const { selectedIds, elements } = get();
         if (selectedIds.length < 3) return;

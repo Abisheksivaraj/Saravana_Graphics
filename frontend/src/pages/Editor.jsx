@@ -177,7 +177,7 @@ export default function Editor() {
     setIsSaving, setDirty, addElement, undo, redo, historyIndex, history,
     company, setBackgroundColor, deleteElement,
     bringToFront, sendToBack, bringForward, sendBackward,
-    alignElements, distributeElements
+    alignElements, distributeElements, straightenElements
   } = useDesignStore();
 
   const [showGrid, setShowGrid] = useState(false);
@@ -596,6 +596,17 @@ export default function Editor() {
                 <button className="bt-prop-btn" onClick={() => alignElements('top')} title="Align Top"><AlignVerticalJustifyStart size={20} /></button>
                 <button className="bt-prop-btn" onClick={() => alignElements('middle')} title="Align Vertical Middle"><AlignVerticalJustifyCenter size={20} /></button>
                 <button className="bt-prop-btn" onClick={() => alignElements('bottom')} title="Align Bottom"><AlignVerticalJustifyEnd size={20} /></button>
+
+                <div className="bt-prop-sep" style={{ height: 24 }} />
+                <button 
+                  className="bt-prop-btn" 
+                  onClick={() => straightenElements()} 
+                  title="Straight — Align all selected to same line as first selected"
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontWeight: 600, fontSize: 12, fontFamily: 'Segoe UI, sans-serif' }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12h18"/><rect x="4" y="6" width="6" height="4" rx="1" fill="currentColor" opacity="0.3"/><rect x="14" y="6" width="6" height="4" rx="1" fill="currentColor" opacity="0.3"/></svg>
+                  Straight
+                </button>
 
                 {selectedIds.length >= 3 && (
                   <>

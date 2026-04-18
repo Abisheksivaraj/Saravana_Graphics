@@ -68,7 +68,7 @@ export default function StandardToolbar({ onAction, onImageUpload, showGrid }) {
   const {
     undo, redo, historyIndex, history, zoom, setZoom,
     addElement, elements, selectedIds,
-    updateElementAndSave, duplicateElement, deleteElement, matchSize, alignElements, distributeElements
+    updateElementAndSave, duplicateElement, deleteElement, matchSize, alignElements, distributeElements, straightenElements
   } = useDesignStore();
   const selectedEl = selectedIds.length > 0 ? elements.find(e => e.id === selectedIds[0]) : null;
   const { selectedTool, setSelectedTool } = useUIStore();
@@ -306,6 +306,17 @@ export default function StandardToolbar({ onAction, onImageUpload, showGrid }) {
           <ToolBtn icon={<AlignVerticalJustifyStart size={18} />} onClick={() => alignElements('top')} title="Align Top" />
           <ToolBtn icon={<AlignVerticalJustifyCenter size={18} />} onClick={() => alignElements('middle')} title="Align Vertical Middle" />
           <ToolBtn icon={<AlignVerticalJustifyEnd size={18} />} onClick={() => alignElements('bottom')} title="Align Bottom" />
+          
+          {selectedIds.length > 1 && (
+            <>
+              <Sep />
+              <ToolBtn
+                icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12h18"/><rect x="4" y="6" width="6" height="4" rx="1" fill="currentColor" opacity="0.3"/><rect x="14" y="6" width="6" height="4" rx="1" fill="currentColor" opacity="0.3"/></svg>}
+                onClick={() => straightenElements()}
+                title="Straight — Align selected elements to the same line as the first selected"
+              />
+            </>
+          )}
           
           {selectedIds.length >= 3 && (
             <>
