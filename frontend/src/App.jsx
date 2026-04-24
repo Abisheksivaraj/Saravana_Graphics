@@ -7,7 +7,6 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Editor from './pages/Editor';
-import Templates from './pages/Templates';
 import RFIDFormat from './pages/RFIDFormat';
 import Layout from './pages/Layout';
 import VendorLayout from './pages/vendor/VendorLayout';
@@ -17,6 +16,9 @@ import ArtworkApproval from './pages/vendor/ArtworkApproval';
 import Payments from './pages/vendor/Payments';
 import AdminVendorPortal from './pages/AdminVendorPortal';
 import AdminVendorManager from './pages/AdminVendorManager';
+
+import UserManagement from './pages/UserManagement';
+import InviteAccept from './pages/InviteAccept';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { token, user, isLoading } = useAuthStore();
@@ -57,14 +59,17 @@ export default function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
         <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+        <Route path="/invite-accept/:token" element={<InviteAccept />} />
 
         {/* Shared Dashboard (Admin/User) */}
         <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['admin', 'user']}><Dashboard /></ProtectedRoute>} />
         <Route path="/editor" element={<ProtectedRoute allowedRoles={['admin', 'user']}><Editor /></ProtectedRoute>} />
         <Route path="/editor/:id" element={<ProtectedRoute allowedRoles={['admin', 'user']}><Editor /></ProtectedRoute>} />
-        <Route path="/templates" element={<ProtectedRoute allowedRoles={['admin', 'user']}><Templates /></ProtectedRoute>} />
         <Route path="/rfid-format" element={<ProtectedRoute allowedRoles={['admin', 'user']}><RFIDFormat /></ProtectedRoute>} />
         <Route path="/layout" element={<ProtectedRoute allowedRoles={['admin', 'user']}><Layout /></ProtectedRoute>} />
+
+        {/* Admin Specific */}
+        <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['admin']}><UserManagement /></ProtectedRoute>} />
 
         {/* Vendor Portal Routes */}
         <Route path="/vendor-portal" element={<ProtectedRoute allowedRoles={['vendor']}><VendorLayout /></ProtectedRoute>}>

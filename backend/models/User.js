@@ -7,7 +7,8 @@ const userSchema = new mongoose.Schema({
     username: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
     password: { type: String, required: true, minlength: 6 },
     avatar: { type: String, default: '' },
-    role: { type: String, enum: ['user', 'admin', 'vendor'], default: 'user' },
+    role: { type: String, enum: ['user', 'admin', 'vendor', 'staff'], default: 'user' },
+    status: { type: String, enum: ['active', 'pending', 'suspended'], default: 'active' },
     vendorCode: { type: String, unique: true, sparse: true },
     vendorGstin: { type: String },
     vendorName: { type: String }

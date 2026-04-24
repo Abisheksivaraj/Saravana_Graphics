@@ -4,7 +4,6 @@ import axios from 'axios';
 
 export const BASE_URL = 'https://saravana-graphics.onrender.com';
 
-
 const api = axios.create({
     baseURL: `${BASE_URL}/api`,
     headers: { 'Content-Type': 'application/json' },
@@ -78,6 +77,22 @@ export const vendorAPI = {
     submitPayment: (id, formData) => api.post(`/vendors/payment/${id}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
     createAccount: (data) => api.post('/vendors/account', data),
     getAccounts: () => api.get('/vendors/accounts'),
+};
+
+// Strip Colors
+export const stripColorsAPI = {
+    getAll: () => api.get('/strip-colors'),
+    create: (data) => api.post('/strip-colors', data),
+    update: (id, data) => api.put(`/strip-colors/${id}`, data),
+    delete: (id) => api.delete(`/strip-colors/${id}`),
+};
+
+// Users & Invitations
+export const usersAPI = {
+    getAll: () => api.get('/users'),
+    invite: (data) => api.post('/users/invite', data),
+    verifyInvite: (token) => api.get(`/users/invite-verify/${token}`),
+    completeInvite: (data) => api.post('/users/invite-complete', data),
 };
 
 export default api;

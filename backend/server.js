@@ -33,6 +33,8 @@ app.use('/api/designs', require('./routes/designs'));
 app.use('/api/templates', require('./routes/templates'));
 app.use('/api/companies', require('./routes/companies'));
 app.use('/api/vendors', require('./routes/vendors'));
+app.use('/api/strip-colors', require('./routes/stripColors'));
+app.use('/api/users', require('./routes/users'));
 
 // Health check
 app.get('/api/health', (req, res) => {

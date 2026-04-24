@@ -384,6 +384,11 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
                     } else if (el.fieldName && previewData[el.fieldName] !== undefined) {
                         text = String(previewData[el.fieldName]);
                     }
+                    
+                    const isPriceField = (el.fieldName && el.fieldName.toLowerCase().includes('mrp')) || (el.text && el.text.includes('₹'));
+                    if (isPriceField && text && !text.includes('₹') && /^\d/.test(text)) {
+                        text = '₹' + text;
+                    }
                 } else {
                     // Mode: SMART (Text + Placeholder Logic)
                     // We split by newline to support multi-line boxes (COLOUR, Desc, etc.)
@@ -418,9 +423,25 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
                             const isSafePlaceholder = /[a-zA-Z]/.test(col);
                             if (!isSafePlaceholder) return;
                             const escapedCol = col.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-                            const regex = new RegExp(`\\b${escapedCol}\\b(?![\\s]*:)`, 'gi');
+                            
+                            // MODIFIED: Stronger protection for MRP labels.
+                            const isProtectedMRP = col.toLowerCase() === 'mrp' && lineText.toLowerCase().includes('mrp (incl');
+                            if (isProtectedMRP) return;
+
+                            const regex = new RegExp(`\\b${escapedCol}\\b(?![\\s]*[:\\(])`, 'gi');
+                            
                             if (regex.test(lineText)) {
-                                lineText = lineText.replaceAll(regex, String(previewData[col] ?? ''));
+                                let newVal = String(previewData[col] ?? '');
+                                
+                                // Prevent double Rupee symbols
+                                const alreadyHasRupee = lineText.includes('₹') || newVal.includes('₹');
+                                const isPriceField = (escapedCol.toLowerCase() === 'mrp' || col.toLowerCase() === 'mrp');
+                                
+                                if (isPriceField && !alreadyHasRupee && /^\d/.test(newVal)) {
+                                    newVal = '₹' + newVal;
+                                }
+                                
+                                lineText = lineText.replaceAll(regex, newVal);
                             }
                         });
 
@@ -428,6 +449,17 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
                     });
                     text = processedLines.join('\n');
                 }
+                
+                // MODIFIED: Fix "Incl. of all taxes" issue.
+                if (el.text && el.text.toLowerCase().includes('incl.of all taxes')) {
+                    text = text.replace(/₹?\s*\d+(\.\d+)?/g, 'MRP'); 
+                }
+                
+                // FINAL CLEANUP: Thoroughly remove any duplicate Rupee symbols or weird spacings
+                while (text && /₹\s*₹/.test(text)) {
+                    text = text.replace(/₹\s*₹/g, '₹');
+                }
+
                 displayProps.text = text;
             } else if (el.type === 'barcode' || el.type === 'qrcode') {
                 if (mode !== 'fixed') {
@@ -446,6 +478,7 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
                 return (
                     <Text {...commonProps}
                         text={displayProps.text || 'Text'}
+                        width={el.width || 200}
                         fontSize={el.fontSize || 16}
                         fontFamily={el.fontFamily || 'Arial'}
                         fontStyle={`${el.fontStyle === 'italic' ? 'italic' : 'normal'} ${el.fontWeight || 'normal'}`}
@@ -454,7 +487,7 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
                         fill={el.fill || '#000000'}
                         stroke={el.stroke && el.stroke !== 'transparent' ? el.stroke : undefined}
                         strokeWidth={el.strokeWidth || 0}
-                        wrap="none"
+                        wrap="word"
                         letterSpacing={el.letterSpacing || 0}
                         lineHeight={el.lineHeight || 1.2}
                     />
@@ -715,13 +748,30 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
     const handleTransformEnd = () => {
         const nodes = trRef.current.nodes();
         nodes.forEach(node => {
-            const updates = {
+            const isText = node.className === 'Text';
+            let updates = {
                 x: node.x(), y: node.y(),
                 rotation: node.rotation(),
                 scaleX: node.scaleX(),
                 scaleY: node.scaleY()
             };
+
+            if (isText) {
+                // For text, we want to update the width/fontSize instead of scaling 
+                // to keep wrapping behavior natural.
+                const newWidth = Math.max(5, node.width() * node.scaleX());
+                updates.width = newWidth;
+                updates.scaleX = 1;
+                // Note: scaleY usually affects fontSize/lineHeight, but for now 
+                // we'll at least fix the horizontal scale which causes the "messy" wrapping.
+                updates.scaleY = 1;
+            }
+
             updateElementAndSave(node.id(), updates);
+            
+            // Reset node scales immediately to prevent visual jumping before re-render
+            node.scaleX(1);
+            node.scaleY(1);
         });
     };
 

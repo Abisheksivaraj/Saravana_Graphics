@@ -482,22 +482,9 @@ export function getElementBounds(el) {
             h = (el.height || 80) * sy;
             break;
         case 'text':
-            const baseW = (() => {
-                try {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    const fStyle = el.fontStyle === 'italic' ? 'italic' : 'normal';
-                    const fWeight = el.fontWeight === 'bold' ? 'bold' : 'normal';
-                    const fSize = el.fontSize || 16;
-                    const fFamily = el.fontFamily || 'Arial';
-                    ctx.font = `${fStyle} ${fWeight} ${fSize}px "${fFamily}"`;
-                    return ctx.measureText(el.text || 'Text').width;
-                } catch (e) {
-                    return 200;
-                }
-            })();
-            w = baseW * sx;
-            h = (el.fontSize || 16) * sy * 1.2;
+            const lineCount = (el.text || '').split('\n').length;
+            w = (el.width || 200) * sx;
+            h = (el.fontSize || 16) * sy * 1.2 * lineCount;
             break;
         case 'circle':
             const r = (el.radius || 50) * Math.max(sx, sy);

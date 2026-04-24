@@ -21,12 +21,12 @@ const Sidebar = () => {
 
     const navItems = [
         { path: '/dashboard', icon: Grid, label: 'My Designs' },
-        { path: '/templates', icon: LayoutTemplate, label: 'Templates' },
         { path: '/rfid-format', icon: Cpu, label: 'RFID Format' },
         { path: '/layout', icon: Layers, label: 'Layout' },
     ];
 
     if (user?.role === 'admin') {
+        navItems.push({ path: '/admin/users', icon: Users, label: 'Team Management' });
         navItems.push({ path: '/admin/vendors', icon: Users, label: 'Manage Vendors' });
         navItems.push({ path: '/admin/vendor-portal', icon: Upload, label: 'Vendor Orders' });
     }
