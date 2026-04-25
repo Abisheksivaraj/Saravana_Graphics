@@ -293,6 +293,14 @@ export default function TextPropertiesDialog({ elementId, onClose }) {
                                         />
                                         <span className="unit">{measurementUnit}</span>
                                     </div>
+                                    <div className="bt-field-row">
+                                        <label>Width:</label>
+                                        <NumericInput 
+                                            value={pxToUnit(el.width || 200, measurementUnit)}
+                                            onChange={v => update({ width: unitToPx(v, measurementUnit), scaleX: 1 })}
+                                        />
+                                        <span className="unit">{measurementUnit}</span>
+                                    </div>
                                 </fieldset>
                                 <fieldset className="bt-fieldset">
                                     <legend>Rotation</legend>

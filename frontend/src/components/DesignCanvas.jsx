@@ -756,22 +756,11 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
                 scaleY: node.scaleY()
             };
 
-            if (isText) {
-                // For text, we want to update the width/fontSize instead of scaling 
-                // to keep wrapping behavior natural.
-                const newWidth = Math.max(5, node.width() * node.scaleX());
-                updates.width = newWidth;
-                updates.scaleX = 1;
-                // Note: scaleY usually affects fontSize/lineHeight, but for now 
-                // we'll at least fix the horizontal scale which causes the "messy" wrapping.
-                updates.scaleY = 1;
-            }
-
-            updateElementAndSave(node.id(), updates);
+            // Removed the special handling for text that forced wrapping.
+            // By keeping scaleX/scaleY, text will now "tighten" (squash/stretch) 
+            // while preserving its original wrap points.
             
-            // Reset node scales immediately to prevent visual jumping before re-render
-            node.scaleX(1);
-            node.scaleY(1);
+            updateElementAndSave(node.id(), updates);
         });
     };
 
