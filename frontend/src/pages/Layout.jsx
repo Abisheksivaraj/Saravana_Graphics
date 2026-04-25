@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Layers, FileSpreadsheet, ListChecks, Eye, Download,
-    ArrowLeft, Search, RefreshCw, CheckCircle2, AlertCircle,
-    Table, Wand2, Info, ZoomIn, ZoomOut, Palette, Plus, Trash2, X
+    Layers, FileSpreadsheet, Download,
+    ArrowLeft, Search, ZoomIn, ZoomOut, Palette, Plus, X, Wand2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Stage, Layer, Group, Rect, Text, Image as KImage, Path, Circle, Ellipse, Line, Star, RegularPolygon } from 'react-konva';
+import { Stage, Layer, Group, Rect, Text, Image as KImage, Line, Circle, Ellipse, Star, RegularPolygon, Path } from 'react-konva';
 import Sidebar from '../components/Sidebar';
-import { templatesAPI, designsAPI, stripColorsAPI } from '../api';
+import { designsAPI, stripColorsAPI } from '../api';
 import { useUIStore, unitToPx } from '../store/uiStore';
 import toast from 'react-hot-toast';
 import { jsPDF } from 'jspdf';
@@ -20,25 +19,82 @@ import ImageElement from '../components/ImageElement';
 import logo from '../assets/logo.png';
 import './Layout.css';
 
-// CMYK to RGB hex conversion (client-side)
-const cmykToHex = (c, m, y, k) => {
-    const r = Math.round(255 * (1 - c / 100) * (1 - k / 100));
-    const g = Math.round(255 * (1 - m / 100) * (1 - k / 100));
-    const b = Math.round(255 * (1 - y / 100) * (1 - k / 100));
-    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
-};
-
-// Dynamic strip color map
+// ─── Strip Color Map ──────────────────────────────────────────────────────────
 let STRIP_COLOR_MAP = {};
-
 const resolveStripColor = (colorName) => {
     if (!colorName) return null;
-    const name = String(colorName).trim().toLowerCase();
-    return STRIP_COLOR_MAP[name] || null;
+    return STRIP_COLOR_MAP[String(colorName).trim().toLowerCase()] || null;
 };
 
-// Component to render a single label within the grid
-const LayoutLabel = ({ elements = [], data = {}, mapping = {}, x, y, width, height, isBranding = false, logoImg = null }) => {
+// ─── Render ₹ symbol to a PNG data URL using canvas ──────────────────────────
+// This avoids ALL font-loading issues — works 100% offline, no CDN needed.
+const rupeeImageCache = {};
+const getRupeeImage = (fontSizePt, color = '#000000') => {
+    const cacheKey = `${fontSizePt}_${color}`;
+    if (rupeeImageCache[cacheKey]) return rupeeImageCache[cacheKey];
+
+    const scale = 4; // retina quality
+    const sizePx = Math.round(fontSizePt * 3.7795 * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = sizePx;
+    canvas.height = sizePx;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, sizePx, sizePx);
+    ctx.fillStyle = color;
+    ctx.font = `bold ${sizePx * 0.85}px Arial, sans-serif`;
+    ctx.textBaseline = 'top';
+    ctx.fillText('₹', 0, sizePx * 0.05);
+    const dataUrl = canvas.toDataURL('image/png');
+    rupeeImageCache[cacheKey] = dataUrl;
+    return dataUrl;
+};
+
+// ─── Draw text that may contain ₹ into jsPDF ─────────────────────────────────
+// Splits on ₹, draws plain text segments with pdf.text() and ₹ as PNG image.
+const drawRupeeText = (pdf, rawText, x, y, opts = {}) => {
+    if (!rawText) return;
+    const text = String(rawText);
+
+    if (!text.includes('₹')) {
+        pdf.text(text, x, y, opts);
+        return;
+    }
+
+    const fs = pdf.getFontSize(); // points
+    const fsMM = fs * 0.352778;   // points → mm
+    // Approximate cap-height offset so image aligns with text baseline
+    const imgH = fsMM * 1.05;
+    const imgW = fsMM * 0.78;
+    const imgY = y - fsMM * 0.88; // align top of glyph
+
+    // Get current text color as hex
+    const tc = pdf.getTextColor();
+    const colorHex = typeof tc === 'string' && tc.startsWith('#') ? tc : '#000000';
+    const rupeeImg = getRupeeImage(fs, colorHex);
+
+    const parts = text.split('₹');
+    let curX = x;
+
+    // For center/right alignment we need total width first — just left-align
+    // inline segments (caller should already set curX correctly for alignment)
+    parts.forEach((part, i) => {
+        if (part.length > 0) {
+            pdf.text(part, curX, y, {});
+            curX += pdf.getTextWidth(part);
+        }
+        if (i < parts.length - 1) {
+            // Draw ₹ as image at baseline
+            try {
+                pdf.addImage(rupeeImg, 'PNG', curX, imgY, imgW, imgH);
+            } catch (e) { /* fallback: skip silently */ }
+            // imgW + 0.264mm (≈1px at 96dpi) gap before the next text segment
+            curX += imgW + 0.264;
+        }
+    });
+};
+
+// ─── Canvas Preview Label ─────────────────────────────────────────────────────
+const LayoutLabel = ({ elements = [], data = {}, mapping = {}, width, height, isBranding = false, logoImg = null }) => {
     const mergedElements = useMemo(() => {
         if (isBranding) {
             return [
@@ -49,124 +105,103 @@ const LayoutLabel = ({ elements = [], data = {}, mapping = {}, x, y, width, heig
 
         return elements.map(el => {
             let newEl = { ...el };
-            const isPlaceholder = el.type === 'placeholder';
-            const isText = el.type === 'text';
-            let text = el.text || '';
-            const manualMapping = mapping[el.id];
+            const isText = el.type === 'text' || el.type === 'placeholder';
+            const manualMapped = mapping[el.id];
 
-            // Manual Mapping Logic
-            if (manualMapping && data[manualMapping] !== undefined) {
-                const val = String(data[manualMapping]);
-                if (isText || isPlaceholder) {
-                    let textVal = val;
-                    // Standardize Rupee symbol ONLY for price fields
-                    const isPriceCol = manualMapping.toLowerCase().includes('mrp') || manualMapping.toLowerCase().includes('price');
-                    if (isPriceCol && textVal && !textVal.includes('₹') && /^\d/.test(textVal)) {
-                        textVal = '₹' + textVal;
-                    }
-                    newEl.text = textVal;
-                } else if (el.type === 'barcode') {
-                    newEl.barcodeValue = val;
-                } else if (el.type === 'qrcode') {
-                    newEl.qrValue = val;
+            // Priority 1: Manual mapping
+            if (manualMapped && data[manualMapped] !== undefined) {
+                const raw = String(data[manualMapped] ?? '').replace(/^₹\s*/, '');
+                if (isText) {
+                    const isPriceCol = manualMapped.toLowerCase().includes('mrp') || manualMapped.toLowerCase().includes('price');
+                    const templateHasRupee = (el.text || '').includes('₹');
+                    newEl.text = (isPriceCol && !templateHasRupee && /^\d/.test(raw)) ? '₹' + raw : raw;
+                } else if (el.type === 'barcode') newEl.barcodeValue = raw;
+                else if (el.type === 'qrcode') newEl.qrValue = raw;
+                else if (el.type === 'rect') {
+                    const mc = resolveStripColor(raw.trim());
+                    if (mc) newEl.fill = mc;
                 }
                 return newEl;
             }
 
-            // Fallback: Placeholder Replacement {{Header}}
-            if (isText || isPlaceholder) {
-                let currentText = text;
+            // Priority 2: placeholder replacement
+            if (isText) {
+                let t = el.text || '';
                 Object.keys(data).forEach(col => {
-                    const placeholder = `{{${col}}}`;
-                    if (currentText.includes(placeholder)) {
-                        currentText = currentText.replaceAll(placeholder, data[col] !== undefined ? String(data[col]) : '');
-                    }
+                    const ph = `{{${col}}}`;
+                    if (t.includes(ph)) t = t.replaceAll(ph, String(data[col] ?? ''));
                 });
-
-                // Rupee symbol cleanup
-                while (currentText && /₹\s*₹/.test(currentText)) {
-                    currentText = currentText.replace(/₹\s*₹/g, '₹');
-                }
-                newEl.text = currentText;
+                while (/₹\s*₹/.test(t)) t = t.replace(/₹\s*₹/g, '₹');
+                newEl.text = t;
             }
 
-            // Strip Color Logic (unchanged)
+            // Strip color for rect
             if (el.type === 'rect') {
                 const elName = (el.name || '').toLowerCase();
-                if (elName.includes('strip')) {
+                // Consider it a strip if named 'strip'/'color', OR if it's wide AND short (height < 50)
+                const isStrip = elName.includes('strip') || elName.includes('color') || 
+                               ((el.width || 0) > 80 && (el.height || 0) < 50);
+                
+                if (isStrip) {
                     const stripCol = Object.keys(data).find(col =>
                         col.toLowerCase().replace(/[\s_-]/g, '').includes('stripcolor') ||
                         col.toLowerCase().replace(/[\s_-]/g, '') === 'strip'
                     );
-                    if (stripCol && data[stripCol] !== undefined) {
-                        const mappedColor = resolveStripColor(String(data[stripCol]).trim());
-                        if (mappedColor) newEl.fill = mappedColor;
+                    if (stripCol && data[stripCol]) {
+                        const mc = resolveStripColor(String(data[stripCol]).trim());
+                        if (mc) newEl.fill = mc;
                     }
                 }
             }
-
             return newEl;
         });
     }, [elements, data, mapping, isBranding, logoImg, width, height]);
 
-    const sortedElements = useMemo(() =>
-        [...mergedElements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
-        , [mergedElements]);
+    const sorted = useMemo(() => [...mergedElements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0)), [mergedElements]);
 
     return (
-        <Group x={x} y={y}>
-            <Rect width={width} height={height} fill="white" stroke="#f1f5f9" strokeWidth={1} cornerRadius={10} />
-            {sortedElements.map((el, i) => {
-                const elementKey = el.id || `el-${i}`;
-                const commonProps = {
-                    x: el.x || 0,
-                    y: el.y || 0,
+        <Group>
+            <Rect width={width} height={height} fill="white" stroke="#e2e8f0" strokeWidth={1} cornerRadius={8} />
+            {sorted.map((el, i) => {
+                const key = el.id || `el-${i}`;
+                const common = {
+                    x: el.x || 0, y: el.y || 0,
                     rotation: el.rotation || 0,
-                    scaleX: el.scaleX || 1,
-                    scaleY: el.scaleY || 1,
+                    scaleX: ((el.type === 'text' || el.type === 'placeholder') && el.wrap === 'none') ? 1 : (el.scaleX || 1),
+                    scaleY: ((el.type === 'text' || el.type === 'placeholder') && el.wrap === 'none') ? 1 : (el.scaleY || 1),
                     opacity: el.opacity !== undefined ? el.opacity : 1,
                     visible: el.visible !== false,
                 };
-
                 switch (el.type) {
                     case 'text':
                     case 'placeholder':
-                        return (
-                            <Text key={elementKey} {...commonProps}
-                                text={el.text || ''}
-                                fontSize={el.fontSize || 12}
-                                fontFamily={el.fontFamily || 'Arial'}
-                                fontStyle={`${el.fontStyle === 'italic' ? 'italic' : 'normal'} ${el.fontWeight || 'normal'}`}
-                                align={el.textAlign || 'left'}
-                                verticalAlign={el.verticalAlign || 'top'}
-                                fill={el.fill || '#000000'}
-                                width={el.width || 200}
-                                wrap="word"
-                                textDecoration={el.underline ? 'underline' : 'none'}
-                                padding={el.padding || 0}
-                            />
-                        );
+                        return <Text key={key} {...common} text={el.text || ''} fontSize={el.fontSize || 12}
+                            fontFamily={el.fontFamily || 'Arial'}
+                            fontStyle={`${el.fontStyle === 'italic' ? 'italic' : 'normal'} ${el.fontWeight || 'normal'}`}
+                            align={el.textAlign || 'left'} fill={el.fill || '#000000'}
+                            width={(el.wrap === 'none' || (el.width || 200) < 20) ? undefined : (el.width || 200)}
+                            wrap={(el.width || 200) < 20 ? 'none' : (el.wrap || 'word')}
+                            letterSpacing={el.letterSpacing || 0}
+                            lineHeight={el.lineHeight || 1.2}
+                            textDecoration={el.underline ? 'underline' : 'none'} />;
                     case 'rect':
-                        return <Rect key={elementKey} {...commonProps} width={el.width || 0} height={el.height || 0} fill={el.fill || 'transparent'} cornerRadius={el.cornerRadius || 0} stroke={el.stroke || 'transparent'} strokeWidth={el.strokeWidth || 0} shadowBlur={el.shadowBlur || 0} />;
+                        return <Rect key={key} {...common} width={el.width || 0} height={el.height || 0}
+                            fill={el.fill || 'transparent'} cornerRadius={el.cornerRadius || 0}
+                            stroke={el.stroke || 'transparent'} strokeWidth={el.strokeWidth || 0} />;
                     case 'line':
-                        return <Line key={elementKey} {...commonProps} points={el.points || [0, 0, 100, 0]} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth || 1} lineCap={el.lineCap || 'round'} lineJoin={el.lineJoin || 'round'} dash={el.dash} />;
-                    case 'path':
-                        return <Path key={elementKey} {...commonProps} data={el.data || ''} fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
+                        return <Line key={key} {...common} points={el.points || [0, 0, 100, 0]}
+                            stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth || 1} />;
                     case 'circle':
-                        return <Circle key={elementKey} {...commonProps} radius={el.radius || 10} fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
+                        return <Circle key={key} {...common} radius={el.radius || 10} fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
                     case 'ellipse':
-                        return <Ellipse key={elementKey} {...commonProps} radiusX={el.radiusX || 10} radiusY={el.radiusY || 10} fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
-                    case 'star':
-                        return <Star key={elementKey} {...commonProps} innerRadius={el.innerRadius || 5} outerRadius={el.outerRadius || 10} numPoints={el.numPoints || 5} fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
-                    case 'regularPolygon':
-                        return <RegularPolygon key={elementKey} {...commonProps} sides={el.sides || 3} radius={el.radius || 10} fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
+                        return <Ellipse key={key} {...common} radiusX={el.radiusX || 10} radiusY={el.radiusY || 10} fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
                     case 'barcode':
-                        return <BarcodeElement key={elementKey} {...commonProps} el={el} onSelect={() => { }} />;
+                        return <BarcodeElement key={key} {...common} el={el} onSelect={() => { }} />;
                     case 'qrcode':
-                        return <QRElement key={elementKey} {...commonProps} el={el} onSelect={() => { }} />;
+                        return <QRElement key={key} {...common} el={el} onSelect={() => { }} />;
                     case 'image':
-                        if (el.image) return <KImage key={elementKey} {...commonProps} image={el.image} width={el.width} height={el.height} />;
-                        return <ImageElement key={elementKey} {...commonProps} el={el} />;
+                        if (el.image) return <KImage key={key} {...common} image={el.image} width={el.width} height={el.height} />;
+                        return <ImageElement key={key} {...common} el={el} />;
                     default:
                         return null;
                 }
@@ -175,6 +210,7 @@ const LayoutLabel = ({ elements = [], data = {}, mapping = {}, x, y, width, heig
     );
 };
 
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function Layout() {
     const navigate = useNavigate();
     const { isSidebarCollapsed } = useUIStore();
@@ -191,8 +227,9 @@ export default function Layout() {
     const [stripColors, setStripColors] = useState([]);
     const [showStripManager, setShowStripManager] = useState(false);
     const [showExplorer, setShowExplorer] = useState(false);
-
     const stageRef = useRef();
+
+    // 1 px = 0.264583 mm  (96 DPI)
     const PX_TO_MM = 0.264583;
 
     useEffect(() => {
@@ -203,14 +240,30 @@ export default function Layout() {
         fetchDesigns();
     }, []);
 
+    const defaultCMYKColors = [
+        { _id: 'def-blue', name: 'Blue', hex: '#0d5ce3', cmyk: '95,64,11,0' },
+        { _id: 'def-red', name: 'Red', hex: '#ff0000', cmyk: '0,100,100,0' },
+        { _id: 'def-orange', name: 'Orange', hex: '#ff6600', cmyk: '0,60,100,0' },
+        { _id: 'def-green', name: 'Green', hex: '#00ff00', cmyk: '100,0,100,0' },
+        { _id: 'def-purple', name: 'Purple', hex: '#8526d6', cmyk: '48,85,16,0' },
+    ];
+
     const fetchStripColors = async () => {
         try {
-            const res = await stripColorsAPI.getAll();
-            const colors = res?.data?.colors || [];
+            // Load default CMYK colors first
+            let colors = [...defaultCMYKColors];
+            
+            try {
+                const res = await stripColorsAPI.getAll();
+                if (res?.data?.colors) {
+                    colors = [...colors, ...res.data.colors];
+                }
+            } catch (err) { console.warn('Could not fetch custom strip colors from API'); }
+
             setStripColors(colors);
-            const newMap = {};
-            colors.forEach(c => { newMap[c.name.toLowerCase()] = c.hex; });
-            STRIP_COLOR_MAP = newMap;
+            const map = {};
+            colors.forEach(c => { map[c.name.toLowerCase()] = c.hex; });
+            STRIP_COLOR_MAP = map;
         } catch (err) { console.error(err); }
     };
 
@@ -219,16 +272,52 @@ export default function Layout() {
             setLoading(true);
             const res = await designsAPI.getAll();
             setTemplates(res?.data?.designs || []);
-        } catch (err) { toast.error('Failed to load designs'); }
+        } catch { toast.error('Failed to load designs'); }
         finally { setLoading(false); }
     };
 
+    // State for manual CMYK color adder
+    const [cmykInput, setCmykInput] = useState({ name: '', c: 0, m: 0, y: 0, k: 0 });
+
+    const handleAddCMYKColor = async () => {
+        if (!cmykInput.name.trim()) return toast.error('Enter a color name');
+        
+        // CMYK to RGB conversion
+        const c = cmykInput.c / 100;
+        const m = cmykInput.m / 100;
+        const y = cmykInput.y / 100;
+        const k = cmykInput.k / 100;
+        
+        const r = Math.round(255 * (1 - c) * (1 - k));
+        const g = Math.round(255 * (1 - m) * (1 - k));
+        const b = Math.round(255 * (1 - y) * (1 - k));
+        
+        // RGB to HEX
+        const rgbToHex = (v) => v.toString(16).padStart(2, '0');
+        const hex = `#${rgbToHex(r)}${rgbToHex(g)}${rgbToHex(b)}`.toUpperCase();
+
+        const newColor = {
+            _id: `custom-${Date.now()}`,
+            name: cmykInput.name.trim(),
+            hex: hex,
+            cmyk: `${cmykInput.c},${cmykInput.m},${cmykInput.y},${cmykInput.k}`
+        };
+
+        const updatedColors = [...stripColors, newColor];
+        setStripColors(updatedColors);
+        STRIP_COLOR_MAP[newColor.name.toLowerCase()] = hex;
+        
+        setCmykInput({ name: '', c: 0, m: 0, y: 0, k: 0 });
+        toast.success(`${newColor.name} added with Hex ${hex}`);
+
+        // Try to save to API if available
+        try {
+            await stripColorsAPI.create({ name: newColor.name, hex });
+        } catch(e) {}
+    };
+
     const handleSelectTemplate = async (designId) => {
-        if (!designId) {
-            setSelectedTemplate(null);
-            setTemplateFields([]);
-            return;
-        }
+        if (!designId) { setSelectedTemplate(null); setTemplateFields([]); return; }
         try {
             setLoading(true);
             const res = await designsAPI.getById(designId);
@@ -237,40 +326,42 @@ export default function Layout() {
 
             const fields = [];
             design.elements.forEach(el => {
-                // Detect Mappable Elements: text, placeholders, barcodes, qrcodes
-                if (['text', 'placeholder', 'barcode', 'qrcode'].includes(el.type)) {
-                    const matches = el.text?.match(/{{(.*?)}}/g);
-                    if (matches) {
-                        matches.forEach(m => {
-                            const name = m.replace(/{{|}}/g, '');
-                            if (!fields.find(f => f.name === name)) {
-                                fields.push({ id: el.id, name, type: 'placeholder', label: `Placeholder: {{${name}}}` });
-                            }
-                        });
-                    } else {
-                        // Even without {{}}, treat as mappable if it has text or a fieldName
-                        const fieldLabel = el.fieldName || el.text || el.name || `Field ${el.id.substring(0, 4)}`;
-                        fields.push({
-                            id: el.id,
-                            name: el.fieldName || el.text,
-                            type: el.type,
-                            label: fieldLabel.length > 30 ? fieldLabel.substring(0, 30) + '...' : fieldLabel
-                        });
+                if (!['text', 'placeholder', 'barcode', 'qrcode', 'rect'].includes(el.type)) return;
+                
+                if (el.type === 'rect') {
+                    const elName = (el.name || '').toLowerCase();
+                    const isStrip = elName.includes('strip') || elName.includes('color') || 
+                                   ((el.width || 0) > 80 && (el.height || 0) < 50);
+                    if (isStrip) {
+                        const lbl = el.fieldName || el.name || 'Strip Color';
+                        fields.push({ id: el.id, name: el.fieldName || el.name || 'strip', type: 'rect', label: lbl });
                     }
+                    return;
+                }
+
+                const matches = el.text?.match(/{{(.*?)}}/g);
+                if (matches) {
+                    matches.forEach(m => {
+                        const name = m.replace(/{{|}}/g, '');
+                        if (!fields.find(f => f.name === name))
+                            fields.push({ id: el.id, name, type: 'placeholder', label: `{{${name}}}` });
+                    });
+                } else {
+                    const lbl = el.fieldName || el.text || el.name || `Field ${el.id.slice(0, 4)}`;
+                    fields.push({ id: el.id, name: el.fieldName || el.text, type: el.type, label: lbl.length > 30 ? lbl.slice(0, 30) + '…' : lbl });
                 }
             });
             setTemplateFields(fields);
 
-            // Auto mapping if columns exist
             if (columns.length > 0) {
-                const newMapping = {};
+                const nm = {};
                 fields.forEach(f => {
-                    const match = columns.find(c => c.toLowerCase() === f.name.toLowerCase());
-                    if (match) newMapping[f.id] = match;
+                    const m = columns.find(c => c.toLowerCase() === f.name?.toLowerCase());
+                    if (m) nm[f.id] = m;
                 });
-                setManualMapping(newMapping);
+                setManualMapping(nm);
             }
-        } catch (err) { toast.error('Failed to load design details'); }
+        } catch { toast.error('Failed to load design'); }
         finally { setLoading(false); }
     };
 
@@ -279,26 +370,43 @@ export default function Layout() {
         if (!file) return;
         const reader = new FileReader();
         reader.onload = (evt) => {
-            const bstr = evt.target.result;
-            const wb = XLSX.read(bstr, { type: 'binary' });
-            const ws = wb.Sheets[wb.SheetNames[0]];
-            const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+            const wb = XLSX.read(evt.target.result, { type: 'binary' });
+
+            // ── Pick the sheet with the most non-empty header columns ──────────
+            // This handles workbooks where SheetNames[0] is a summary/template sheet
+            // with fewer columns than the actual data sheet.
+            let bestSheet = wb.Sheets[wb.SheetNames[0]];
+            let bestColCount = 0;
+
+            wb.SheetNames.forEach(name => {
+                const sheet = wb.Sheets[name];
+                const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+                if (rows.length === 0) return;
+                // Count non-empty cells in the first row (header row)
+                const headerCount = rows[0].filter(c => c !== null && c !== undefined && String(c).trim() !== '').length;
+                if (headerCount > bestColCount) {
+                    bestColCount = headerCount;
+                    bestSheet = sheet;
+                }
+            });
+
+            const data = XLSX.utils.sheet_to_json(bestSheet, { defval: '', blankrows: true });
+
             if (data.length > 0) {
                 setExcelData(data);
-                const cols = Object.keys(data[0]);
+                // Filter out null/undefined/empty column names from merged cells or blank headers
+                const cols = Object.keys(data[0]).filter(c => c && String(c).trim() !== '' && c !== '__EMPTY');
                 setColumns(cols);
-                toast.success(`Loaded ${data.length} records`);
-
-                // Refresh mapping
+                toast.success(`Loaded ${data.length} records · ${cols.length} columns`);
                 if (selectedTemplate) {
-                    const newMapping = { ...manualMapping };
+                    const nm = { ...manualMapping };
                     templateFields.forEach(f => {
                         if (f.name) {
-                            const match = cols.find(c => c.toLowerCase() === f.name.toLowerCase());
-                            if (match && !newMapping[f.id]) newMapping[f.id] = match;
+                            const m = cols.find(c => c.toLowerCase() === f.name.toLowerCase());
+                            if (m && !nm[f.id]) nm[f.id] = m;
                         }
                     });
-                    setManualMapping(newMapping);
+                    setManualMapping(nm);
                 }
             }
         };
@@ -317,492 +425,482 @@ export default function Layout() {
         reader.readAsDataURL(file);
     };
 
+    // ─── Unified text value resolver ─────────────────────────────────────────
+    const resolveTextValue = (el, data, mapping) => {
+        let val = el.text || '';
+        // If the template element already contains ₹ we never add another one
+        const templateHasRupee = val.includes('₹');
+
+        // Step 1: explicit manual mapping
+        const mapped = mapping[el.id];
+        if (mapped && data[mapped] !== undefined) {
+            // Strip any ₹ already in the raw data value (prevents double ₹)
+            const raw = String(data[mapped] ?? '').replace(/^₹\s*/, '');
+            const isPrice = mapped.toLowerCase().includes('mrp') || mapped.toLowerCase().includes('price');
+            val = (isPrice && !templateHasRupee && /^\d/.test(raw)) ? '₹' + raw : raw;
+            return val;
+        }
+
+        // Step 2: {{ColumnName}} placeholder replacement
+        let hadPh = false;
+        Object.keys(data).forEach(col => {
+            const ph = `{{${col}}}`;
+            if (val.includes(ph)) {
+                hadPh = true;
+                // Strip any ₹ already in the raw data value
+                const raw = String(data[col] ?? '').replace(/^₹\s*/, '');
+                const isP = col.toLowerCase().includes('mrp') || col.toLowerCase().includes('price');
+                // Don't add ₹ if the template already has ₹ right before this placeholder
+                const phIdx = val.indexOf(ph);
+                const charBefore = phIdx > 0 ? val[phIdx - 1] : '';
+                const alreadyPrefixed = charBefore === '₹';
+                const rep = (isP && !alreadyPrefixed && /^\d/.test(raw)) ? '₹' + raw : raw;
+                val = val.replaceAll(ph, rep);
+            }
+        });
+
+        // Step 3: auto-match by element fieldName / name
+        if (!hadPh) {
+            const ac = Object.keys(data).find(col =>
+                col.toLowerCase() === (el.fieldName || el.name || '').toLowerCase()
+            );
+            if (ac && data[ac] !== undefined) {
+                const raw = String(data[ac] ?? '').replace(/^₹\s*/, '');
+                const isP = ac.toLowerCase().includes('mrp') || ac.toLowerCase().includes('price');
+                val = (isP && !templateHasRupee && /^\d/.test(raw)) ? '₹' + raw : raw;
+            }
+        }
+
+        // Final cleanup: remove any accidental double rupee
+        while (/₹\s*₹/.test(val)) val = val.replace(/₹\s*₹/g, '₹');
+
+        // Auto line-break for Net Qty (TOP ... BOTTOM)
+        if (/TOP/i.test(val) && /BOTTOM/i.test(val)) {
+            val = val.replace(/\s+(BOTTOM)/i, '\n$1');
+        }
+
+        return val;
+    };
+
+    // ─── Vector Barcode ───────────────────────────────────────────────────────
     const drawVectorBarcode = (pdf, value, x, y, w, h, format, fill) => {
         try {
             const isEAN13 = (format || '').toUpperCase() === 'EAN13';
-
             if (isEAN13) {
-                const L = {
-                    0: '0001101', 1: '0011001', 2: '0010011', 3: '0111101', 4: '0100011',
-                    5: '0110001', 6: '0101111', 7: '0111011', 8: '0110111', 9: '0001011'
-                };
-                const G = {
-                    0: '0100111', 1: '0110011', 2: '0011011', 3: '0100001', 4: '0011101',
-                    5: '0111001', 6: '0000101', 7: '0010001', 8: '0001001', 9: '0010111'
-                };
-                const R = {
-                    0: '1110010', 1: '1100110', 2: '1101100', 3: '1000010', 4: '1011100',
-                    5: '1001110', 6: '1010000', 7: '1000100', 8: '1001000', 9: '1110100'
-                };
-                const PARITY = {
-                    0: 'LLLLLL', 1: 'LLGLGG', 2: 'LLGGLG', 3: 'LLGGGL', 4: 'LGLLGG',
-                    5: 'LGGLLG', 6: 'LGGGLL', 7: 'LGLGLG', 8: 'LGLGGL', 9: 'LGGLGL'
-                };
-
+                const L = { 0: '0001101', 1: '0011001', 2: '0010011', 3: '0111101', 4: '0100011', 5: '0110001', 6: '0101111', 7: '0111011', 8: '0110111', 9: '0001011' };
+                const G = { 0: '0100111', 1: '0110011', 2: '0011011', 3: '0100001', 4: '0011101', 5: '0111001', 6: '0000101', 7: '0010001', 8: '0001001', 9: '0010111' };
+                const R = { 0: '1110010', 1: '1100110', 2: '1101100', 3: '1000010', 4: '1011100', 5: '1001110', 6: '1010000', 7: '1000100', 8: '1001000', 9: '1110100' };
+                const PARITY = { 0: 'LLLLLL', 1: 'LLGLGG', 2: 'LLGGLG', 3: 'LLGGGL', 4: 'LGLLGG', 5: 'LGGLLG', 6: 'LGGGLL', 7: 'LGLGLG', 8: 'LGLGGL', 9: 'LGGLGL' };
                 const s = String(value).replace(/\D/g, '').padEnd(13, '0').substring(0, 13);
                 const d = s.split('').map(Number);
                 const parity = PARITY[d[0]] || 'LLLLLL';
-
                 let bits = '101';
-                for (let i = 0; i < 6; i++) {
-                    bits += parity[i] === 'G' ? G[d[i + 1]] : L[d[i + 1]];
-                }
+                for (let i = 0; i < 6; i++) bits += parity[i] === 'G' ? G[d[i + 1]] : L[d[i + 1]];
                 bits += '01010';
-                for (let i = 0; i < 6; i++) {
-                    bits += R[d[i + 7]];
-                }
-                bits += '101'; // 95 modules total
-
-                // ── Sizing — ALL variables defined before use ─────────────────
-                const fontSizePt = 6;
-                const fontSizeMM = fontSizePt * 0.352778;  // ~2.82mm
-                const gapMM = 0.1; // Closer to barcode
-                const digitRowH = fontSizeMM * 1.0;
-                const barZoneH = h - digitRowH - gapMM;  // ✅ defined first
-                const dataBarH = barZoneH - 0.6;          // ✅ uses barZoneH safely
-                const guardBarH = barZoneH;                // ✅ uses barZoneH safely
-
-                // 95 bar modules + 7 left quiet + 7 right quiet = 109 total
-                const unitW = w / 109;
-                const barStartX = x + unitW * 7;
-
-                const isGuardBit = (i) =>
-                    i < 3 || (i >= 45 && i < 50) || i >= 92;
-
-                // Clip everything to element bounds
-                pdf.saveGraphicsState();
-                pdf.rect(x, y, w, h + 1, null);
-                pdf.internal.write('W n');
-
-                // Draw bars
+                for (let i = 0; i < 6; i++) bits += R[d[i + 7]];
+                bits += '101';
+                const fsPt = 5, fsMM = fsPt * 0.352778, gap = 0.1;
+                const barZoneH = h - fsMM - gap, unitW = w / 109, bsX = x + unitW * 7;
+                const isG = (i) => i < 3 || (i >= 45 && i < 50) || i >= 92;
                 pdf.setFillColor(fill || '#000000');
-                let cx = barStartX;
+                let cx = bsX;
                 for (let i = 0; i < 95;) {
-                    if (bits[i] === '1') {
-                        const barH = isGuardBit(i) ? guardBarH : dataBarH;
-                        let span = 1;
-                        while (
-                            i + span < 95 &&
-                            bits[i + span] === '1' &&
-                            isGuardBit(i + span) === isGuardBit(i)
-                        ) { span++; }
-                        pdf.rect(cx, y, unitW * span, barH, 'F');
-                        cx += unitW * span;
-                        i += span;
-                    } else {
-                        cx += unitW;
-                        i++;
-                    }
+                    if (bits[i] === '1') { let sp = 1; while (i + sp < 95 && bits[i + sp] === '1' && isG(i + sp) === isG(i)) sp++; pdf.rect(cx, y, unitW * sp, isG(i) ? barZoneH : barZoneH - 0.5, 'F'); cx += unitW * sp; i += sp; }
+                    else { cx += unitW; i++; }
                 }
-
-                // Draw digits
-                pdf.setFont('courier', 'normal');
-                pdf.setFontSize(fontSizePt);
-                const textY = y + barZoneH + gapMM + fontSizeMM * 0.8;
-
-                // Digit 0: in left quiet zone
-                pdf.text(s[0], x + unitW * 3.5, textY, { align: 'center' });
-
-                // Left group digits 1-6
-                const lgStartX = barStartX + unitW * 3;
-                for (let i = 0; i < 6; i++) {
-                    pdf.text(s[i + 1], lgStartX + (i * 7 + 3.5) * unitW, textY, { align: 'center' });
-                }
-
-                // Right group digits 7-12
-                const rgStartX = barStartX + unitW * 50;
-                for (let i = 0; i < 6; i++) {
-                    pdf.text(s[i + 7], rgStartX + (i * 7 + 3.5) * unitW, textY, { align: 'center' });
-                }
-
-                pdf.restoreGraphicsState();
-
+                pdf.setFont('courier', 'normal'); pdf.setFontSize(fsPt);
+                const ty = y + barZoneH + gap + fsMM * 0.8;
+                pdf.text(s[0], x + unitW * 3.5, ty, { align: 'center' });
+                for (let i = 0; i < 6; i++) pdf.text(s[i + 1], bsX + unitW * 3 + (i * 7 + 3.5) * unitW, ty, { align: 'center' });
+                for (let i = 0; i < 6; i++) pdf.text(s[i + 7], bsX + unitW * 50 + (i * 7 + 3.5) * unitW, ty, { align: 'center' });
             } else {
-                // ── CODE128 / other ───────────────────────────────────────────
-                const barcodeData = {};
-                JsBarcode(barcodeData, value || '123456789012', {
-                    format: format || 'CODE128', margin: 0
-                });
-                const encs = barcodeData.encodings || [];
-                let totalUnits = 0;
-                encs.forEach(e => { totalUnits += e.data.length; });
-
-                const unitW = w / totalUnits;
-                const fontSizePt = 8;
-                const fontSizeMM = fontSizePt * 0.352778;
-                const gapMM = 0.1; // Closer to barcode
-                const digitRowH = fontSizeMM * 1.0;
-                const barH = h - digitRowH - gapMM;
-
-                pdf.saveGraphicsState();
-                pdf.rect(x, y, w, h + 1, null);
-                pdf.internal.write('W n');
-
+                const bd = {};
+                JsBarcode(bd, String(value || '123456789'), { format: format || 'CODE128', margin: 0 });
+                const encs = bd.encodings || [];
+                let total = 0; encs.forEach(e => { total += e.data.length; });
+                const unitW = w / total, fsPt = 6, fsMM = fsPt * 0.352778, barH = h - fsMM - 0.5;
                 pdf.setFillColor(fill || '#000000');
                 let cx = x;
                 encs.forEach(enc => {
                     for (let i = 0; i < enc.data.length;) {
-                        if (enc.data[i] === '1') {
-                            let span = 1;
-                            while (i + span < enc.data.length && enc.data[i + span] === '1') span++;
-                            pdf.rect(cx, y, unitW * span, barH, 'F');
-                            cx += unitW * span;
-                            i += span;
-                        } else {
-                            cx += unitW;
-                            i++;
-                        }
+                        if (enc.data[i] === '1') { let sp = 1; while (i + sp < enc.data.length && enc.data[i + sp] === '1') sp++; pdf.rect(cx, y, unitW * sp, barH, 'F'); cx += unitW * sp; i += sp; }
+                        else { cx += unitW; i++; }
                     }
                 });
-
-                pdf.setFont('courier', 'normal');
-                pdf.setFontSize(fontSizePt);
-                const textY = y + barH + gapMM + fontSizeMM * 0.8;
-                pdf.text(String(value), x + w / 2, textY, { align: 'center' });
-
-                pdf.restoreGraphicsState();
+                pdf.setFont('courier', 'normal'); pdf.setFontSize(fsPt);
+                pdf.text(String(value), x + w / 2, y + barH + 0.5 + fsMM * 0.8, { align: 'center' });
             }
-
-        } catch (e) {
-            console.warn('PDF Barcode Error:', e);
-        }
+        } catch (e) { console.warn('Barcode PDF err:', e); }
     };
 
-    const drawVectorLabel = async (pdf, elements, data, mapping, x, y, w, h, isBranding = false, isProduction = false) => {
-        // x, y, w, h are in PDF units (MM)
-        const mmX = x;
-        const mmY = y;
-        const mmW = w;
-        const mmH = h;
+    // ─── PDF Label Renderer ───────────────────────────────────────────────────
+    const drawVectorLabel = async (pdf, elements, data, mapping, mmX, mmY, mmW, mmH, isBranding = false, isProduction = false) => {
 
-        // Calculate scaling factor based on original design height (assumed 700px/185mm or from template)
-        // We want to fit the original design height into the target mmH
-        const originalDesignHeightPx = selectedTemplate?.canvasHeight || selectedTemplate?.height || 700;
-        const originalDesignHeightMM = originalDesignHeightPx * PX_TO_MM;
-        const contentScale = mmH / originalDesignHeightMM;
+        const dW = selectedTemplate?.canvasWidth || selectedTemplate?.width || 166;
+        const dH = selectedTemplate?.canvasHeight || selectedTemplate?.height || 387;
 
-        // Base white background with 10px rounded corners (2.64mm)
+        const cs = Math.min(mmW / (dW * PX_TO_MM), mmH / (dH * PX_TO_MM));
+
+        const offX = mmX + (mmW - dW * PX_TO_MM * cs) / 2;
+        const offY = mmY + (mmH - dH * PX_TO_MM * cs) / 2;
+
+        const canvasRadius = selectedTemplate?.canvasRadius || 10;
+        const tagR = Math.min(4, canvasRadius * PX_TO_MM * cs);
+
         pdf.setFillColor('#ffffff');
-        const tagRadius = 2.64 * contentScale; 
-        pdf.roundedRect(mmX, mmY, mmW, mmH, tagRadius, tagRadius, 'F');
+        pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'F');
 
         if (isBranding) {
-            // Draw a black rounded rect
             pdf.setFillColor('#000000');
-            pdf.roundedRect(mmX, mmY, mmW, mmH, tagRadius, tagRadius, 'F');
-            
-            // Add white double outline for branding
-            pdf.setDrawColor('#ffffff');
-            pdf.setLineWidth(0.3 * contentScale);
-            
-            // Outer
-            pdf.roundedRect(mmX, mmY, mmW, mmH, tagRadius, tagRadius, 'D');
-            
-            // Inner (3px gap = 0.8mm)
-            const gap = 0.8 * contentScale;
-            const innerR = Math.max(0, tagRadius - gap);
-            pdf.roundedRect(mmX + gap, mmY + gap, mmW - 2 * gap, mmH - 2 * gap, innerR, innerR, 'D');
-
+            pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'F');
+            pdf.setDrawColor('#ffffff'); pdf.setLineWidth(0.4);
+            pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'D');
+            const g = 1;
+            pdf.roundedRect(mmX + g, mmY + g, mmW - g * 2, mmH - g * 2, Math.max(0, tagR - g), Math.max(0, tagR - g), 'D');
             const bImg = brandingImg || logoImg;
-            if (bImg) {
-                // Fill the area with the logo
-                try { pdf.addImage(bImg, 'PNG', mmX, mmY, mmW, mmH); } catch (e) { }
-            }
+            if (bImg) { try { pdf.addImage(bImg, 'PNG', mmX, mmY, mmW, mmH); } catch (e) { } }
             return;
         }
+
+        pdf.saveGraphicsState();
+        pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, null);
+        pdf.internal.write('W n');
 
         const sorted = [...elements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
 
         for (const el of sorted) {
-            const elX = mmX + (el.x || 0) * PX_TO_MM * contentScale;
-            const elY = mmY + (el.y || 0) * PX_TO_MM * contentScale;
-            const elW = (el.width || 0) * PX_TO_MM * contentScale;
-            const elH = (el.height || 0) * PX_TO_MM * contentScale;
+            if (el.visible === false) continue;
+            pdf.saveGraphicsState();
 
+            const elSX = el.scaleX || 1;
+            const elSY = el.scaleY || 1;
+            const elRot = el.rotation || 0;
+
+            const ex = offX + (el.x || 0) * PX_TO_MM * cs;
+            const ey = offY + (el.y || 0) * PX_TO_MM * cs;
+            const ew = (el.width || 0) * PX_TO_MM * cs * elSX;
+            const eh = (el.height || 0) * PX_TO_MM * cs * elSY;
+
+            // ── TEXT ─────────────────────────────────────────────────────────
             if (el.type === 'text' || el.type === 'placeholder') {
-                let val = el.text || '';
-                const mapped = mapping[el.id];
-                if (mapped && data[mapped] !== undefined) {
-                    val = String(data[mapped]);
-                    const isPriceCol = mapped.toLowerCase().includes('mrp') || mapped.toLowerCase().includes('price');
-                    if (isPriceCol && !val.includes('₹') && /^\d/.test(val)) val = '₹' + val;
-                }
-                if (!val || val === 'Text') continue;
+                const val = resolveTextValue(el, data, mapping);
+                if (!val || val === 'Text') { pdf.restoreGraphicsState(); continue; }
 
-                pdf.setTextColor(el.fill || '#000000');
-                const fontSize = (el.fontSize || 12) * 0.75 * (el.scaleX || 1) * contentScale;
-                pdf.setFontSize(fontSize);
-                pdf.setFont('helvetica', el.fontWeight === 'bold' ? 'bold' : 'normal');
+                const fs = Math.max(3, (el.fontSize || 12) * 0.75 * cs);
+                pdf.setFontSize(fs);
 
-                const lines = pdf.splitTextToSize(val, elW);
+                // Set text color — needed so drawRupeeText uses correct color
+                const textColor = el.fill || '#000000';
+                pdf.setTextColor(textColor);
+
+                const bold = String(el.fontWeight || '').includes('bold') || el.fontWeight === '700' || el.fontWeight === 700;
+                const italic = el.fontStyle === 'italic';
+                const pdfStyle = bold && italic ? 'bolditalic' : bold ? 'bold' : italic ? 'italic' : 'normal';
+                pdf.setFont('helvetica', pdfStyle);
+
                 const align = el.textAlign || 'left';
-                const rotation = el.rotation || 0;
+                const wrapW = ew;
 
-                const tx = align === 'center' ? elX + elW / 2 : (align === 'right' ? elX + elW : elX);
-                const ty = elY + (fontSize * 0.35);
+                // ── Rotated text ──────────────────────────────────────────────
+                if (elRot !== 0) {
+                    // For rotated text with ₹, replace with Rs. (rotation + image is complex)
+                    const safeVal = val.replace(/₹/g, 'Rs.');
+                    const lines = wrapW > 0 ? pdf.splitTextToSize(safeVal, wrapW) : [safeVal];
+                    pdf.text(lines, ex, ey + fs * 0.352778 * 0.85, {
+                        align,
+                        angle: elRot,
+                        lineHeightFactor: el.lineHeight || 1.2,
+                    });
+                    pdf.restoreGraphicsState();
+                    continue;
+                }
 
-                pdf.text(lines, tx, ty, { align, angle: -rotation }); // jsPDF uses counter-clockwise degrees for 'angle'
+                // ── Colon-tab aligned ─────────────────────────────────────────
+                const tabPos = el.tabPos || 0;
+                if (tabPos > 0 && val.includes(':')) {
+                    const lh = fs * 0.352778 * (el.lineHeight || 1.2);
+                    val.split('\n').forEach((line, i) => {
+                        const ci = line.indexOf(':');
+                        const ly = ey + fs * 0.352778 * 0.85 + i * lh;
+                        if (ci !== -1) {
+                            drawRupeeText(pdf, line.substring(0, ci).trim(), ex, ly);
+                            drawRupeeText(pdf, line.substring(ci).trim(), ex + tabPos * PX_TO_MM * cs, ly);
+                        } else {
+                            drawRupeeText(pdf, line, ex, ly);
+                        }
+                    });
+                    pdf.restoreGraphicsState();
+                    continue;
+                }
+
+                // ── Apply horizontal scale (Tz) for designer scaleX ──────────
+                if (elSX !== 1 && elSX > 0) pdf.internal.write(`${(elSX * 100).toFixed(1)} Tz`);
+
+                const fsMM = fs * 0.352778;
+                const ty = ey + fsMM * 0.85;
+
+                // Split into lines then draw each with rupee support
+                const lines = wrapW > 0 && el.wrap !== 'none'
+                    ? pdf.splitTextToSize(val.replace(/₹/g, ' ₹ ').replace(/\s{2,}/g, ' ').trim(), wrapW)
+                    : [val];
+
+                const lh = fsMM * (el.lineHeight || 1.2);
+
+                lines.forEach((line, li) => {
+                    const lineY = ty + li * lh;
+                    const lineW = pdf.getTextWidth(line.replace(/₹/g, ''));
+
+                    let lineX = ex;
+                    if (align === 'center') lineX = ex + (wrapW - lineW) / 2;
+                    else if (align === 'right') lineX = ex + wrapW - lineW;
+
+                    drawRupeeText(pdf, line, lineX, lineY);
+                });
+
+                if (elSX !== 1 && elSX > 0) pdf.internal.write('100 Tz');
+
+            // ── RECT ─────────────────────────────────────────────────────────
             } else if (el.type === 'rect') {
                 let fill = el.fill;
-                const elName = (el.name || '').toLowerCase();
-                const isStrip = elName.includes('strip') || elName.includes('color');
-                if (isStrip) continue; // Remove the marked strip as requested
 
-                const isLabelBorder = Math.abs(elW - mmW) < 2 && Math.abs(elH - mmH) < 2;
-                const radius = isLabelBorder ? 2.64 * contentScale : (el.cornerRadius || 0) * contentScale;
+                const elName = (el.name || '').toLowerCase();
+                // Consider it a strip if named 'strip'/'color', OR if it's wide AND short (height < 50)
+                const isStrip = elName.includes('strip') || elName.includes('color') || 
+                               ((el.width || 0) > 80 && (el.height || 0) < 50);
+
+                if (isStrip) {
+                    const manualMapped = mapping[el.id];
+                    if (manualMapped && data[manualMapped] !== undefined) {
+                        const raw = String(data[manualMapped] ?? '');
+                        const mc = resolveStripColor(raw.trim());
+                        if (mc) fill = mc;
+                    } else {
+                        const sc = Object.keys(data || {}).find(col =>
+                            col.toLowerCase().replace(/[\s_-]/g, '').includes('stripcolor') ||
+                            col.toLowerCase().replace(/[\s_-]/g, '') === 'strip'
+                        );
+                        if (sc && data[sc]) { const mc = resolveStripColor(String(data[sc]).trim()); if (mc) fill = mc; }
+                    }
+                }
+
+                const isLabelBorder = Math.abs(ew - mmW) < 3 && Math.abs(eh - mmH) < 3;
+                const r = el.cornerRadius
+                    ? Math.max(0, el.cornerRadius * PX_TO_MM * cs)
+                    : (isLabelBorder ? tagR : 0);
 
                 if (fill && fill !== 'transparent') {
                     pdf.setFillColor(fill);
-                    if (radius > 0) pdf.roundedRect(elX, elY, elW, elH, radius, radius, 'F');
-                    else pdf.rect(elX, elY, elW, elH, 'F');
+                    r > 0 ? pdf.roundedRect(ex, ey, ew, eh, r, r, 'F') : pdf.rect(ex, ey, ew, eh, 'F');
                 }
-                if (el.stroke && el.stroke !== 'transparent') {
-                    if (isProduction && isLabelBorder) continue; // Skip label border in production
-                    pdf.setDrawColor(el.stroke);
-                    pdf.setLineWidth(0.3 * contentScale);
-                    
-                    // Outer border
-                    if (radius > 0) pdf.roundedRect(elX, elY, elW, elH, radius, radius, 'D');
-                    else pdf.rect(elX, elY, elW, elH, 'D');
 
-                    // Inner border (Double outline with 3px gap = 0.8mm)
-                    if (isLabelBorder) {
-                        const gap = 0.8 * contentScale;
-                        const innerR = Math.max(0, radius - gap);
-                        pdf.roundedRect(elX + gap, elY + gap, elW - 2 * gap, elH - 2 * gap, innerR, innerR, 'D');
-                    }
-                }
-            } else if (el.type === 'barcode') {
-                const val = String(data[mapping[el.id]] || el.barcodeValue || '123456789012');
-                const format = el.barcodeFormat || 'CODE128';
-                // Reduced height for cleaner look
-                drawVectorBarcode(pdf, val, elX, elY, elW, elH * 0.9, format, el.fill);
-            } else if (el.type === 'qrcode') {
-                try {
-                    const qrVal = String(data[mapping[el.id]] || el.qrValue || 'DUMMY_QR');
-                    const qr = QRCode.create(qrVal, { margin: 0 });
-                    const { data: qrData, size } = qr.modules;
-
-                    const qrSizeMM = Math.min(elW, elH);
-                    const cellSize = qrSizeMM / size;
-
-                    pdf.setFillColor('#ffffff');
-                    pdf.rect(elX, elY, qrSizeMM, qrSizeMM, 'F');
-
-                    pdf.setFillColor(el.fill || '#000000');
-                    for (let row = 0; row < size; row++) {
-                        for (let col = 0; col < size; col++) {
-                            if (qrData[row * size + col]) {
-                                pdf.rect(elX + col * cellSize, elY + row * cellSize, cellSize + 0.01, cellSize + 0.01, 'F');
-                            }
+                if (el.stroke && el.stroke !== 'transparent' && (el.strokeWidth || 0) > 0) {
+                    if (!(isProduction && isLabelBorder)) {
+                        pdf.setDrawColor(el.stroke);
+                        pdf.setLineWidth(Math.max(0.05, (el.strokeWidth || 1) * PX_TO_MM * cs));
+                        r > 0 ? pdf.roundedRect(ex, ey, ew, eh, r, r, 'D') : pdf.rect(ex, ey, ew, eh, 'D');
+                        if (isLabelBorder) {
+                            const g = 0.8 * cs;
+                            const ir = Math.max(0, r - g);
+                            pdf.roundedRect(ex + g, ey + g, ew - g * 2, eh - g * 2, ir, ir, 'D');
                         }
                     }
-                } catch (e) { console.warn('QR Error:', e); }
+                }
 
+            // ── BARCODE ───────────────────────────────────────────────────────
+            } else if (el.type === 'barcode') {
+                let bv = el.barcodeValue || '123456789';
+                const mp = mapping[el.id];
+                if (mp && data[mp] !== undefined) bv = String(data[mp]);
+                else { const ac = Object.keys(data || {}).find(c => c.toLowerCase() === (el.fieldName || el.name || '').toLowerCase()); if (ac) bv = String(data[ac] ?? bv); }
+                drawVectorBarcode(pdf, bv, ex, ey, ew, eh * 0.9, el.barcodeFormat || 'CODE128', el.fill);
+
+            // ── QR CODE ───────────────────────────────────────────────────────
+            } else if (el.type === 'qrcode') {
+                try {
+                    let qv = el.qrValue || 'QR';
+                    const mp = mapping[el.id];
+                    if (mp && data[mp] !== undefined) qv = String(data[mp]);
+                    else { const ac = Object.keys(data || {}).find(c => c.toLowerCase() === (el.fieldName || el.name || '').toLowerCase()); if (ac) qv = String(data[ac] ?? qv); }
+                    const qr = QRCode.create(qv, { margin: 0 });
+                    const { data: qd, size } = qr.modules;
+                    const qsz = Math.min(ew, eh), cell = qsz / size;
+                    pdf.setFillColor('#ffffff'); pdf.rect(ex, ey, qsz, qsz, 'F');
+                    pdf.setFillColor(el.fill || '#000000');
+                    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (qd[r * size + c]) pdf.rect(ex + c * cell, ey + r * cell, cell + 0.01, cell + 0.01, 'F');
+                } catch (e) { console.warn('QR err:', e); }
+
+            // ── IMAGE ─────────────────────────────────────────────────────────
             } else if (el.type === 'image') {
-                const imgData = el.image || el.src || el.url;
-                if (imgData) {
-                    const finalW = elW * (el.scaleX || 1);
-                    const finalH = elH * (el.scaleY || 1);
-                    try {
-                        pdf.addImage(imgData, 'PNG', elX, elY, finalW, finalH);
-                    } catch (e) { console.warn('Image PDF Error:', e); }
-                }
+                const src = el.image || el.src || el.url;
+                if (src) { try { pdf.addImage(src, 'PNG', ex, ey, ew, eh); } catch (e) { } }
+
+            // ── LINE ─────────────────────────────────────────────────────────
             } else if (el.type === 'line') {
-                pdf.setDrawColor(el.stroke || '#000000');
-                pdf.setLineWidth((el.strokeWidth || 1) * 0.2 * contentScale);
                 const pts = el.points || [0, 0, 100, 0];
-                pdf.line(elX + pts[0] * PX_TO_MM * contentScale, elY + pts[1] * PX_TO_MM * contentScale, elX + pts[2] * PX_TO_MM * contentScale, elY + pts[3] * PX_TO_MM * contentScale);
-                if (el.fill && el.fill !== 'transparent') {
-                    pdf.setFillColor(el.fill);
-                    pdf.circle(elX, elY, (el.radius || 10) * PX_TO_MM * contentScale, 'F');
-                }
-                if (el.stroke && el.stroke !== 'transparent') {
-                    pdf.setDrawColor(el.stroke);
-                    pdf.setLineWidth((el.strokeWidth || 1) * 0.2 * contentScale);
-                    pdf.circle(elX, elY, (el.radius || 10) * PX_TO_MM * contentScale, 'D');
-                }
+                pdf.setDrawColor(el.stroke || '#000000');
+                pdf.setLineWidth(Math.max(0.05, (el.strokeWidth || 1) * PX_TO_MM * cs));
+                pdf.line(ex + pts[0] * PX_TO_MM * cs, ey + pts[1] * PX_TO_MM * cs, ex + pts[2] * PX_TO_MM * cs, ey + pts[3] * PX_TO_MM * cs);
             }
+
+            pdf.restoreGraphicsState();
         }
+
+        pdf.restoreGraphicsState();
     };
 
+    // ─── Download Proof Sheet ─────────────────────────────────────────────────
     const downloadPDF = async () => {
         if (!selectedTemplate) return;
         try {
-            toast.loading('Generating Landscape A4 Proof Sheet...', { id: 'pdf-load' });
-            
-            // Standard A4 dimensions in Landscape
-            const PAGE_W = 297;
-            const PAGE_H = 210;
-            const pdf = new jsPDF({
-                orientation: 'landscape',
-                unit: 'mm',
-                format: 'a4'
-            });
+            toast.loading('Generating Proof Sheet…', { id: 'pdf' });
+            const PAGE_W = 297, PAGE_H = 210;
+            // No custom font needed — ₹ rendered as canvas image via drawRupeeText
+            const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
-            const hSpacingMM = 0.5; 
-            const vSpacingMM = 3; 
-            const labelW_MM = 43; 
-            const labelH_MM = 90;
+            const dW = selectedTemplate.canvasWidth || selectedTemplate.width || 166;
+            const dH = selectedTemplate.canvasHeight || selectedTemplate.height || 387;
+            const labelW = dW * PX_TO_MM;
+            const labelH = dH * PX_TO_MM;
 
-            const getColsForCurrentRow = (p, r) => (p === 1 && r === 0) ? 6 : 5;
-            const getStartColForCurrentRow = (p, r) => (p === 1 && r > 0) ? 1 : 0;
-            const maxTagsPerPage = 10;
+            const hGap = 1.5, vGap = 2, hdrH = 27, mSide = 5;
+            const usableW = PAGE_W - mSide * 2;
+            const usableH = PAGE_H - hdrH - mSide;
+            const cols = Math.max(1, Math.floor((usableW + hGap) / (labelW + hGap)));
+            const rows = Math.max(1, Math.floor((usableH + vGap) / (labelH + vGap)));
+            const maxPP = cols * rows;
 
-            const getPageMarginMM = (p) => {
-                const maxColsOnPage = p === 1 ? 6 : 5;
-                const gridW = maxColsOnPage * labelW_MM + (maxColsOnPage - 1) * hSpacingMM;
-                return (PAGE_W - gridW) / 2;
+            const drawHeader = (pg) => {
+                if (logoImg) { try { pdf.addImage(logoImg, 'PNG', mSide, 4, 52, 16); } catch (e) { } }
+                pdf.setFontSize(7); pdf.setFont('helvetica', 'normal'); pdf.setTextColor('#64748b');
+                pdf.text(`Saravana Graphics | NO.21/3, MG Street, Tirupur-641602 | 9360807755 | Page ${pg}`, mSide + 56, 12);
+                pdf.setDrawColor('#e2e8f0'); pdf.setLineWidth(0.3);
+                pdf.line(mSide, 22, PAGE_W - mSide, 22);
             };
 
-            const drawHeader = (pageNum) => {
-                const headerMargin = 10;
-                if (logoImg) {
-                    try { pdf.addImage(logoImg, 'PNG', headerMargin, 5, 60, 18); } catch (e) { }
+            // ─── Step 1: Group data into pages ────────────────────────────────
+            const pages = [];
+            let currentPage = [];
+
+            // The branding tag is always the first item on Page 1
+            currentPage.push({ isBranding: true, data: null });
+
+            for (const row of excelData) {
+                // Empty row acts as a manual PAGE BREAK
+                if (Object.values(row).every(v => v === '' || v == null)) {
+                    if (currentPage.length > 0) {
+                        pages.push(currentPage);
+                        currentPage = [];
+                    }
+                    continue;
                 }
                 
-                pdf.setFontSize(7);
-                pdf.setFont('helvetica', 'normal');
-                pdf.setTextColor('#64748b');
+                // If the current page is full, break to a new page
+                if (currentPage.length >= maxPP) {
+                    pages.push(currentPage);
+                    currentPage = [];
+                }
                 
-                const addressLine = "Saravana Graphics | NO.21/3, MG Street, Tirupur - 641602 | 9360807755 | Page " + pageNum;
-                pdf.text(addressLine, headerMargin + 65, 12);
+                currentPage.push({ isBranding: false, data: row });
+            }
+            if (currentPage.length > 0) pages.push(currentPage);
+
+            // ─── Step 2: Render each page perfectly centered ──────────────────
+            for (let pIdx = 0; pIdx < pages.length; pIdx++) {
+                const pgItems = pages[pIdx];
+                const pgNum = pIdx + 1;
                 
-                pdf.setDrawColor('#f1f5f9');
-                pdf.line(headerMargin, 25, PAGE_W - headerMargin, 25);
-            };
-
-            let currentPage = 1;
-            drawHeader(currentPage);
-
-            let curR = 0;
-            let curC = 0;
-            const startY = 20; 
-            let tagsOnPage = 0;
-
-            const marginMM = getPageMarginMM(currentPage);
-
-            // Include Branding Tag first
-            await drawVectorLabel(pdf, [], {}, {}, 
-                marginMM + 0 * (labelW_MM + hSpacingMM), 
-                startY + 0 * (labelH_MM + vSpacingMM), 
-                labelW_MM, labelH_MM, true);
-            
-            curC = 1; // First data tag on Page 1 starts at Col 1
-            tagsOnPage = 1;
-
-            for (let i = 0; i < excelData.length; i++) {
-                const rowData = excelData[i];
-                const isEmpty = Object.values(rowData).every(v => v === '' || v === undefined || v === null);
-
-                const currentMargin = getPageMarginMM(currentPage);
-
-                if (isEmpty) {
-                    if (curC > getStartColForCurrentRow(currentPage, curR)) {
-                        curR++;
-                        curC = getStartColForCurrentRow(currentPage, curR);
-                    }
-                } else {
-                    // Page break logic
-                    if (tagsOnPage >= maxTagsPerPage) {
-                        pdf.addPage();
-                        currentPage++;
-                        drawHeader(currentPage);
-                        curR = 0;
-                        curC = 0;
-                        tagsOnPage = 0;
-                    }
-
-                    const maxCols = getColsForCurrentRow(currentPage, curR);
-                    if (curC >= maxCols) {
-                        curR++;
-                        curC = getStartColForCurrentRow(currentPage, curR);
-                    }
-
-                    await drawVectorLabel(pdf, selectedTemplate.elements, rowData, manualMapping,
-                        getPageMarginMM(currentPage) + curC * (labelW_MM + hSpacingMM),
-                        startY + curR * (labelH_MM + vSpacingMM),
-                        labelW_MM, labelH_MM);
+                if (pgNum > 1) pdf.addPage();
+                drawHeader(pgNum);
+                
+                // Calculate dynamic width based on how many columns are actually used on this page
+                const colsUsed = Math.min(pgItems.length, cols);
+                const gridW = colsUsed * labelW + (colsUsed - 1) * hGap;
+                const dynamicMarginX = (PAGE_W - gridW) / 2; // Perfectly center this specific group
+                
+                for (let i = 0; i < pgItems.length; i++) {
+                    const item = pgItems[i];
+                    const c = i % cols;
+                    const r = Math.floor(i / cols);
                     
-                    curC++;
-                    tagsOnPage++;
+                    const x = dynamicMarginX + c * (labelW + hGap);
+                    const y = hdrH + r * (labelH + vGap);
+                    
+                    if (item.isBranding) {
+                        await drawVectorLabel(pdf, [], {}, {}, x, y, labelW, labelH, true);
+                    } else {
+                        await drawVectorLabel(pdf, selectedTemplate.elements, item.data, manualMapping, x, y, labelW, labelH);
+                    }
                 }
             }
 
-            pdf.save(`Proof_Sheet_Standardized_${new Date().getTime()}.pdf`);
-            toast.success('Downloaded!', { id: 'pdf-load' });
+            pdf.save(`Proof_Sheet_${Date.now()}.pdf`);
+            toast.success('Downloaded!', { id: 'pdf' });
         } catch (err) {
-            console.error('PDF Error:', err);
-            toast.error('Failed to generate PDF', { id: 'pdf-load' });
+            console.error(err);
+            toast.error('Failed to generate PDF', { id: 'pdf' });
         }
     };
+
+    // ─── Download Individual Labels ───────────────────────────────────────────
     const downloadIndividualPDF = async () => {
         if (!selectedTemplate) return;
         try {
-            toast.loading('Generating Individual Labels...', { id: 'label-load' });
-            
-            const designW_px = selectedTemplate.canvasWidth || selectedTemplate.width || 162; // fallback to 43mm in px
-            const designH_px = selectedTemplate.canvasHeight || selectedTemplate.height || 340; // fallback to 90mm in px
-            
-            const labelW = designW_px * PX_TO_MM;
-            const labelH = designH_px * PX_TO_MM;
+            toast.loading('Generating Individual Labels…', { id: 'ind' });
+            const dW = selectedTemplate.canvasWidth || selectedTemplate.width || 166;
+            const dH = selectedTemplate.canvasHeight || selectedTemplate.height || 387;
+            const lW = dW * PX_TO_MM, lH = dH * PX_TO_MM;
+            const ori = lW > lH ? 'landscape' : 'portrait';
+            // No custom font needed — ₹ rendered as canvas image via drawRupeeText
+            const pdf = new jsPDF({ orientation: ori, unit: 'mm', format: [lW, lH] });
 
-            const pdf = new jsPDF({
-                orientation: labelW > labelH ? 'landscape' : 'portrait',
-                unit: 'mm',
-                format: [labelW, labelH]
-            });
-
-            for (let i = 0; i < excelData.length; i++) {
-                const rowData = excelData[i];
-                const isEmpty = Object.values(rowData).every(v => v === '' || v === undefined || v === null);
-                if (isEmpty) continue;
-
-                if (i > 0) pdf.addPage([labelW, labelH], labelW > labelH ? 'landscape' : 'portrait');
-                
-                // Draw tag at its original design size (contentScale will be 1)
-                // ✅ isProduction = true to remove strip and outline
-                await drawVectorLabel(pdf, selectedTemplate.elements, rowData, manualMapping, 0, 0, labelW, labelH, false, true);
+            let first = true;
+            for (const row of excelData) {
+                if (Object.values(row).every(v => v === '' || v == null)) continue;
+                if (!first) pdf.addPage([lW, lH], ori);
+                first = false;
+                await drawVectorLabel(pdf, selectedTemplate.elements, row, manualMapping, 0, 0, lW, lH, false, true);
             }
-
-            pdf.save(`Individual_Labels_${new Date().getTime()}.pdf`);
-            toast.success('Downloaded!', { id: 'label-load' });
-        } catch (error) {
-            console.error('PDF Error:', error);
-            toast.error('Failed to generate labels', { id: 'label-load' });
+            pdf.save(`Labels_${Date.now()}.pdf`);
+            toast.success('Downloaded!', { id: 'ind' });
+        } catch (err) {
+            console.error(err);
+            toast.error('Failed to generate labels', { id: 'ind' });
         }
     };
 
-    // Calculate dimensions
-    const getPxWidth = () => {
-        if (!selectedTemplate) return 350;
-        const w = selectedTemplate.canvasWidth || selectedTemplate.width || 350;
+    // ─── Canvas preview dimensions ────────────────────────────────────────────
+    const getDesignPx = () => {
+        if (!selectedTemplate) return { w: 166, h: 387 };
         const unit = selectedTemplate.canvasUnit || 'px';
-        return unit === 'px' ? w : unitToPx(w, unit);
+        const w = selectedTemplate.canvasWidth || selectedTemplate.width || 166;
+        const h = selectedTemplate.canvasHeight || selectedTemplate.height || 387;
+        return { w: unit === 'px' ? w : unitToPx(w, unit), h: unit === 'px' ? h : unitToPx(h, unit) };
     };
-    const getPxHeight = () => {
-        if (!selectedTemplate) return 700;
-        const h = selectedTemplate.canvasHeight || selectedTemplate.height || 700;
-        const unit = selectedTemplate.canvasUnit || 'px';
-        return unit === 'px' ? h : unitToPx(h, unit);
-    };
+    const { w: itemW, h: itemH } = getDesignPx();
+    const colsCount = 6, spacing = 6, marginSide = 50;
+    
+    let requiredRows = 1;
+    let tempCol = 1;
+    let tempRow = 0;
+    excelData.forEach(rowData => {
+        if (Object.values(rowData).every(v => v === '' || v == null)) {
+            if (tempCol > 0) { tempRow++; tempCol = 0; }
+        } else {
+            if (tempCol >= colsCount) { tempRow++; tempCol = 0; }
+            tempCol++;
+        }
+    });
+    requiredRows = Math.max(1, tempRow + 1);
 
-    // Force 43x90mm for retail tags
-    const itemWidth = unitToPx(43, 'mm');
-    const itemHeight = unitToPx(90, 'mm');
-    const colsCount = 6; 
-    const spacing = 4; // 4px gap matching spacingMM
-    const marginSide = 50;
-    const sheetWidth = (itemWidth + spacing) * colsCount + (marginSide * 2);
-    const totalItems = excelData.length > 0 ? (Math.min(excelData.length, 10) + 1) : 1;
-    const rowCount = 2;
-    const sheetHeight = (itemHeight + spacing) * rowCount + 150;
+    const sheetW = (itemW + spacing) * colsCount + marginSide * 2;
+    const sheetH = (itemH + spacing) * requiredRows + 160;
 
+    // ─── JSX ─────────────────────────────────────────────────────────────────
     return (
         <div className={`layout-page ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
             <Sidebar />
-
             <main className="db-main" style={{ background: '#f8fafc' }}>
+
                 <div className="layout-header-simple">
                     <div className="flex items-center gap-4">
                         <button className="btn btn-ghost btn-icon" onClick={() => navigate('/dashboard')}><ArrowLeft size={18} /></button>
@@ -818,34 +916,33 @@ export default function Layout() {
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
-                        {excelData.length > 0 && (
-                            <>
-                                <button className="btn btn-ghost btn-sm gap-2" onClick={() => setShowExplorer(!showExplorer)}>
-                                    <Search size={14} /> {showExplorer ? 'Hide Data' : 'Inspect Excel'}
-                                </button>
-                                <button className="btn btn-secondary btn-sm gap-2 px-6 shadow-lg shadow-secondary/20" onClick={downloadIndividualPDF} style={{ borderRadius: '50px' }}>
-                                    <Download size={14} /> Download Labels
-                                </button>
-                                <button className="btn btn-primary btn-sm gap-2 px-6 shadow-lg shadow-primary/20" onClick={downloadPDF} style={{ borderRadius: '50px' }}>
-                                    <Download size={14} /> Download Proof Sheet
-                                </button>
-                            </>
-                        )}
+                        {excelData.length > 0 && (<>
+                            <button className="btn btn-ghost btn-sm gap-2" onClick={() => setShowExplorer(!showExplorer)}>
+                                <Search size={14} /> {showExplorer ? 'Hide Data' : 'Inspect Excel'}
+                            </button>
+                            <button className="btn btn-secondary btn-sm gap-2 px-6 shadow-lg shadow-secondary/20" onClick={downloadIndividualPDF} style={{ borderRadius: 50 }}>
+                                <Download size={14} /> Download Labels
+                            </button>
+                            <button className="btn btn-primary btn-sm gap-2 px-6 shadow-lg shadow-primary/20" onClick={downloadPDF} style={{ borderRadius: 50 }}>
+                                <Download size={14} /> Download Proof Sheet
+                            </button>
+                        </>)}
                     </div>
                 </div>
 
                 <div className="layout-content-grid">
                     <div className="layout-setup-sidebar">
+
                         <div className="setup-section">
                             <div className="section-label">1. Choose Design</div>
-                            <select className="select-input-simple" value={selectedTemplate?._id || ''} onChange={(e) => handleSelectTemplate(e.target.value)}>
+                            <select className="select-input-simple" value={selectedTemplate?._id || ''} onChange={e => handleSelectTemplate(e.target.value)}>
                                 <option value="">-- Select Design --</option>
                                 {templates.map(t => <option key={t._id} value={t._id}>{t.title}</option>)}
                             </select>
                             {selectedTemplate && (
                                 <div className="p-2 bg-primary/5 rounded-lg border border-primary/10 mt-1">
                                     <button className="btn btn-ghost btn-xs w-full gap-2 text-[10px] font-bold" onClick={() => document.getElementById('branding-upload').click()}>
-                                        <Wand2 size={10} /> {brandingImg ? 'Logo Updated' : 'Add Branding Logo'}
+                                        <Wand2 size={10} /> {brandingImg ? 'Logo Updated ✓' : 'Add Branding Logo'}
                                     </button>
                                     <input type="file" id="branding-upload" hidden accept="image/*" onChange={handleBrandingLogoUpload} />
                                 </div>
@@ -858,7 +955,7 @@ export default function Layout() {
                                 <FileSpreadsheet size={20} className={excelData.length ? 'text-success' : 'text-muted'} />
                                 <span>{excelData.length ? `${excelData.length} Rows Loaded` : 'Click to Upload Excel'}</span>
                             </div>
-                            <input type="file" id="excel-input" hidden accept=".xlsx, .xls, .csv" onChange={handleFileUpload} />
+                            <input type="file" id="excel-input" hidden accept=".xlsx,.xls,.csv" onChange={handleFileUpload} />
                         </div>
 
                         {selectedTemplate && templateFields.length > 0 && (
@@ -876,10 +973,14 @@ export default function Layout() {
                                             <select
                                                 className="mapping-select-mini"
                                                 value={manualMapping[field.id] || ''}
-                                                onChange={(e) => setManualMapping(prev => ({ ...prev, [field.id]: e.target.value }))}
+                                                title={manualMapping[field.id] || 'Auto / Ignore'}
+                                                onChange={e => setManualMapping(prev => ({ ...prev, [field.id]: e.target.value }))}
+                                                style={{ maxWidth: '100%', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}
                                             >
-                                                <option value="">Auto / Ignore</option>
-                                                {columns.map(col => <option key={col} value={col}>{col}</option>)}
+                                                <option value="">— Auto / Ignore —</option>
+                                                {columns.map(col => (
+                                                    <option key={col} value={col} title={col}>{col}</option>
+                                                ))}
                                             </select>
                                         </div>
                                     ))}
@@ -893,8 +994,22 @@ export default function Layout() {
                                 {showStripManager ? <X size={12} /> : <Plus size={12} />}
                             </button>
                             {showStripManager && (
-                                <div className="mt-2 flex flex-wrap gap-1.5 p-2 bg-muted/5 rounded-lg border border-muted/10">
-                                    {stripColors.map(sc => <div key={sc._id} className="w-5 h-5 rounded-sm border border-black/10" style={{ background: sc.hex }} title={sc.name} />)}
+                                <div className="mt-2 p-2 bg-muted/5 rounded-lg border border-muted/10">
+                                    <div className="flex flex-wrap gap-1.5 mb-3">
+                                        {stripColors.map(sc => (
+                                            <div key={sc._id} className="w-5 h-5 rounded-sm border border-black/10" style={{ background: sc.hex }} title={`${sc.name} (${sc.cmyk || sc.hex})`} />
+                                        ))}
+                                    </div>
+                                    <div className="border-t border-muted/10 pt-2 flex flex-col gap-2">
+                                        <input type="text" placeholder="Color Name (e.g. Yellow)" className="input-simple text-[10px] p-1 h-6" value={cmykInput.name} onChange={e => setCmykInput(p => ({ ...p, name: e.target.value }))} />
+                                        <div className="flex gap-1">
+                                            <input type="number" placeholder="C" className="input-simple text-[10px] p-1 h-6 w-full text-center" value={cmykInput.c || ''} onChange={e => setCmykInput(p => ({ ...p, c: Number(e.target.value) }))} title="Cyan 0-100" />
+                                            <input type="number" placeholder="M" className="input-simple text-[10px] p-1 h-6 w-full text-center" value={cmykInput.m || ''} onChange={e => setCmykInput(p => ({ ...p, m: Number(e.target.value) }))} title="Magenta 0-100" />
+                                            <input type="number" placeholder="Y" className="input-simple text-[10px] p-1 h-6 w-full text-center" value={cmykInput.y || ''} onChange={e => setCmykInput(p => ({ ...p, y: Number(e.target.value) }))} title="Yellow 0-100" />
+                                            <input type="number" placeholder="K" className="input-simple text-[10px] p-1 h-6 w-full text-center" value={cmykInput.k || ''} onChange={e => setCmykInput(p => ({ ...p, k: Number(e.target.value) }))} title="Black 0-100" />
+                                        </div>
+                                        <button className="btn btn-secondary btn-xs w-full text-[10px]" onClick={handleAddCMYKColor}><Plus size={10} /> Add CMYK Color</button>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -918,66 +1033,58 @@ export default function Layout() {
                                                 <h4 className="text-sm font-bold uppercase tracking-wider text-primary">Excel Inspector</h4>
                                                 <button onClick={() => setShowExplorer(false)} className="text-muted hover:text-primary"><X size={16} /></button>
                                             </div>
-                                            <div className="explorer-headers overflow-auto max-h-[400px] flex flex-wrap gap-1">
-                                                {columns.map(col => (
-                                                    <div key={col} className={`header-chip-mini ${Object.values(manualMapping).includes(col) ? 'mapped' : ''}`}>{col}</div>
-                                                ))}
+                                    <div className="flex flex-wrap gap-1 overflow-auto max-h-[400px]">
+                                        {columns.map(col => (
+                                            <div key={col} title={col} className={`header-chip-mini ${Object.values(manualMapping).includes(col) ? 'mapped' : ''}`}
+                                                style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {col}
                                             </div>
+                                        ))}
+                                    </div>
                                         </div>
                                     </div>
                                 )}
 
                                 <div className="konva-container-clean" style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
-                                    <Stage width={sheetWidth} height={sheetHeight} ref={stageRef} className="konva-sheet-simple">
+                                    <Stage width={sheetW} height={sheetH} ref={stageRef} className="konva-sheet-simple">
                                         <Layer>
-                                            <Rect width={sheetWidth} height={sheetHeight} fill="white" />
-                                            <Group x={marginSide} y={40}>
-                                                {logoImg && <KImage image={logoImg} width={180} height={50} y={-35} x={0} />}
-                                                <Rect y={25} width={sheetWidth - 100} height={1} fill="#f1f5f9" />
-                                                <Text text="DESIGN PROOF APPROVAL SHEET" y={40} fontSize={11} fontFamily="Inter" fontWeight="600" fill="#94a3b8" letterSpacing={2} />
+                                            <Rect width={sheetW} height={sheetH} fill="#f1f5f9" />
+                                            <Group x={marginSide} y={20}>
+                                                {logoImg && <KImage image={logoImg} width={160} height={45} />}
+                                                <Rect y={55} width={sheetW - marginSide * 2} height={1} fill="#e2e8f0" />
+                                                <Text text="DESIGN PROOF APPROVAL SHEET" y={65} fontSize={10} fontFamily="Arial" fill="#94a3b8" letterSpacing={2} />
                                             </Group>
-                                            <Group x={marginSide} y={220}>
-                                                <LayoutLabel elements={[]} width={itemWidth} height={itemHeight} isBranding={true} logoImg={brandingImg || logoImg} />
+                                            <Group x={marginSide} y={110}>
+                                                {/* Branding slot */}
+                                                <Group x={0} y={0}>
+                                                    <LayoutLabel width={itemW} height={itemH} isBranding logoImg={brandingImg || logoImg} />
+                                                </Group>
                                                 {(() => {
-                                                    let curR = 0;
-                                                    let curC = 1;
-                                                    const items = [];
-
-                                                    for (let i = 0; i < excelData.length; i++) {
-                                                        const rowData = excelData[i];
-                                                        const isEmpty = Object.values(rowData).every(v => v === '' || v === undefined || v === null);
-
-                                                        if (isEmpty) {
-                                                            if (curC > 0) {
-                                                                curR++;
-                                                                curC = 0;
-                                                            }
-                                                            continue;
+                                                    let col = 1, row = 0;
+                                                    return excelData.map((rowData, i) => {
+                                                        if (Object.values(rowData).every(v => v === '' || v == null)) {
+                                                            if (col > 0) { row++; col = 0; } return null;
                                                         }
-
-                                                        if (curC >= colsCount) {
-                                                            curR++;
-                                                            curC = 0;
-                                                        }
-
-                                                        items.push(
-                                                            <Group key={i} x={curC * (itemWidth + spacing)} y={curR * (itemHeight + spacing)}>
-                                                                <LayoutLabel elements={selectedTemplate.elements} data={rowData} mapping={manualMapping} width={itemWidth} height={itemHeight} />
+                                                        if (col >= colsCount) { row++; col = 0; }
+                                                        
+                                                        const gx = col * (itemW + spacing), gy = row * (itemH + spacing);
+                                                        col++;
+                                                        return (
+                                                            <Group key={i} x={gx} y={gy}>
+                                                                <LayoutLabel elements={selectedTemplate.elements} data={rowData} mapping={manualMapping} width={itemW} height={itemH} />
                                                             </Group>
                                                         );
-                                                        curC++;
-                                                        if (curR > 10) break;
-                                                    }
-                                                    return items;
+                                                    });
                                                 })()}
                                             </Group>
                                         </Layer>
                                     </Stage>
                                 </div>
-                                <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white/80 backdrop-blur shadow-2xl px-6 py-3 rounded-full border border-white">
-                                    <button className="btn btn-ghost btn-xs" onClick={() => setZoom(Math.max(0.2, zoom - 0.2))}><ZoomOut size={16} /></button>
+
+                                <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white/90 backdrop-blur shadow-2xl px-6 py-3 rounded-full border border-white">
+                                    <button className="btn btn-ghost btn-xs" onClick={() => setZoom(z => Math.max(0.1, z - 0.1))}><ZoomOut size={16} /></button>
                                     <span className="text-xs font-bold w-12 text-center text-primary">{Math.round(zoom * 100)}%</span>
-                                    <button className="btn btn-ghost btn-xs" onClick={() => setZoom(Math.min(3, zoom + 0.2))}><ZoomIn size={16} /></button>
+                                    <button className="btn btn-ghost btn-xs" onClick={() => setZoom(z => Math.min(3, z + 0.1))}><ZoomIn size={16} /></button>
                                 </div>
                             </div>
                         )}

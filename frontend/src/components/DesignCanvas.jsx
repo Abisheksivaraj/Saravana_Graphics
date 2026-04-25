@@ -5,6 +5,7 @@ import { useUIStore, pxToUnit, unitToPx } from '../store/uiStore';
 import BarcodeElement from './BarcodeElement';
 import QRElement from './QRElement';
 import ImageElement from './ImageElement';
+import NumericInput from './NumericInput';
 
 const GRID_SIZE = 10;
 const DIM_COLOR = '#E91E63';
@@ -221,63 +222,7 @@ function GapDimensions({ el1, el2, zoom }) {
     const formatVal = (v) => Number(pxToUnit(v, measurementUnit).toFixed(2));
 
     const renderDistanceLabel = (x, y, val, axis) => {
-        const label = `${formatVal(val)} ${measurementUnit}`;
-        return (
-            <Group
-                x={x} y={y}
-                onDblClick={(e) => {
-                    const stage = e.target.getStage();
-                    const container = stage.container();
-                    const pointerPos = stage.getPointerPosition();
-
-                    const input = document.createElement('input');
-                    input.type = 'number';
-                    input.value = formatVal(val);
-                    input.style.cssText = `position:absolute;top:${pointerPos.y}px;left:${pointerPos.x}px;width:60px;z-index:1000;padding:2px;border:1px solid ${DIM_COLOR};border-radius:4px;`;
-                    container.appendChild(input);
-                    input.focus();
-
-                    const commit = () => {
-                        const newDistPx = unitToPx(Number(input.value), measurementUnit);
-                        if (!isNaN(newDistPx)) {
-                            setElementDistance(el1.id, el2.id, axis, newDistPx);
-                        }
-                        if (container.contains(input)) container.removeChild(input);
-                    };
-
-                    input.onkeydown = (ev) => {
-                        if (ev.key === 'Enter') { ev.stopPropagation(); commit(); }
-                        if (ev.key === 'Escape') { ev.stopPropagation(); if (container.contains(input)) container.removeChild(input); }
-                    };
-                    input.onblur = commit;
-                }}
-            >
-                <Rect
-                    x={-(label.length * fontSize * 0.35)}
-                    y={-fontSize / 2 - 1 * invZoom}
-                    width={label.length * fontSize * 0.7}
-                    height={fontSize + 2 * invZoom}
-                    fill="white"
-                    stroke={DIM_COLOR}
-                    strokeWidth={0.5 * invZoom}
-                    cornerRadius={2 * invZoom}
-                    shadowBlur={2 * invZoom}
-                    shadowOpacity={0.2}
-                />
-                <Text
-                    x={-(label.length * fontSize * 0.35)}
-                    y={-fontSize / 2}
-                    text={label}
-                    fontSize={fontSize}
-                    fontFamily="Inter, Arial, sans-serif"
-                    fontStyle="bold"
-                    fill={DIM_COLOR}
-                    width={label.length * fontSize * 0.7}
-                    align="center"
-                    listening={true}
-                />
-            </Group>
-        );
+        return null; // Labels are now handled by the HTML overlay for better usability
     };
 
     const gaps = [];
@@ -334,11 +279,25 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
 
     const handleTransformEnd = (e) => {
         const node = shapeRef.current;
-        onChange(el.id, {
+        const updates = {
             x: node.x(), y: node.y(),
             scaleX: node.scaleX(), scaleY: node.scaleY(),
             rotation: node.rotation(),
-        });
+        };
+
+        // For text elements: bake scale into width/fontSize to avoid scaleX corruption on reload
+        if (el.type === 'text') {
+            updates.scaleX = 1;
+            updates.scaleY = 1;
+            // Bake horizontal scale into width
+            updates.width = (el.width || 200) * node.scaleX();
+            // Bake vertical scale into fontSize
+            if (node.scaleY() !== 1) {
+                updates.fontSize = Math.max(6, Math.round((el.fontSize || 16) * node.scaleY()));
+            }
+        }
+
+        onChange(el.id, updates);
     };
 
     const commonProps = {
@@ -347,7 +306,9 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
         name: 'design-element',
         x: el.x, y: el.y,
         rotation: el.rotation || 0,
-        scaleX: el.scaleX || 1, scaleY: el.scaleY || 1,
+        // For text with wrap=none, never apply scaleX — it causes squashing after save/reload
+        scaleX: (el.type === 'text' && el.wrap === 'none') ? 1 : (el.scaleX || 1),
+        scaleY: (el.type === 'text' && el.wrap === 'none') ? 1 : (el.scaleY || 1),
         opacity: el.opacity !== undefined ? el.opacity : 1,
         visible: el.visible !== false,
         draggable: selectedTool === 'pick' && !el.locked,
@@ -475,10 +436,60 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
 
         switch (el.type) {
             case 'text':
+                const textValue = displayProps.text || 'Text';
+                const tabPos = el.tabPos || 0;
+
+                // Handle Colon Alignment (Tab Stop)
+                if (tabPos > 0 && textValue.includes(':')) {
+                    const lines = textValue.split('\n');
+                    return (
+                        <Group {...commonProps}>
+                            {lines.map((line, i) => {
+                                const colonIndex = line.indexOf(':');
+                                if (colonIndex === -1) {
+                                    return (
+                                        <Text key={i}
+                                            y={i * (el.fontSize || 16) * (el.lineHeight || 1.2)}
+                                            text={line}
+                                            fontSize={el.fontSize || 16}
+                                            fontFamily={el.fontFamily || 'Arial'}
+                                            fontStyle={`${el.fontStyle === 'italic' ? 'italic' : 'normal'} ${el.fontWeight || 'normal'}`}
+                                            fill={el.fill || '#000000'}
+                                        />
+                                    );
+                                }
+                                const label = line.substring(0, colonIndex).trim();
+                                const value = line.substring(colonIndex).trim(); // includes the colon
+                                
+                                return (
+                                    <Group key={i} y={i * (el.fontSize || 16) * (el.lineHeight || 1.2)}>
+                                        <Text
+                                            text={label}
+                                            fontSize={el.fontSize || 16}
+                                            fontFamily={el.fontFamily || 'Arial'}
+                                            fontStyle={`${el.fontStyle === 'italic' ? 'italic' : 'normal'} ${el.fontWeight || 'normal'}`}
+                                            fill={el.fill || '#000000'}
+                                        />
+                                        <Text
+                                            x={tabPos}
+                                            text={value}
+                                            fontSize={el.fontSize || 16}
+                                            fontFamily={el.fontFamily || 'Arial'}
+                                            fontStyle={`${el.fontStyle === 'italic' ? 'italic' : 'normal'} ${el.fontWeight || 'normal'}`}
+                                            fill={el.fill || '#000000'}
+                                        />
+                                    </Group>
+                                );
+                            })}
+                        </Group>
+                    );
+                }
+
                 return (
                     <Text {...commonProps}
-                        text={displayProps.text || 'Text'}
-                        width={el.wrap === 'none' ? undefined : (el.width || 200)}
+                        text={textValue}
+                        // Defensive: if width < 20px it's corrupted — treat as single line
+                        width={(el.wrap === 'none' || (el.width || 200) < 20) ? undefined : (el.width || 200)}
                         fontSize={el.fontSize || 16}
                         fontFamily={el.fontFamily || 'Arial'}
                         fontStyle={`${el.fontStyle === 'italic' ? 'italic' : 'normal'} ${el.fontWeight || 'normal'}`}
@@ -487,7 +498,7 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
                         fill={el.fill || '#000000'}
                         stroke={el.stroke && el.stroke !== 'transparent' ? el.stroke : undefined}
                         strokeWidth={el.strokeWidth || 0}
-                        wrap={el.wrap || 'word'}
+                        wrap={(el.width || 200) < 20 ? 'none' : (el.wrap || 'word')}
                         letterSpacing={el.letterSpacing || 0}
                         lineHeight={el.lineHeight || 1.2}
                     />
@@ -1093,6 +1104,13 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
                                 onTransformEnd={handleTransformEnd}
                             />
                         )}
+                        {selectedIds.length === 2 && (
+                            <GapDimensions 
+                                el1={elements.find(e => e.id === selectedIds[0])}
+                                el2={elements.find(e => e.id === selectedIds[1])}
+                                zoom={zoom}
+                            />
+                        )}
                     </Layer>
 
 
@@ -1139,6 +1157,54 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
                         onCancel={() => setEditingTextId(null)}
                     />
                 )}
+                {/* Gap Input Overlay */}
+                {selectedIds.length === 2 && (() => {
+                    const el1 = elements.find(e => e.id === selectedIds[0]);
+                    const el2 = elements.find(e => e.id === selectedIds[1]);
+                    if (!el1 || !el2) return null;
+                    const b1 = getElementBounds(el1);
+                    const b2 = getElementBounds(el2);
+                    
+                    const vGap = b2.y > b1.y + b1.h ? b2.y - (b1.y + b1.h) : (b1.y > b2.y + b2.h ? b1.y - (b2.y + b2.h) : null);
+                    if (vGap === null) return null;
+                    
+                    const xPos = Math.min(b1.x + b1.w / 2, b2.x + b2.w / 2);
+                    const y1 = b2.y > b1.y ? b1.y + b1.h : b2.y + b2.h;
+                    const y2 = b2.y > b1.y ? b2.y : b1.y;
+                    const yPos = y1 + (y2 - y1) / 2;
+                    
+                    const measurementUnit = useUIStore.getState().measurementUnit;
+
+                    return (
+                        <div style={{
+                            position: 'absolute',
+                            top: yPos * zoom,
+                            left: xPos * zoom,
+                            transform: 'translate(-50%, -50%)',
+                            zIndex: 10000,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2,
+                            background: '#fff',
+                            padding: '2px 4px',
+                            borderRadius: 4,
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                            border: `1px solid ${DIM_COLOR}`,
+                            pointerEvents: 'auto'
+                        }}>
+                            <span style={{ fontSize: 10, color: DIM_COLOR, fontWeight: 'bold' }}>Gap:</span>
+                            <NumericInput 
+                                value={Number(pxToUnit(vGap, measurementUnit).toFixed(2))}
+                                onChange={v => {
+                                    const px = unitToPx(v, measurementUnit);
+                                    useDesignStore.getState().setElementDistance(el1.id, el2.id, 'y', px);
+                                }}
+                                style={{ width: 42, fontSize: 11, border: 'none', background: 'transparent', outline: 'none', fontWeight: 'bold', color: DIM_COLOR }}
+                            />
+                            <span style={{ fontSize: 9, color: '#666' }}>{measurementUnit}</span>
+                        </div>
+                    );
+                })()}
             </div>
         </div>
     );

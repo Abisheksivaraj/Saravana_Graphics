@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useDesignStore } from '../store/designStore';
+import { useDesignStore, getElementBounds } from '../store/designStore';
 import { useUIStore, pxToUnit, unitToPx } from '../store/uiStore';
 import {
   Bold, Italic, AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -7,7 +7,7 @@ import {
   Lock, Unlock, Eye, EyeOff, Trash2,
   Maximize, Minimize, Copy, Move,
   AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd,
-  ChevronUp, ChevronDown, ChevronsUp, ChevronsDown, WrapText
+  ChevronUp, ChevronDown, ChevronsUp, ChevronsDown
 } from 'lucide-react';
 import './PropertyBar.css';
 import CmykColorPicker from './CmykColorPicker';
@@ -296,64 +296,44 @@ export default function PropertyBar() {
         </button>
         <div className="bt-prop-sep" style={{ height: 20 }} />
         <button
-          className={`bt-prop-btn${selectedEl?.wrap !== 'none' ? ' active' : ''}`}
+          className="bt-prop-btn"
+          title="Align Left & Straighten in Column"
           onClick={() => {
-            if (!selectedEl) return;
-            const isCurrentlyWrapped = selectedEl.wrap !== 'none';
-            if (isCurrentlyWrapped) {
-              // Switching to SINGLE LINE (wrap: none)
-              
-              // 1. Sanitize text by replacing newlines with spaces
-              const sanitizedText = (selectedEl.text || '').replace(/[\r\n]+/g, ' ').trim();
-              
-              // 2. Measure the natural width of the sanitized single-line text
-              const naturalWidth = measureTextWidth(
-                sanitizedText, 
-                selectedEl.fontFamily || 'Arial', 
-                selectedEl.fontSize || 16,
-                selectedEl.fontWeight,
-                selectedEl.fontStyle
-              );
-              
-              // 3. Keep the visual box size identical by adjusting scale
-              // Since we'll set width to undefined in Canvas, the base width becomes naturalWidth
-              const currentVisualWidth = (selectedEl.width || 200) * (selectedEl.scaleX || 1);
-              const newScaleX = naturalWidth > 0 ? (currentVisualWidth / naturalWidth) : 1;
-              
-              update({ 
-                text: sanitizedText,
-                wrap: 'none', 
-                scaleX: Math.min(2.0, Math.max(0.01, newScaleX))
-              });
-            } else {
-              // Switching back to MULTI LINE (wrap: word)
-              // Restore the visual width as the new wrap boundary
-              const currentVisualWidth = (selectedEl.width || 200) * (selectedEl.scaleX || 1);
-              update({ 
-                wrap: 'word', 
-                width: currentVisualWidth,
-                scaleX: 1 
-              });
-            }
+            const firstX = elements.find(e => e.id === selectedIds[0])?.x || 0;
+            update({ x: firstX });
           }}
-          disabled={!selectedEl || selectedEl.type !== 'text'}
-          title="Wrap Text (Toggle Single/Multi Line)"
+          disabled={selectedIds.length < 2}
         >
-          <WrapText size={18} />
+          <AlignLeft size={18} color="#0078d7" />
         </button>
+        <div className="bt-prop-sep" style={{ height: 20 }} />
+        <div className="bt-prop-sep" style={{ height: 20 }} />
 
         {selectedEl?.type === 'text' && (
           <>
             <div className="bt-prop-sep" style={{ height: 20 }} />
+            <button
+              className={`bt-prop-btn${selectedEl?.wrap === 'none' ? ' active' : ''}`}
+              title={selectedEl?.wrap === 'none' ? 'Single Line (click to enable wrap)' : 'Multi Line (click to force single line)'}
+              style={{ fontSize: 10, fontWeight: 'bold', padding: '0 5px', minWidth: 24 }}
+              onClick={() => {
+                if (selectedEl.wrap === 'none') {
+                  update({ wrap: 'word' });
+                } else {
+                  update({ wrap: 'none' });
+                }
+              }}
+            >
+              1L
+            </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
-              <span style={{ fontSize: 11, color: '#555', fontFamily: 'Segoe UI' }} title="Letter Spacing (Tighten/Widen)">↔️</span>
+              <span style={{ fontSize: 11, color: '#555', fontFamily: 'Segoe UI' }} title="Letter Spacing">↔️</span>
               <NumericInput 
                 className="bt-prop-input" 
                 style={{ width: 44, fontSize: 11 }}
                 value={selectedEl.letterSpacing || 0} 
                 onChange={v => update({ letterSpacing: v })}
                 min={-50} max={100}
-                title="Letter Spacing"
               />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
@@ -364,8 +344,42 @@ export default function PropertyBar() {
                 value={selectedEl.lineHeight || 1.2} 
                 onChange={v => update({ lineHeight: v })}
                 min={0.5} max={5}
-                title="Line Height"
               />
+            </div>
+          </>
+        )}
+
+        {selectedIds.length > 0 && elements.filter(el => selectedIds.includes(el.id)).every(el => el.type === 'text') && (
+          <>
+            <div className="bt-prop-sep" style={{ height: 20 }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
+              <span style={{ fontSize: 11, color: '#0078d7', fontWeight: 'bold' }} title="Colon Alignment Position">TAB:</span>
+              <NumericInput 
+                className="bt-prop-input" 
+                style={{ width: 44, fontSize: 11, color: '#0078d7', fontWeight: 'bold' }}
+                value={fmt(pxToUnit(selectedEl?.tabPos || 0, measurementUnit))} 
+                onChange={v => update({ tabPos: unitToPx(v, measurementUnit), wrap: 'none' })}
+                min={0} max={500}
+              />
+              <button 
+                className="bt-prop-btn" 
+                style={{ padding: '0 4px', fontSize: 10, height: 20, color: '#0078d7', fontWeight: 'bold' }}
+                title="Automatically align colons for all selected items"
+                onClick={() => {
+                   let maxW = 0;
+                   selectedIds.forEach(id => {
+                      const el = elements.find(e => e.id === id);
+                      if (!el || !el.text.includes(':')) return;
+                      const label = el.text.split(':')[0].trim();
+                      const w = measureTextWidth(label, el.fontFamily || 'Arial', el.fontSize || 16, el.fontWeight, el.fontStyle);
+                      if (w > maxW) maxW = w;
+                   });
+                   const newTabPos = maxW + 15;
+                   update({ tabPos: newTabPos, wrap: 'none' });
+                }}
+              >
+                Auto
+              </button>
             </div>
           </>
         )}
@@ -481,6 +495,34 @@ export default function PropertyBar() {
           <button className="bt-prop-btn" onClick={() => selectedIds.forEach(id => sendToBack(id))} title="Send to Back">
             <ChevronsDown size={18} />
           </button>
+        </div>
+      )}
+
+      {selectedIds.length === 2 && (
+        <div className="bt-toolbar-group">
+          <div className="bt-toolbar-handle" />
+          <span className="bt-prop-label" style={{ color: '#E91E63', fontWeight: 'bold' }}>GAP:</span>
+          <NumericInput 
+            className="bt-prop-input" 
+            style={{ width: 50, color: '#E91E63', fontWeight: 'bold' }}
+            value={(() => {
+              const el1 = elements.find(e => e.id === selectedIds[0]);
+              const el2 = elements.find(e => e.id === selectedIds[1]);
+              if (!el1 || !el2) return 0;
+              const b1 = getElementBounds(el1);
+              const b2 = getElementBounds(el2);
+              const vGap = b2.y > b1.y + b1.h ? b2.y - (b1.y + b1.h) : (b1.y > b2.y + b2.h ? b1.y - (b2.y + b2.h) : 0);
+              return Number(pxToUnit(vGap, measurementUnit).toFixed(2));
+            })()} 
+            onChange={v => {
+              const el1 = selectedIds[0];
+              const el2 = selectedIds[1];
+              const px = unitToPx(v, measurementUnit);
+              useDesignStore.getState().setElementDistance(el1, el2, 'y', px);
+            }}
+            title="Vertical Gap between 2 selected elements"
+          />
+          <span className="bt-prop-label">{measurementUnit}</span>
         </div>
       )}
     </div>

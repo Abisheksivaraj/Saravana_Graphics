@@ -50,6 +50,9 @@ export const useDesignStore = create(persist((set, get) => ({
 
     // Load design from server
     loadDesign: (design) => {
+        // Normalize corrupted scaleX on text elements (caused by old wrap-text toggle logic)
+        const normalizedElements = normalizeElements(design.elements || []);
+
         set({
             designId: design._id,
             title: design.title,
@@ -58,10 +61,10 @@ export const useDesignStore = create(persist((set, get) => ({
             canvasRadius: design.canvasRadius || 0,
             backgroundColor: design.backgroundColor || '#ffffff',
             sizePreset: design.sizePreset || 'custom',
-            elements: design.elements || [],
+            elements: normalizedElements,
             company: design.company || '',
             isDirty: false,
-            history: [JSON.parse(JSON.stringify(design.elements || []))],
+            history: [JSON.parse(JSON.stringify(normalizedElements))],
             historyIndex: 0,
         });
     },
@@ -505,7 +508,27 @@ export const useDesignStore = create(persist((set, get) => ({
         company: state.company,
         sizePreset: state.sizePreset
     }),
+    onRehydrateStorage: () => (state) => {
+        // Fix corrupted text element scaleX values when loading from localStorage
+        if (state && state.elements) {
+            state.elements = normalizeElements(state.elements);
+        }
+    },
 }));
+
+// Normalizes text elements that have corrupted scaleX from old wrap-text logic
+export function normalizeElements(elements) {
+    return (elements || []).map(el => {
+        if (el.type === 'text') {
+            const needsFix = (el.wrap === 'none' && (el.scaleX !== 1 || el.scaleY !== 1)) ||
+                             (el.wrap !== 'none' && (el.width || 200) < 20);
+            if (needsFix) {
+                return { ...el, scaleX: 1, scaleY: 1, wrap: 'none', width: Math.max(el.width || 200, 200) };
+            }
+        }
+        return el;
+    });
+}
 
 export function getElementBounds(el) {
     const sx = el.scaleX || 1;
@@ -589,7 +612,7 @@ export function getElementBounds(el) {
 
 function getDefaultProps(type) {
     switch (type) {
-        case 'text': return { text: 'Text', fontSize: 18, fontFamily: 'Arial', fontWeight: 'bold', fill: '#000000', stroke: 'transparent', strokeWidth: 0, width: 200, textAlign: 'left', underline: false, fontStyle: 'normal', mappingMode: 'smart', wrap: 'none' };
+        case 'text': return { text: 'Text', fontSize: 18, fontFamily: 'Arial', fontWeight: 'bold', fill: '#000000', stroke: 'transparent', strokeWidth: 0, width: 200, textAlign: 'left', underline: false, fontStyle: 'normal', mappingMode: 'smart', wrap: 'none', tabPos: 0 };
         case 'rect': return { width: 120, height: 80, fill: 'transparent', stroke: '#000000', strokeWidth: 2, cornerRadius: 4 };
         case 'circle': return { radius: 50, fill: 'transparent', stroke: '#000000', strokeWidth: 2 };
         case 'ellipse': return { width: 120, height: 80, fill: 'transparent', stroke: '#000000', strokeWidth: 2 };

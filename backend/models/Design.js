@@ -22,6 +22,12 @@ const elementSchema = new mongoose.Schema({
     fontStyle: { type: String, default: 'normal' },
     textAlign: { type: String, default: 'left' },
     underline: { type: Boolean, default: false },
+    wrap: { type: String, default: 'none' },
+    lineHeight: { type: Number, default: 1.2 },
+    letterSpacing: { type: Number, default: 0 },
+    mappingMode: { type: String, default: 'smart' },
+    tabPos: { type: Number, default: 0 },
+    autoFill: { type: Boolean, default: true },
     // Style properties
     fill: { type: String, default: '#000000' },
     stroke: { type: String, default: 'transparent' },
@@ -42,6 +48,7 @@ const elementSchema = new mongoose.Schema({
     fieldName: { type: String, default: '' },
     dash: [{ type: Number }],
     cornerRadius: { type: Number, default: 0 },
+    cornerType: { type: String, default: 'round' },
     // Shape specific properties
     radius: { type: Number },
     points: [{ type: Number }],
@@ -50,6 +57,9 @@ const elementSchema = new mongoose.Schema({
     outerRadius: { type: Number },
     sides: { type: Number },
     data: { type: String }, // For Paths
+    lineCap: { type: String, default: 'round' },
+    lineJoin: { type: String, default: 'round' },
+    tension: { type: Number, default: 0 },
 });
 
 const designSchema = new mongoose.Schema({
