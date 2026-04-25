@@ -478,7 +478,7 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
                 return (
                     <Text {...commonProps}
                         text={displayProps.text || 'Text'}
-                        width={el.width || 200}
+                        width={el.wrap === 'none' ? undefined : (el.width || 200)}
                         fontSize={el.fontSize || 16}
                         fontFamily={el.fontFamily || 'Arial'}
                         fontStyle={`${el.fontStyle === 'italic' ? 'italic' : 'normal'} ${el.fontWeight || 'normal'}`}

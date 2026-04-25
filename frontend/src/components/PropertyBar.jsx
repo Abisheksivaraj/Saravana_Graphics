@@ -315,15 +315,15 @@ export default function PropertyBar() {
                 selectedEl.fontStyle
               );
               
-              // 3. Keep the visual box size identical by adjusting width and scale
+              // 3. Keep the visual box size identical by adjusting scale
+              // Since we'll set width to undefined in Canvas, the base width becomes naturalWidth
               const currentVisualWidth = (selectedEl.width || 200) * (selectedEl.scaleX || 1);
               const newScaleX = naturalWidth > 0 ? (currentVisualWidth / naturalWidth) : 1;
               
               update({ 
                 text: sanitizedText,
-                width: naturalWidth, // Expand width to natural to avoid clipping
                 wrap: 'none', 
-                scaleX: Math.min(1.5, Math.max(0.01, newScaleX))
+                scaleX: Math.min(2.0, Math.max(0.01, newScaleX))
               });
             } else {
               // Switching back to MULTI LINE (wrap: word)

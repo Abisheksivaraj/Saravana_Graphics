@@ -15,6 +15,7 @@ import BarcodePropertiesDialog from '../components/BarcodePropertiesDialog';
 import ShapePropertiesDialog from '../components/ShapePropertiesDialog';
 import TextPropertiesDialog from '../components/TextPropertiesDialog';
 import LinePropertiesDialog from '../components/LinePropertiesDialog';
+import ImagePropertiesDialog from '../components/ImagePropertiesDialog';
 import NewDesignModal from '../components/NewDesignModal';
 import toast from 'react-hot-toast';
 import {
@@ -193,6 +194,7 @@ export default function Editor() {
   const [showShapeProps, setShowShapeProps] = useState(null); // stores elementId
   const [showTextProps, setShowTextProps] = useState(null); // stores elementId
   const [showLineProps, setShowLineProps] = useState(null); // stores elementId
+  const [showImageProps, setShowImageProps] = useState(null); // stores elementId
   const [showNewModal, setShowNewModal] = useState(false);
 
   const { companies, fetchCompanies } = useCompanyStore();
@@ -530,6 +532,8 @@ export default function Editor() {
       setShowLineProps(elId);
     } else if (['rect', 'circle', 'ellipse', 'star', 'polygon', 'diamond', 'hexagon', 'octagon', 'triangle', 'arrow'].includes(el.type)) {
       setShowShapeProps(elId);
+    } else if (el.type === 'image') {
+      setShowImageProps(elId);
     }
   };
 
@@ -759,6 +763,13 @@ export default function Editor() {
         <LinePropertiesDialog 
           elementId={showLineProps} 
           onClose={() => setShowLineProps(null)} 
+        />
+      )}
+
+      {showImageProps && (
+        <ImagePropertiesDialog 
+          elementId={showImageProps} 
+          onClose={() => setShowImageProps(null)} 
         />
       )}
 
