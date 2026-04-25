@@ -325,6 +325,15 @@ export const useDesignStore = create(persist((set, get) => ({
         const toCopy = elements.filter(el => selectedIds.includes(el.id))
                                .map(el => JSON.parse(JSON.stringify(el)));
         set({ clipboard: toCopy });
+
+        // Also write to system clipboard for cross-tab support
+        try {
+            const data = {
+                type: 'saravana-elements',
+                elements: toCopy
+            };
+            navigator.clipboard.writeText(JSON.stringify(data));
+        } catch (e) { console.error('Failed to write to system clipboard', e); }
     },
 
     cut: () => {
@@ -334,17 +343,41 @@ export const useDesignStore = create(persist((set, get) => ({
                                .map(el => JSON.parse(JSON.stringify(el)));
         get().deleteElement(selectedIds);
         set({ clipboard: toCopy });
+
+        try {
+            const data = {
+                type: 'saravana-elements',
+                elements: toCopy
+            };
+            navigator.clipboard.writeText(JSON.stringify(data));
+        } catch (e) { console.error('Failed to write to system clipboard', e); }
     },
 
-    paste: () => {
+    paste: (targetX = null, targetY = null) => {
         const { clipboard, elements } = get();
         if (!clipboard || clipboard.length === 0) return;
         
+        // Calculate bounds of clipboard items to center them at target
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        clipboard.forEach(el => {
+            minX = Math.min(minX, el.x);
+            minY = Math.min(minY, el.y);
+            const w = el.width || 100;
+            const h = el.height || 100;
+            maxX = Math.max(maxX, el.x + w);
+            maxY = Math.max(maxY, el.y + h);
+        });
+
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        const offsetX = targetX !== null ? targetX - centerX : 20;
+        const offsetY = targetY !== null ? targetY - centerY : 20;
+
         const newEls = clipboard.map((el, i) => ({
             ...el,
             id: uuid(),
-            x: el.x + 20,
-            y: el.y + 20,
+            x: el.x + offsetX,
+            y: el.y + offsetY,
             zIndex: elements.length + i,
             name: `${el.name}_copy`
         }));
@@ -355,6 +388,12 @@ export const useDesignStore = create(persist((set, get) => ({
             isDirty: true 
         }));
         get().saveHistory();
+    },
+
+    pasteElements: (externalElements, targetX = null, targetY = null) => {
+        if (!externalElements || externalElements.length === 0) return;
+        set({ clipboard: externalElements });
+        get().paste(targetX, targetY);
     },
 
     duplicateAllElements: () => {
@@ -550,7 +589,7 @@ export function getElementBounds(el) {
 
 function getDefaultProps(type) {
     switch (type) {
-        case 'text': return { text: 'Text', fontSize: 18, fontFamily: 'Arial', fontWeight: 'bold', fill: '#000000', stroke: 'transparent', strokeWidth: 0, width: 200, textAlign: 'left', underline: false, fontStyle: 'normal', mappingMode: 'smart' };
+        case 'text': return { text: 'Text', fontSize: 18, fontFamily: 'Arial', fontWeight: 'bold', fill: '#000000', stroke: 'transparent', strokeWidth: 0, width: 200, textAlign: 'left', underline: false, fontStyle: 'normal', mappingMode: 'smart', wrap: 'none' };
         case 'rect': return { width: 120, height: 80, fill: 'transparent', stroke: '#000000', strokeWidth: 2, cornerRadius: 4 };
         case 'circle': return { radius: 50, fill: 'transparent', stroke: '#000000', strokeWidth: 2 };
         case 'ellipse': return { width: 120, height: 80, fill: 'transparent', stroke: '#000000', strokeWidth: 2 };

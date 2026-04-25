@@ -7,7 +7,7 @@ import {
   Lock, Unlock, Eye, EyeOff, Trash2,
   Maximize, Minimize, Copy, Move,
   AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd,
-  ChevronUp, ChevronDown, ChevronsUp, ChevronsDown
+  ChevronUp, ChevronDown, ChevronsUp, ChevronsDown, WrapText
 } from 'lucide-react';
 import './PropertyBar.css';
 import CmykColorPicker from './CmykColorPicker';
@@ -21,6 +21,14 @@ const FONTS = [
 ];
 
 const SIZES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
+
+/** Helper to measure text width for auto-tightening */
+function measureTextWidth(text, fontFamily, fontSize, fontWeight, fontStyle) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.font = `${fontStyle || 'normal'} ${fontWeight || 'normal'} ${fontSize}px ${fontFamily}`;
+  return ctx.measureText(text).width;
+}
 
 function PropInput({ value, onChange, style = {}, title, min, max }) {
   return (
@@ -285,6 +293,53 @@ export default function PropertyBar() {
           disabled={!selectedEl || selectedEl.type !== 'text'}
         >
           <AlignJustify size={18} />
+        </button>
+        <div className="bt-prop-sep" style={{ height: 20 }} />
+        <button
+          className={`bt-prop-btn${selectedEl?.wrap !== 'none' ? ' active' : ''}`}
+          onClick={() => {
+            if (!selectedEl) return;
+            const isCurrentlyWrapped = selectedEl.wrap !== 'none';
+            if (isCurrentlyWrapped) {
+              // Switching to SINGLE LINE (wrap: none)
+              
+              // 1. Sanitize text by replacing newlines with spaces
+              const sanitizedText = (selectedEl.text || '').replace(/[\r\n]+/g, ' ').trim();
+              
+              // 2. Measure the natural width of the sanitized single-line text
+              const naturalWidth = measureTextWidth(
+                sanitizedText, 
+                selectedEl.fontFamily || 'Arial', 
+                selectedEl.fontSize || 16,
+                selectedEl.fontWeight,
+                selectedEl.fontStyle
+              );
+              
+              // 3. Keep the visual box size identical by adjusting width and scale
+              const currentVisualWidth = (selectedEl.width || 200) * (selectedEl.scaleX || 1);
+              const newScaleX = naturalWidth > 0 ? (currentVisualWidth / naturalWidth) : 1;
+              
+              update({ 
+                text: sanitizedText,
+                width: naturalWidth, // Expand width to natural to avoid clipping
+                wrap: 'none', 
+                scaleX: Math.min(1.5, Math.max(0.01, newScaleX))
+              });
+            } else {
+              // Switching back to MULTI LINE (wrap: word)
+              // Restore the visual width as the new wrap boundary
+              const currentVisualWidth = (selectedEl.width || 200) * (selectedEl.scaleX || 1);
+              update({ 
+                wrap: 'word', 
+                width: currentVisualWidth,
+                scaleX: 1 
+              });
+            }
+          }}
+          disabled={!selectedEl || selectedEl.type !== 'text'}
+          title="Wrap Text (Toggle Single/Multi Line)"
+        >
+          <WrapText size={18} />
         </button>
 
         {selectedEl?.type === 'text' && (

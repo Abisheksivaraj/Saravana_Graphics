@@ -487,7 +487,7 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
                         fill={el.fill || '#000000'}
                         stroke={el.stroke && el.stroke !== 'transparent' ? el.stroke : undefined}
                         strokeWidth={el.strokeWidth || 0}
-                        wrap="word"
+                        wrap={el.wrap || 'word'}
                         letterSpacing={el.letterSpacing || 0}
                         lineHeight={el.lineHeight || 1.2}
                     />

@@ -418,7 +418,6 @@ export default function Editor() {
       if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || e.code === 'KeyY')) { e.preventDefault(); redo(); }
       if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c' || e.code === 'KeyC')) { e.preventDefault(); ds.copy(); }
       if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'x' || e.code === 'KeyX')) { e.preventDefault(); ds.cut(); }
-      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'v' || e.code === 'KeyV')) { e.preventDefault(); ds.paste(); }
       if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) { e.preventDefault(); setZoom(Math.min(8, zoom + 0.1)); }
       if ((e.ctrlKey || e.metaKey) && e.key === '-') { e.preventDefault(); setZoom(Math.max(0.1, zoom - 0.1)); }
       if (e.key === 'Escape') {
@@ -448,11 +447,67 @@ export default function Editor() {
       }
     };
 
+    const handlePaste = async (e) => {
+      // Allow natural paste inside input fields
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+
+      e.preventDefault(); // Stop default browser behavior
+      const stage = stageRef.current;
+      const pos = stage?.getRelativePointerPosition() || { x: 100, y: 100 };
+      const clipboardData = e.clipboardData;
+
+      if (!clipboardData) {
+        // Fallback to internal if event is missing data
+        ds.paste(pos.x, pos.y);
+        return;
+      }
+
+      // Priority 1: Files (Images)
+      if (clipboardData.files && clipboardData.files.length > 0) {
+        for (const file of Array.from(clipboardData.files)) {
+          if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              addElement('image', { src: ev.target.result, width: 150, height: 150, x: pos.x, y: pos.y });
+              toast.success('Image pasted');
+            };
+            reader.readAsDataURL(file);
+          }
+        }
+        return;
+      }
+
+      // Priority 2: Text (can be plain text or our JSON)
+      const text = clipboardData.getData('text/plain');
+      if (text) {
+        try {
+          const data = JSON.parse(text);
+          if (data.type === 'saravana-elements' && Array.isArray(data.elements)) {
+            ds.pasteElements(data.elements, pos.x, pos.y);
+            toast.success('Elements pasted');
+            return;
+          }
+        } catch (err) {
+          // Not our JSON, handle as plain text
+        }
+
+        // Handle as plain text
+        addElement('text', { text, x: pos.x, y: pos.y });
+        toast.success('Text pasted');
+        return;
+      }
+
+      // Priority 3: Fallback to store's internal clipboard
+      ds.paste(pos.x, pos.y);
+    };
+
     window.addEventListener('keydown', handler);
     window.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('paste', handlePaste);
     return () => {
       window.removeEventListener('keydown', handler);
       window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('paste', handlePaste);
     };
   }, [zoom]);
 

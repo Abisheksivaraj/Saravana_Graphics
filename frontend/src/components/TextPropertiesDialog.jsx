@@ -247,6 +247,16 @@ export default function TextPropertiesDialog({ elementId, onClose }) {
                                                 <label htmlFor="superscript" style={{ width: 'auto', marginLeft: 8 }}>Superscript</label>
                                             </div>
                                             <div className="bt-field-row">
+                                                <input 
+                                                    type="checkbox" 
+                                                    id="wrap-text" 
+                                                    style={{ width: 'auto', margin: 0 }} 
+                                                    checked={el.wrap !== 'none'}
+                                                    onChange={e => update({ wrap: e.target.checked ? 'word' : 'none' })}
+                                                />
+                                                <label htmlFor="wrap-text" style={{ width: 'auto', marginLeft: 8 }}>Wrap Text</label>
+                                            </div>
+                                            <div className="bt-field-row">
                                                 <input type="checkbox" id="small-caps" style={{ width: 'auto', margin: 0 }} />
                                                 <label htmlFor="small-caps" style={{ width: 'auto', marginLeft: 8 }}>Small caps</label>
                                             </div>
