@@ -1,29 +1,425 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { vendorAPI, BASE_URL } from '../api';
 import { 
     FileText, CheckCircle, Clock, XCircle, Upload,
-    AlertCircle, Truck, Package, List, Search,
-    Filter, MoreVertical, Layout, Trash2, Edit
+    AlertCircle, Truck, Package, Search, Calendar,
+    Filter, Edit, MessageSquare, Send, X, Eye,
+    ShieldCheck, User, Loader2, Paperclip, RefreshCcw,
+    CheckCircle2, FileSearch, CreditCard, FileSpreadsheet
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Sidebar from '../components/Sidebar';
 import './AdminVendorPortal.css';
 
 const STATUS_OPTIONS = [
-    'Excel Uploaded', 'Layout Uploaded', 'Artwork Rejected', 'Artwork Approved', 'Production', 'Despatch', 'Payment Follow-up'
+    'Excel Uploaded', 'Layout Uploaded', 'Artwork Rejected', 'Revised Artwork Uploaded',
+    'Artwork Approved', 'Performa Invoice Uploaded', 'Payment Proof Uploaded',
+    'Production', 'Despatch', 'Delivered'
 ];
 
+const STAGES = [
+    { label: 'Excel', icon: FileSpreadsheet },
+    { label: 'Layout', icon: FileSearch },
+    { label: 'Artwork', icon: CheckCircle2 },
+    { label: 'Invoice', icon: FileText },
+    { label: 'Payment', icon: CreditCard },
+    { label: 'Production', icon: Package },
+    { label: 'Dispatch', icon: Truck },
+];
+
+function getStageIndex(status) {
+    const s = (status || '').toLowerCase();
+    if (s.includes('excel')) return 0;
+    if (s.includes('layout')) return 1;
+    if (s.includes('artwork rejected') || s.includes('revised')) return 1;
+    if (s.includes('artwork approved')) return 2;
+    if (s.includes('performa')) return 3;
+    if (s.includes('payment')) return 4;
+    if (s.includes('production')) return 5;
+    if (s.includes('despatch') || s.includes('delivered')) return 6;
+    return 0;
+}
+
+function getStatusBadgeClass(status) {
+    const s = (status || '').toLowerCase();
+    if (s.includes('rejected')) return 'badge-rejected';
+    if (s.includes('approved')) return 'badge-approved';
+    if (s.includes('delivered')) return 'badge-delivered';
+    if (s.includes('production')) return 'badge-production';
+    if (s.includes('despatch')) return 'badge-despatch';
+    if (s.includes('payment')) return 'badge-payment';
+    if (s.includes('performa') || s.includes('invoice')) return 'badge-invoice';
+    if (s.includes('layout')) return 'badge-layout';
+    return 'badge-default';
+}
+
+// ─── Admin Chat Panel ────────────────────────────────────────────────────────
+function AdminChat({ order, onClose }) {
+    const [messages, setMessages] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [input, setInput] = useState('');
+    const [sending, setSending] = useState(false);
+    const scrollRef = useRef();
+
+    const fetchMessages = async (showLoading = false) => {
+        if (showLoading) setLoading(true);
+        try {
+            const res = await vendorAPI.getMessages(order._id);
+            setMessages(res.data);
+        } catch (err) {
+            console.error('Failed to load messages', err);
+        } finally {
+            if (showLoading) setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchMessages(true);
+        const interval = setInterval(() => fetchMessages(), 5000);
+        return () => clearInterval(interval);
+    }, [order._id]);
+
+    useEffect(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    }, [messages]);
+
+    const handleSend = async () => {
+        if (!input.trim() || sending) return;
+        setSending(true);
+        try {
+            const res = await vendorAPI.sendMessage(order._id, input);
+            setMessages(prev => [...prev, res.data]);
+            setInput('');
+        } catch (err) {
+            toast.error('Failed to send message');
+        } finally {
+            setSending(false);
+        }
+    };
+
+    const formatTime = (d) => new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const formatDate = (d) => new Date(d).toLocaleDateString([], { day: '2-digit', month: 'short' });
+
+    return (
+        <div className="order-chat-overlay" onClick={onClose}>
+            <div className="order-chat-window" onClick={e => e.stopPropagation()}>
+                <div className="oc-header">
+                    <div className="oc-title">
+                        <div className="oc-avatar-group">
+                            <div className="oc-avatar admin"><ShieldCheck size={14} /></div>
+                            <div className="oc-avatar vendor"><User size={14} /></div>
+                        </div>
+                        <div>
+                            <h3>Order Chat — Admin</h3>
+                            <span>#{order.orderId} · {order.vendorId?.name || 'Vendor'}</span>
+                        </div>
+                    </div>
+                    <button className="oc-close" onClick={onClose}><X size={20} /></button>
+                </div>
+
+                <div className="oc-messages" ref={scrollRef}>
+                    <div className="oc-notice">
+                        Private channel with <strong>{order.vendorId?.name || 'the vendor'}</strong>. Only you and the vendor can see these messages.
+                    </div>
+
+                    {loading ? (
+                        <div className="oc-loading">
+                            <Loader2 size={24} className="oc-spin" />
+                            <span>Loading conversation...</span>
+                        </div>
+                    ) : messages.length === 0 ? (
+                        <div className="oc-empty">No messages yet. Start the conversation!</div>
+                    ) : (() => {
+                        let lastDate = '';
+                        return messages.map(msg => {
+                            const msgDate = formatDate(msg.createdAt);
+                            const showDate = msgDate !== lastDate;
+                            lastDate = msgDate;
+                            return (
+                                <React.Fragment key={msg._id}>
+                                    {showDate && <div className="oc-date-divider">{msgDate}</div>}
+                                    {/* Admin sent = role 'admin', shown on RIGHT for admin view */}
+                                    <div className={`oc-msg-row ${msg.role === 'admin' ? 'vendor' : 'admin'}`}>
+                                        <div className="oc-msg-bubble">
+                                            <div className="oc-msg-info">
+                                                <span className="oc-sender">{msg.role === 'admin' ? 'You (Admin)' : (order.vendorId?.name || 'Vendor')}</span>
+                                                <span className="oc-time">{formatTime(msg.createdAt)}</span>
+                                            </div>
+                                            <div className="oc-msg-text">{msg.text}</div>
+                                        </div>
+                                    </div>
+                                </React.Fragment>
+                            );
+                        });
+                    })()}
+                </div>
+
+                <div className="oc-input-area">
+                    <button className="oc-attach-btn" title="Attach file"><Paperclip size={20} /></button>
+                    <input
+                        type="text"
+                        placeholder="Type a message to vendor..."
+                        value={input}
+                        onChange={e => setInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleSend()}
+                        disabled={sending}
+                    />
+                    <button className="oc-send-btn" onClick={handleSend} disabled={!input.trim() || sending}>
+                        {sending ? <Loader2 size={18} className="oc-spin" /> : <Send size={18} />}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Job Management Modal ────────────────────────────────────────────────────
+function JobModal({ order, onClose, onRefresh }) {
+    const [newStatus, setNewStatus] = useState(order.status);
+    const [remarks, setRemarks] = useState(order.remarks || '');
+    const [productionDate, setProductionDate] = useState(
+        order.productionDate ? new Date(order.productionDate).toISOString().split('T')[0] : ''
+    );
+    const [commitmentDate, setCommitmentDate] = useState(
+        order.dispatchDate ? new Date(order.dispatchDate).toISOString().split('T')[0] : ''
+    );
+    const [saving, setSaving] = useState(false);
+    const [uploading, setUploading] = useState(false);
+
+    const stageIdx = getStageIndex(order.status);
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            await vendorAPI.updateStatus(order._id, {
+                status: newStatus,
+                remarks,
+                productionDate,
+                dispatchDate: commitmentDate
+            });
+            toast.success('Order updated successfully');
+            onRefresh();
+            onClose();
+        } catch (err) {
+            toast.error('Failed to save changes');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleLayoutUpload = async (file) => {
+        if (!file) return;
+        setUploading(true);
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+            await vendorAPI.uploadLayout(order._id, fd);
+            toast.success('Layout uploaded — vendor notified');
+            onRefresh();
+            onClose();
+        } catch (err) {
+            toast.error('Failed to upload layout');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleInvoiceUpload = async (file) => {
+        if (!file) return;
+        setUploading(true);
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+            await vendorAPI.uploadPerformaInvoice(order._id, fd);
+            toast.success('Performa Invoice uploaded');
+            onRefresh();
+            onClose();
+        } catch (err) {
+            toast.error('Failed to upload invoice');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="jm-modal" onClick={e => e.stopPropagation()}>
+                {/* Header */}
+                <div className="jm-header">
+                    <div>
+                        <h2 className="jm-title">Job Management</h2>
+                        <span className="jm-order-id">#{order.orderId} · {order.vendorId?.name || 'Vendor'}</span>
+                    </div>
+                    <button className="jm-close" onClick={onClose}><X size={22} /></button>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="jm-progress">
+                    {STAGES.map((s, i) => {
+                        const Icon = s.icon;
+                        const done = i < stageIdx;
+                        const active = i === stageIdx;
+                        return (
+                            <React.Fragment key={s.label}>
+                                <div className={`jm-step ${done ? 'done' : ''} ${active ? 'active' : ''}`}>
+                                    <div className="jm-step-icon"><Icon size={14} /></div>
+                                    <span className="jm-step-label">{s.label}</span>
+                                </div>
+                                {i < STAGES.length - 1 && <div className={`jm-connector ${done ? 'done' : ''}`} />}
+                            </React.Fragment>
+                        );
+                    })}
+                </div>
+
+                <div className="jm-body">
+                    {/* Status + Dates */}
+                    <div className="jm-section">
+                        <h3 className="jm-section-title">Order Control</h3>
+                        <div className="jm-grid-3">
+                            <div className="jm-field">
+                                <label>Status</label>
+                                <select value={newStatus} onChange={e => setNewStatus(e.target.value)}>
+                                    {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                            </div>
+                            <div className="jm-field">
+                                <label>Production Date</label>
+                                <input type="date" value={productionDate} onChange={e => setProductionDate(e.target.value)} />
+                            </div>
+                            <div className="jm-field">
+                                <label>Commitment Date</label>
+                                <input type="date" value={commitmentDate} onChange={e => setCommitmentDate(e.target.value)} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Workflow Actions */}
+                    <div className="jm-section">
+                        <h3 className="jm-section-title">Workflow Documents</h3>
+                        <div className="jm-action-cards">
+                            {/* Layout Upload */}
+                            <div className="jm-action-card">
+                                <div className="jm-action-info">
+                                    <FileSearch size={18} className="jm-action-icon layout" />
+                                    <div>
+                                        <div className="jm-action-name">Layout Proof</div>
+                                        <div className="jm-action-sub">
+                                            {order.layoutFileUrl
+                                                ? <a href={`${BASE_URL}/${order.layoutFileUrl}`} target="_blank" rel="noreferrer" className="jm-link">View Uploaded ↗</a>
+                                                : 'No layout uploaded yet'}
+                                        </div>
+                                    </div>
+                                </div>
+                                <label className={`jm-upload-btn ${uploading ? 'disabled' : ''}`}>
+                                    <Upload size={14} />
+                                    {order.layoutFileUrl ? 'Replace' : 'Upload'}
+                                    <input type="file" className="hidden-input" onChange={e => handleLayoutUpload(e.target.files[0])} />
+                                </label>
+                            </div>
+
+                            {/* Performa Invoice Upload */}
+                            <div className="jm-action-card invoice">
+                                <div className="jm-action-info">
+                                    <FileText size={18} className="jm-action-icon invoice" />
+                                    <div>
+                                        <div className="jm-action-name">Performa Invoice</div>
+                                        <div className="jm-action-sub">
+                                            {order.performaInvoiceUrl
+                                                ? <a href={`${BASE_URL}/${order.performaInvoiceUrl}`} target="_blank" rel="noreferrer" className="jm-link">View Invoice ↗</a>
+                                                : 'Required after artwork approval'}
+                                        </div>
+                                    </div>
+                                </div>
+                                <label className={`jm-upload-btn invoice-btn ${uploading ? 'disabled' : ''}`}>
+                                    <Upload size={14} />
+                                    {order.performaInvoiceUrl ? 'Replace' : 'Upload'}
+                                    <input type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden-input" onChange={e => handleInvoiceUpload(e.target.files[0])} />
+                                </label>
+                            </div>
+
+                            {/* Revised Artwork from Vendor */}
+                            {order.revisedArtworkUrl && (
+                                <div className="jm-action-card revised">
+                                    <div className="jm-action-info">
+                                        <Eye size={18} className="jm-action-icon revised" />
+                                        <div>
+                                            <div className="jm-action-name">Revised Artwork (from Vendor)</div>
+                                            <div className="jm-action-sub">Vendor uploaded a revision</div>
+                                        </div>
+                                    </div>
+                                    <a
+                                        href={`${BASE_URL}/${order.revisedArtworkUrl}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="jm-upload-btn revised-btn"
+                                    >
+                                        <Eye size={14} /> View
+                                    </a>
+                                </div>
+                            )}
+
+                            {/* Payment Proof from Vendor */}
+                            {order.paymentDetails?.chequeScanUrl && (
+                                <div className="jm-action-card payment">
+                                    <div className="jm-action-info">
+                                        <CreditCard size={18} className="jm-action-icon payment" />
+                                        <div>
+                                            <div className="jm-action-name">Payment Proof (from Vendor)</div>
+                                            <div className="jm-action-sub">
+                                                {order.paymentDetails?.paymentMode} ·
+                                                {order.paymentDetails?.chequeNumber ? ` Chq: ${order.paymentDetails.chequeNumber}` : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <a
+                                        href={`${BASE_URL}/${order.paymentDetails.chequeScanUrl}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="jm-upload-btn payment-btn"
+                                    >
+                                        <Eye size={14} /> View
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Remarks / Comment Box */}
+                    <div className="jm-section">
+                        <h3 className="jm-section-title">Remarks & Comments</h3>
+                        <textarea
+                            className="jm-textarea"
+                            placeholder="Add remarks, rejection reasons, or instructions for the vendor..."
+                            value={remarks}
+                            onChange={e => setRemarks(e.target.value)}
+                            rows={4}
+                        />
+                        <p className="jm-hint">These remarks will be visible to the vendor when they check the order status.</p>
+                    </div>
+                </div>
+
+                <div className="jm-footer">
+                    <button className="jm-btn-cancel" onClick={onClose}>Cancel</button>
+                    <button className="jm-btn-save" onClick={handleSave} disabled={saving}>
+                        {saving ? <><Loader2 size={16} className="oc-spin" /> Saving...</> : <><CheckCircle size={16} /> Save Changes</>}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
 export default function AdminVendorPortal() {
-    const { logout } = useAuthStore();
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
-    const [editingOrder, setEditingOrder] = useState(null);
-    const [newStatus, setNewStatus] = useState('');
-    const [remarks, setRemarks] = useState('');
-    const [productionDate, setProductionDate] = useState('');
+    const [activeChat, setActiveChat] = useState(null);
+    const [managingOrder, setManagingOrder] = useState(null);
 
     const fetchData = async () => {
         try {
@@ -36,30 +432,21 @@ export default function AdminVendorPortal() {
         }
     };
 
-    useEffect(() => {
-        fetchData();
-    }, []);
-
-    const handleUpdateStatus = async () => {
-        if (!editingOrder) return;
-        try {
-            await vendorAPI.updateStatus(editingOrder._id, { status: newStatus, remarks, productionDate });
-            toast.success('Status updated successfully');
-            setEditingOrder(null);
-            fetchData();
-        } catch (err) {
-            toast.error('Failed to update status');
-        }
-    };
+    useEffect(() => { fetchData(); }, []);
 
     const filteredOrders = orders.filter(o => {
-        const matchesSearch = 
-            o.orderId.toLowerCase().includes(search.toLowerCase()) ||
-            o.fileName.toLowerCase().includes(search.toLowerCase()) ||
+        const matchesSearch =
+            (o.orderId || '').toLowerCase().includes(search.toLowerCase()) ||
+            (o.fileName || '').toLowerCase().includes(search.toLowerCase()) ||
             (o.vendorId?.name || '').toLowerCase().includes(search.toLowerCase());
         const matchesStatus = statusFilter === 'All' || o.status === statusFilter;
         return matchesSearch && matchesStatus;
     });
+
+    const stats = STATUS_OPTIONS.reduce((acc, s) => {
+        acc[s] = orders.filter(o => o.status === s).length;
+        return acc;
+    }, {});
 
     return (
         <div className="admin-portal-layout">
@@ -68,219 +455,165 @@ export default function AdminVendorPortal() {
                 <header className="ap-header">
                     <div className="ap-header-title">
                         <h1>Vendor Portal Management</h1>
-                        <p>Manage all vendor uploads and status updates</p>
+                        <p>Track, manage and communicate with vendors for every order</p>
                     </div>
+                    <button className="ap-refresh-btn" onClick={fetchData} title="Refresh">
+                        <RefreshCcw size={18} />
+                    </button>
                 </header>
 
+                {/* Stats Strip */}
+                <div className="ap-stats-strip">
+                    {[
+                        { label: 'Total', value: orders.length, color: '#f97316' },
+                        { label: 'Pending Layout', value: stats['Excel Uploaded'] || 0, color: '#6366f1' },
+                        { label: 'Artwork Review', value: (stats['Layout Uploaded'] || 0) + (stats['Revised Artwork Uploaded'] || 0), color: '#3b82f6' },
+                        { label: 'Rejected', value: stats['Artwork Rejected'] || 0, color: '#ef4444' },
+                        { label: 'Invoice Pending', value: stats['Artwork Approved'] || 0, color: '#f59e0b' },
+                        { label: 'In Production', value: stats['Production'] || 0, color: '#8b5cf6' },
+                        { label: 'Dispatched', value: stats['Despatch'] || 0, color: '#14b8a6' },
+                        { label: 'Delivered', value: stats['Delivered'] || 0, color: '#10b981' },
+                    ].map(s => (
+                        <div key={s.label} className="ap-stat-card" onClick={() => setStatusFilter(s.label === 'Total' ? 'All' : s.label)}>
+                            <div className="ap-stat-value" style={{ color: s.color }}>{s.value}</div>
+                            <div className="ap-stat-label">{s.label}</div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Controls */}
                 <div className="ap-controls">
                     <div className="ap-search">
-                        <Search size={18} />
-                        <input 
-                            placeholder="Search by Order ID, File, or Vendor..." 
-                            value={search || ''}
+                        <Search size={18} color="#94a3b8" />
+                        <input
+                            placeholder="Search by Order ID, File, or Vendor..."
+                            value={search}
                             onChange={e => setSearch(e.target.value)}
                         />
                     </div>
                     <div className="ap-filter">
-                        <Filter size={18} />
-                        <select value={statusFilter || 'All'} onChange={e => setStatusFilter(e.target.value)}>
+                        <Filter size={18} color="#f97316" />
+                        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
                             <option value="All">All Statuses</option>
                             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                     </div>
                 </div>
 
+                {/* Table */}
                 <div className="ap-table-container">
                     <table className="ap-table">
                         <thead>
                             <tr>
+                                <th>#</th>
                                 <th>Order ID</th>
                                 <th>Vendor</th>
-                                <th>File Name</th>
+                                <th>File</th>
                                 <th>Brand</th>
-                                <th>Upload Date</th>
-                                <th>Production Date <AlertCircle size={14} className="inline"/></th>
+                                <th>Progress</th>
                                 <th>Status</th>
+                                <th>Dates</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan="7" className="text-center p-8">Loading orders...</td></tr>
+                                <tr><td colSpan="9" className="ap-loading-cell">
+                                    <Loader2 size={24} className="oc-spin" /> Loading orders...
+                                </td></tr>
                             ) : filteredOrders.length === 0 ? (
-                                <tr><td colSpan="7" className="text-center p-8">No orders found.</td></tr>
-                            ) : (
-                                filteredOrders.map(o => (
-                                    <tr key={o._id}>
-                                        <td className="font-mono text-primary font-bold">{o.orderId}</td>
+                                <tr><td colSpan="9" className="ap-empty-cell">
+                                    <AlertCircle size={32} /> No orders found.
+                                </td></tr>
+                            ) : filteredOrders.map((o, idx) => {
+                                const stageIdx = getStageIndex(o.status);
+                                return (
+                                    <tr key={o._id} className="ap-row">
+                                        <td className="ap-td-num">{idx + 1}</td>
+                                        <td className="ap-td-id">{o.orderId}</td>
                                         <td>
                                             <div className="ap-vendor-info">
-                                                <span className="font-semibold">{o.vendorId?.name || 'Unknown'}</span>
-                                                <small>{o.vendorId?.vendorCode || '-'}</small>
+                                                <span className="ap-vendor-name">{o.vendorId?.name || 'Unknown'}</span>
+                                                <span className="ap-vendor-code">{o.vendorId?.vendorCode || '—'}</span>
                                             </div>
                                         </td>
                                         <td className="ap-file-cell">
-                                            <FileText size={16} /> {o.fileName}
+                                            <FileText size={15} />
+                                            <span title={o.fileName}>{o.fileName?.length > 22 ? o.fileName.slice(0, 22) + '…' : o.fileName}</span>
                                         </td>
-                                        <td>{o.brand}</td>
-                                        <td>{new Date(o.createdAt).toLocaleDateString()}</td>
+                                        <td className="ap-td-brand">{o.brand || '—'}</td>
                                         <td>
-                                            {o.productionDate ? (
-                                                <div className={`font-medium ${new Date() > new Date(o.productionDate) && o.status !== 'Despatch' && o.status !== 'Payment Follow-up' ? 'text-red-500' : ''}`}>
-                                                    {new Date(o.productionDate).toLocaleDateString()}
-                                                    {new Date() > new Date(o.productionDate) && o.status !== 'Despatch' && o.status !== 'Payment Follow-up' && (
-                                                        <AlertCircle size={14} className="inline ml-1" />
-                                                    )}
-                                                </div>
-                                            ) : '-'}
+                                            {/* Mini progress bar */}
+                                            <div className="ap-mini-progress">
+                                                {STAGES.map((_, i) => (
+                                                    <div
+                                                        key={i}
+                                                        className={`ap-mini-step ${i < stageIdx ? 'done' : ''} ${i === stageIdx ? 'active' : ''}`}
+                                                    />
+                                                ))}
+                                            </div>
+                                            <div className="ap-mini-label">{stageIdx + 1}/7</div>
                                         </td>
                                         <td>
-                                            <span className={`ap-status-badge ${o.status.toLowerCase().replace(/\s+/g, '-')}`}>
+                                            <span className={`ap-status-badge ${getStatusBadgeClass(o.status)}`}>
                                                 {o.status}
                                             </span>
                                         </td>
                                         <td>
-                                            <div style={{ display: 'flex', gap: 8 }}>
-                                                {/* File download button */}
-                                                <button 
-                                                    className="btn btn-ghost btn-icon btn-sm" 
-                                                    title="Download Excel"
-                                                    onClick={() => window.open(`${BASE_URL}/${o.filePath}`, '_blank')}
+                                            <div className="ap-dates-cell">
+                                                <div className="ap-date-row">
+                                                    <Clock size={12} /> {new Date(o.createdAt).toLocaleDateString()}
+                                                </div>
+                                                {o.productionDate && (
+                                                    <div className="ap-date-row prod">
+                                                        <Package size={12} /> {new Date(o.productionDate).toLocaleDateString()}
+                                                    </div>
+                                                )}
+                                                {o.dispatchDate && (
+                                                    <div className="ap-date-row commit">
+                                                        <Truck size={12} /> {new Date(o.dispatchDate).toLocaleDateString()}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div className="ap-action-btns">
+                                                <button
+                                                    className="ap-icon-btn chat"
+                                                    title="Open Chat with Vendor"
+                                                    onClick={() => setActiveChat(o)}
                                                 >
-                                                    <FileText size={16} />
+                                                    <MessageSquare size={16} />
                                                 </button>
-                                                {/* Upload Layout Direct Action */}
-                                                <label 
-                                                    className="btn btn-ghost btn-icon btn-sm cursor-pointer m-0 p-2 flex items-center justify-center" 
-                                                    title="Upload Admin Layout (PDF/Image)"
-                                                    style={{ margin: 0, padding: 8, cursor: 'pointer' }}
-                                                >
-                                                    <Upload size={16} />
-                                                    <input 
-                                                        type="file" 
-                                                        className="hidden" 
-                                                        style={{ display: 'none' }}
-                                                        accept="image/*,.pdf"
-                                                        onChange={async (e) => {
-                                                            const file = e.target.files[0];
-                                                            if(file) {
-                                                                const formData = new FormData();
-                                                                formData.append('file', file);
-                                                                try {
-                                                                    await vendorAPI.uploadLayout(o._id, formData);
-                                                                    toast.success('Layout uploaded & status advanced!');
-                                                                    fetchData();
-                                                                } catch(err) {
-                                                                    toast.error('Failed to upload layout');
-                                                                }
-                                                            }
-                                                        }}
-                                                    />
-                                                </label>
-                                                {/* Edit Status button */}
-                                                <button 
-                                                    className="btn btn-ghost btn-icon btn-sm" 
-                                                    title="Update Status / Remarks"
-                                                    onClick={() => {
-                                                        setEditingOrder(o);
-                                                        setNewStatus(o.status);
-                                                        setRemarks(o.remarks || '');
-                                                        setProductionDate(o.productionDate ? new Date(o.productionDate).toISOString().split('T')[0] : '');
-                                                    }}
+                                                <button
+                                                    className="ap-icon-btn manage"
+                                                    title="Manage Order"
+                                                    onClick={() => setManagingOrder(o)}
                                                 >
                                                     <Edit size={16} />
                                                 </button>
+                                                {o.remarks && (
+                                                    <span className="ap-remark-dot" title={o.remarks} />
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
-                                ))
-                            )}
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
 
-                {/* Status Edit Modal */}
-                {editingOrder && (
-                    <div className="modal-overlay" onClick={() => setEditingOrder(null)}>
-                        <div className="modal" style={{ maxWidth: 450 }} onClick={e => e.stopPropagation()}>
-                            <div className="modal-header">
-                                <h2 className="modal-title">Update Order Status</h2>
-                                <button className="btn btn-ghost btn-icon" onClick={() => setEditingOrder(null)}>✕</button>
-                            </div>
-                            <div className="modal-body space-y-4">
-                                <div className="p-3 bg-secondary rounded-lg mb-4">
-                                    <div className="flex justify-between text-xs mb-1">
-                                        <span className="text-muted">Order ID</span>
-                                        <span className="font-bold">{editingOrder.orderId}</span>
-                                    </div>
-                                    <div className="flex justify-between text-xs">
-                                        <span className="text-muted">Vendor</span>
-                                        <span className="font-semibold">{editingOrder.vendorId?.name}</span>
-                                    </div>
-                                </div>
-                                <div className="form-group">
-                                    <label className="form-label block text-sm font-semibold mb-2">New Status</label>
-                                    <select 
-                                        className="select-input w-full" 
-                                        value={newStatus || ''} 
-                                        onChange={e => setNewStatus(e.target.value)}
-                                    >
-                                        {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                                    </select>
-                                </div>
+                {/* Admin Chat Panel */}
+                {activeChat && <AdminChat order={activeChat} onClose={() => setActiveChat(null)} />}
 
-                                {newStatus === 'Layout Uploaded' && (
-                                    <div className="form-group mt-4">
-                                        <label className="form-label block text-sm font-semibold mb-2">Upload Layout File (Admin Drawn)</label>
-                                        <input 
-                                            type="file" 
-                                            className="input w-full p-2" 
-                                            accept="image/*,.pdf"
-                                            onChange={async (e) => {
-                                                const file = e.target.files[0];
-                                                if(file) {
-                                                    const formData = new FormData();
-                                                    formData.append('file', file);
-                                                    try {
-                                                        await vendorAPI.uploadLayout(editingOrder._id, formData);
-                                                        toast.success('Layout uploaded successfully');
-                                                        fetchData();
-                                                    } catch(err) {
-                                                        toast.error('Failed to upload layout');
-                                                    }
-                                                }
-                                            }}
-                                        />
-                                        {editingOrder.layoutFileUrl && <small className="text-muted block mt-1">A layout is already assigned. Uploading again will overwrite it.</small>}
-                                    </div>
-                                )}
-
-                                <div className="form-group mt-4">
-                                    <label className="form-label block text-sm font-semibold mb-2">Estimated Production Date</label>
-                                    <input 
-                                        type="date" 
-                                        className="input w-full p-2" 
-                                        value={productionDate || ''}
-                                        onChange={e => setProductionDate(e.target.value)}
-                                    />
-                                    <small className="text-muted block mt-1">Set the deadline for production completion.</small>
-                                </div>
-                                <div className="form-group mt-4">
-                                    <label className="form-label block text-sm font-semibold mb-2">Remarks</label>
-                                    <textarea 
-                                        className="textarea w-full p-2 h-24" 
-                                        placeholder="Add notes or reasons for rejection..."
-                                        value={remarks || ''}
-                                        onChange={e => setRemarks(e.target.value)}
-                                    />
-                                </div>
-                            </div>
-                            <div className="modal-footer">
-                                <button className="btn btn-secondary" onClick={() => setEditingOrder(null)}>Cancel</button>
-                                <button className="btn btn-primary" onClick={handleUpdateStatus}>Update Status</button>
-                            </div>
-                        </div>
-                    </div>
+                {/* Job Management Modal */}
+                {managingOrder && (
+                    <JobModal
+                        order={managingOrder}
+                        onClose={() => setManagingOrder(null)}
+                        onRefresh={fetchData}
+                    />
                 )}
             </main>
         </div>

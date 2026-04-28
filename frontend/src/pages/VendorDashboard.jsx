@@ -8,17 +8,8 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './VendorDashboard.css';
-
-const STATS_CONFIG = [
-    { key: 'Excel Uploaded', label: 'Uploaded', icon: Clock, color: '#f59e0b' },
-    { key: 'Layout Uploaded', label: 'Layout Ready', icon: Search, color: '#3b82f6' },
-    { key: 'Artwork Rejected', label: 'Artwork Rejected', icon: XCircle, color: '#ef4444' },
-    { key: 'Artwork Approved', label: 'Artwork Approved', icon: Layout, color: '#8b5cf6' },
-    { key: 'Production', label: 'Production', icon: Package, color: '#06b6d4' },
-    { key: 'Despatch', label: 'Despatch', icon: Truck, color: '#10b981' },
-    { key: 'Payment Follow-up', label: 'Payment', icon: CheckCircle, color: '#22c55e' },
-    { key: 'TotalFile', label: 'TotalFile', icon: List, color: '#64748b' }
-];
+import OrderWorkflow from '../components/OrderWorkflow';
+import OrderChat from '../components/OrderChat';
 
 export default function VendorDashboard() {
     const { user, logout } = useAuthStore();
@@ -30,11 +21,15 @@ export default function VendorDashboard() {
     const [brand, setBrand] = useState('');
     const [barcodeId, setBarcodeId] = useState('');
     
+    const [activeChat, setActiveChat] = useState(null);
     const [reviewOrder, setReviewOrder] = useState(null);
     const [reviewRemarks, setReviewRemarks] = useState('');
     const [datesOrder, setDatesOrder] = useState(null);
     const [prodDate, setProdDate] = useState('');
     const [dispDate, setDispDate] = useState('');
+
+    const [revisedOrder, setRevisedOrder] = useState(null);
+    const [revisedFile, setRevisedFile] = useState(null);
 
     const [paymentOrder, setPaymentOrder] = useState(null);
     const [paymentData, setPaymentData] = useState({
@@ -84,16 +79,32 @@ export default function VendorDashboard() {
         try {
             const res = await vendorAPI.upload(formData);
             toast.success(res.data.message);
-            // Reset form
             setSelectedFile(null);
             setBrand('');
             setBarcodeId('');
-            // Refresh data
             fetchData();
         } catch (err) {
             toast.error(err.response?.data?.message || 'Upload failed');
         } finally {
             setUploading(false);
+        }
+    };
+
+    const handleWorkflowAction = (order, action) => {
+        switch (action) {
+            case 'chat': setActiveChat(order); break;
+            case 'review': setReviewOrder(order); setReviewRemarks(order.remarks || ''); break;
+            case 'revised': setRevisedOrder(order); break;
+            case 'payment': setPaymentOrder(order); break;
+            case 'delivered': 
+                if(confirm('Confirm delivery of this order?')) {
+                    vendorAPI.updateStatus(order._id, { status: 'Delivered' }).then(() => {
+                        toast.success('Delivery confirmed!');
+                        fetchData();
+                    });
+                }
+                break;
+            default: break;
         }
     };
 
@@ -107,6 +118,26 @@ export default function VendorDashboard() {
             fetchData();
         } catch(err) {
             toast.error('Failed to update review status');
+        }
+    };
+
+    const handleRevisedUpload = async () => {
+        if (!revisedFile || !revisedOrder) return;
+        
+        const formData = new FormData();
+        formData.append('file', revisedFile);
+        
+        setUploading(true);
+        try {
+            await vendorAPI.uploadRevisedArtwork(revisedOrder._id, formData);
+            toast.success('Revised artwork uploaded successfully');
+            setRevisedOrder(null);
+            setRevisedFile(null);
+            fetchData();
+        } catch (err) {
+            toast.error('Failed to upload revised artwork');
+        } finally {
+            setUploading(false);
         }
     };
 
@@ -163,7 +194,7 @@ export default function VendorDashboard() {
             <nav className="vp-nav">
                 <div className="vp-nav-container">
                     <div className="vp-logo">
-                        <span className="vp-logo-text">Saravana Graphicss</span>
+                        <img src="/logo.png" alt="Saravana Graphics" className="vp-logo-img" />
                         <div className="vp-logo-divider"></div>
                         <span className="vp-logo-sub">Vendor Portal</span>
                     </div>
@@ -186,27 +217,8 @@ export default function VendorDashboard() {
                 <div className="vp-header">
                     <div className="vp-header-title">
                         <RefreshCcw size={20} className={loading ? 'spin' : ''} onClick={fetchData} style={{ cursor: 'pointer' }} />
-                        <h1>Vendor Upload</h1>
+                        <h1>Order Management & Tracking</h1>
                     </div>
-                </div>
-
-                {/* Compact Top Bar */}
-                <div className="vp-compact-topbar">
-                    {/* Horizontal Stats */}
-                    <div className="vp-compact-stats">
-                        <div className="vp-donut-chart">
-                            <div className="vp-donut-inner"></div>
-                        </div>
-                        <div className="vp-stats-divider"></div>
-                        {STATS_CONFIG.map(config => (
-                            <div key={config.key} className="vp-stat-item">
-                                <span className="vp-stat-value" style={{ color: config.color }}>{stats[config.key] || 0}</span>
-                                <span className="vp-stat-label">{config.label}</span>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Inline Upload */}
                     <div className="vp-inline-upload">
                         <input 
                             type="file" 
@@ -215,7 +227,7 @@ export default function VendorDashboard() {
                             onChange={handleFileChange} 
                         />
                         <label htmlFor="file-upload" className="vp-upload-select" title={selectedFile ? selectedFile.name : 'Choose file'}>
-                            {selectedFile ? 'Ready' : 'Select File'}
+                            {selectedFile ? 'Ready' : 'Select Excel File'}
                         </label>
                         <div className="vp-upload-divider"></div>
                         <button 
@@ -223,78 +235,69 @@ export default function VendorDashboard() {
                             onClick={handleUpload} 
                             disabled={uploading || !selectedFile}
                         >
-                            <Upload size={14} style={{ marginRight: 6 }} /> {uploading ? 'Uploading...' : 'Upload'}
+                            <Upload size={14} style={{ marginRight: 6 }} /> {uploading ? 'Uploading...' : 'Upload Order'}
                         </button>
                     </div>
                 </div>
 
-                {/* Orders Table */}
-                <div className="vp-table-container">
-                    <table className="vp-table">
-                        <thead>
-                            <tr>
-                                <th>SrNo</th>
-                                <th>Order ID</th>
-                                <th>FileName</th>
-                                <th>Brand</th>
-                                <th>Uploaded By</th>
-                                <th>Dates</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                                <th>Remarks</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {orders.length === 0 ? (
-                                <tr>
-                                    <td colSpan="8" className="vp-empty-state">
-                                        No files uploaded yet.
-                                    </td>
-                                </tr>
-                            ) : (
-                                orders.map((order, index) => (
-                                    <tr key={order._id}>
-                                        <td>{index + 1}</td>
-                                        <td className="font-mono text-xs">{order.orderId}</td>
-                                        <td>{order.fileName}</td>
-                                        <td>{order.brand}</td>
-                                        <td>{order.uploadedBy?.name || user?.name}</td>
-                                        <td>
-                                            <div className="text-xs">
-                                                <div className="text-muted">Up: {formatDate(order.createdAt)}</div>
-                                                {order.productionDate && <div className="text-primary font-semibold mt-1">Prod: {formatDate(order.productionDate)}</div>}
-                                                {order.dispatchDate && <div className="text-blue-600 font-semibold mt-1">Disp: {formatDate(order.dispatchDate)}</div>}
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <span className={`vp-status-badge ${order.status.toLowerCase().replace(/\s+/g, '-')}`}>
-                                                {order.status}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            {order.status === 'Layout Uploaded' && (
-                                                 <button className="btn btn-primary btn-sm" onClick={() => { setReviewOrder(order); setReviewRemarks(order.remarks || ''); }}>
-                                                     Review Layout
-                                                 </button>
-                                            )}
-                                            {order.status === 'Artwork Approved' && (
-                                                 <button className="btn btn-secondary btn-sm" onClick={() => setDatesOrder(order)}>
-                                                     Set Dates
-                                                 </button>
-                                            )}
-                                            {(order.status === 'Despatch' || order.status === 'Payment Follow-up') && (
-                                                 <button className="btn btn-secondary btn-sm" onClick={() => setPaymentOrder(order)}>
-                                                     Add Payment Details
-                                                 </button>
-                                            )}
-                                        </td>
-                                        <td className="vp-remarks">{order.remarks || '-'}</td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                {/* Workflow Cards */}
+                <div className="vp-orders-list">
+                    {orders.length === 0 ? (
+                        <div className="vp-empty-state">
+                            <AlertCircle size={48} color="#94a3b8" />
+                            <p>No orders found. Upload an Excel file to get started.</p>
+                        </div>
+                    ) : (
+                        orders.map((order) => (
+                            <OrderWorkflow 
+                                key={order._id} 
+                                order={order} 
+                                currentStatus={order.status}
+                                onAction={(action) => handleWorkflowAction(order, action)}
+                            />
+                        ))
+                    )}
                 </div>
+
+                    )}
+                </div>
+
+                {activeChat && <OrderChat order={activeChat} onClose={() => setActiveChat(null)} />}
+
+                {/* Revised Artwork Modal */}
+                {revisedOrder && (
+                    <div className="modal-overlay" onClick={() => setRevisedOrder(null)}>
+                        <div className="modal" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+                            <div className="modal-header">
+                                <h2 className="modal-title">Upload Revised Artwork</h2>
+                                <button className="btn btn-ghost btn-icon" onClick={() => setRevisedOrder(null)}>✕</button>
+                            </div>
+                            <div className="modal-body">
+                                <p className="text-sm text-gray-600 mb-4">Please upload the corrected artwork as requested by the admin.</p>
+                                <div className="vp-inline-upload" style={{ width: '100%' }}>
+                                    <input 
+                                        type="file" 
+                                        id="revised-file-upload" 
+                                        onChange={(e) => setRevisedFile(e.target.files[0])} 
+                                    />
+                                    <label htmlFor="revised-file-upload" className="vp-upload-select">
+                                        {revisedFile ? revisedFile.name : 'Select File'}
+                                    </label>
+                                </div>
+                            </div>
+                            <div className="modal-footer">
+                                <button className="ow-btn chat" onClick={() => setRevisedOrder(null)}>Cancel</button>
+                                <button 
+                                    className="ow-btn primary" 
+                                    onClick={handleRevisedUpload}
+                                    disabled={!revisedFile || uploading}
+                                >
+                                    {uploading ? 'Uploading...' : 'Upload Artwork'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Layout Review Modal */}
                 {reviewOrder && (

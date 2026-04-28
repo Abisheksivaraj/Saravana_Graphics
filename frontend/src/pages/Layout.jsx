@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Layers, FileSpreadsheet, Download,
-    ArrowLeft, Search, ZoomIn, ZoomOut, Palette, Plus, X, Wand2
+    ArrowLeft, Search, ZoomIn, ZoomOut, Palette, Plus, X, Wand2,
+    ChevronLeft,
+    Trash2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Stage, Layer, Group, Rect, Text, Image as KImage, Line, Circle, Ellipse, Star, RegularPolygon, Path } from 'react-konva';
@@ -22,18 +24,41 @@ import './Layout.css';
 // ─── Strip Color Map ──────────────────────────────────────────────────────────
 let STRIP_COLOR_MAP = {};
 const resolveStripColor = (colorName) => {
-    if (!colorName) return null;
     return STRIP_COLOR_MAP[String(colorName).trim().toLowerCase()] || null;
 };
 
+// ─── Format price: always show 2 decimal places ───────────────────────────────
+const formatPrice = (raw) => {
+    if (/^\d+(\.\d+)?$/.test(String(raw).trim())) {
+        return parseFloat(raw).toFixed(2);
+    }
+    return String(raw).trim();
+};
+
+// ─── Format NET QTY: split TOP/BOTTOM onto separate lines ────────────────────
+const formatNetQty = (val) => {
+    const s = String(val || '').trim();
+    if (!s) return s;
+    // If both TOP and BOTTOM exist, insert \n before BOTTOM
+    // Handles any whitespace/separator between them
+    if (/TOP/i.test(s) && /BOTTOM/i.test(s)) {
+        return s.replace(/\s{1,}(BOTTOM)/i, '\n$1');
+    }
+    return s;
+};
+
+// ─── Check if a column name is price-related ─────────────────────────────────
+const isPriceColumn = (colName) => {
+    const lower = (colName || '').toLowerCase();
+    return lower.includes('mrp') || lower.includes('price');
+};
+
 // ─── Render ₹ symbol to a PNG data URL using canvas ──────────────────────────
-// This avoids ALL font-loading issues — works 100% offline, no CDN needed.
 const rupeeImageCache = {};
 const getRupeeImage = (fontSizePt, color = '#000000') => {
     const cacheKey = `${fontSizePt}_${color}`;
     if (rupeeImageCache[cacheKey]) return rupeeImageCache[cacheKey];
-
-    const scale = 4; // retina quality
+    const scale = 4;
     const sizePx = Math.round(fontSizePt * 3.7795 * scale);
     const canvas = document.createElement('canvas');
     canvas.width = sizePx;
@@ -41,61 +66,56 @@ const getRupeeImage = (fontSizePt, color = '#000000') => {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, sizePx, sizePx);
     ctx.fillStyle = color;
-    ctx.font = `bold ${sizePx * 0.85}px Arial, sans-serif`;
-    ctx.textBaseline = 'top';
-    ctx.fillText('₹', 0, sizePx * 0.05);
-    const dataUrl = canvas.toDataURL('image/png');
-    rupeeImageCache[cacheKey] = dataUrl;
-    return dataUrl;
+    ctx.font = `${sizePx * 0.95}px "Rupee Forbidan", Arial, sans-serif`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillText('₹', sizePx / 2, sizePx / 2);
+    rupeeImageCache[cacheKey] = canvas;
+    return canvas;
 };
 
 // ─── Draw text that may contain ₹ into jsPDF ─────────────────────────────────
-// Splits on ₹, draws plain text segments with pdf.text() and ₹ as PNG image.
-const drawRupeeText = (pdf, rawText, x, y, opts = {}) => {
+const drawRupeeText = (pdf, rawText, x, y, scaleX = 1) => {
     if (!rawText) return;
     const text = String(rawText);
-
     if (!text.includes('₹')) {
-        pdf.text(text, x, y, opts);
+        pdf.text(text, x, y, {});
         return;
     }
-
-    const fs = pdf.getFontSize(); // points
-    const fsMM = fs * 0.352778;   // points → mm
-    // Approximate cap-height offset so image aligns with text baseline
-    const imgH = fsMM * 1.05;
-    const imgW = fsMM * 0.78;
-    const imgY = y - fsMM * 0.88; // align top of glyph
-
-    // Get current text color as hex
+    const fs = pdf.getFontSize();
+    const fsMM = fs * 0.352778;
+    const imgH = fsMM * 0.9;
+    const imgW = fsMM * 0.8 * scaleX;
+    const imgY = y - fsMM * 0.78;
     const tc = pdf.getTextColor();
     const colorHex = typeof tc === 'string' && tc.startsWith('#') ? tc : '#000000';
     const rupeeImg = getRupeeImage(fs, colorHex);
-
     const parts = text.split('₹');
     let curX = x;
-
-    // For center/right alignment we need total width first — just left-align
-    // inline segments (caller should already set curX correctly for alignment)
     parts.forEach((part, i) => {
         if (part.length > 0) {
             pdf.text(part, curX, y, {});
-            curX += pdf.getTextWidth(part);
+            curX += pdf.getTextWidth(part) * scaleX;
         }
         if (i < parts.length - 1) {
-            // Draw ₹ as image at baseline
-            try {
-                pdf.addImage(rupeeImg, 'PNG', curX, imgY, imgW, imgH);
-            } catch (e) { /* fallback: skip silently */ }
-            // imgW + 0.264mm (≈1px at 96dpi) gap before the next text segment
-            curX += imgW + 0.264;
+            try { pdf.addImage(rupeeImg, 'PNG', curX - 2.5 * scaleX, imgY, imgW, imgH); } catch (e) { }
+            curX += imgW + 1.5 * scaleX;
         }
     });
 };
 
 // ─── Canvas Preview Label ─────────────────────────────────────────────────────
-const LayoutLabel = ({ elements = [], data = {}, mapping = {}, width, height, isBranding = false, logoImg = null }) => {
+const LayoutLabel = ({ elements = [], data = {}, mapping = {}, width, height, designW, designH, isBranding = false, logoImg = null }) => {
     const mergedElements = useMemo(() => {
+        const sizeCol = Object.keys(data).find(k => k.toLowerCase() === 'size' || k.toLowerCase().includes('size'));
+        const sizeVal = sizeCol ? String(data[sizeCol] || '').trim().toUpperCase() : '';
+        const sizeTarget = elements.find(e =>
+            e.type === 'text' &&
+            !e.text?.includes('{{') &&
+            e.text?.trim().length < 6 &&
+            e.text?.trim().toUpperCase() === sizeVal
+        );
+
         if (isBranding) {
             return [
                 { type: 'rect', x: 0, y: 0, width, height, fill: '#ffffff' },
@@ -105,51 +125,84 @@ const LayoutLabel = ({ elements = [], data = {}, mapping = {}, width, height, is
 
         return elements.map(el => {
             let newEl = { ...el };
-            const isText = el.type === 'text' || el.type === 'placeholder';
+            const elName = (el.name || '').toLowerCase();
+
+            // ── Size Indicator ───────────────────────────────────────────
+            // Hide the generic circle indicator as we are switching to black-box-white-text highlighting
+            if (el.type === 'circle' && (elName.includes('sizeindicator') || elName.includes('sizecircle'))) {
+                newEl.visible = false;
+            }
+
+            const isPlaceholder = el.type === 'placeholder' || (el.text && el.text.includes('{{'));
+            const isBarcodeQR = el.type === 'barcode' || el.type === 'qrcode';
+            const isRect = el.type === 'rect';
             const manualMapped = mapping[el.id];
 
             // Priority 1: Manual mapping
-            if (manualMapped && data[manualMapped] !== undefined) {
-                const raw = String(data[manualMapped] ?? '').replace(/^₹\s*/, '');
-                if (isText) {
-                    const isPriceCol = manualMapped.toLowerCase().includes('mrp') || manualMapped.toLowerCase().includes('price');
-                    const templateHasRupee = (el.text || '').includes('₹');
-                    newEl.text = (isPriceCol && !templateHasRupee && /^\d/.test(raw)) ? '₹' + raw : raw;
-                } else if (el.type === 'barcode') newEl.barcodeValue = raw;
-                else if (el.type === 'qrcode') newEl.qrValue = raw;
-                else if (el.type === 'rect') {
+            if (manualMapped && data[manualMapped] !== undefined && (isPlaceholder || isBarcodeQR || isRect)) {
+                const raw = String(data[manualMapped] ?? '').replace(/^[₹\s]+/, '').trim();
+                if (el.type === 'text' || el.type === 'placeholder') {
+                    const isPrice = isPriceColumn(manualMapped);
+                    const formatted = isPrice ? formatPrice(raw) : raw;
+                    newEl.text = formatNetQty(formatted);
+                } else if (el.type === 'barcode') {
+                    newEl.barcodeValue = raw;
+                } else if (el.type === 'qrcode') {
+                    newEl.qrValue = raw;
+                } else if (el.type === 'rect') {
                     const mc = resolveStripColor(raw.trim());
                     if (mc) newEl.fill = mc;
                 }
                 return newEl;
             }
 
-            // Priority 2: placeholder replacement
-            if (isText) {
+            // Priority 2: Placeholder replacement
+            if (el.type === 'text' || el.type === 'placeholder') {
                 let t = el.text || '';
                 Object.keys(data).forEach(col => {
                     const ph = `{{${col}}}`;
-                    if (t.includes(ph)) t = t.replaceAll(ph, String(data[col] ?? ''));
+                    if (t.includes(ph)) {
+                        const raw = String(data[col] ?? '').replace(/^[₹\s]+/, '').trim();
+                        t = t.replaceAll(ph, raw);
+                    }
                 });
-                while (/₹\s*₹/.test(t)) t = t.replace(/₹\s*₹/g, '₹');
+                t = formatNetQty(t);
                 newEl.text = t;
+
+                // ── Highlight matched size ────────────────────────────────
+                const cleanT = t.trim().toUpperCase();
+                if (sizeVal && cleanT === sizeVal && t.length < 6) {
+                    newEl.fill = '#ffffff';
+                    newEl.isHighlightedSize = true;
+                }
             }
 
             // Strip color for rect
             if (el.type === 'rect') {
-                const elName = (el.name || '').toLowerCase();
-                // Consider it a strip if named 'strip'/'color', OR if it's wide AND short (height < 50)
-                const isStrip = elName.includes('strip') || elName.includes('color') || 
-                               ((el.width || 0) > 80 && (el.height || 0) < 50);
-                
-                if (isStrip) {
-                    const stripCol = Object.keys(data).find(col =>
-                        col.toLowerCase().replace(/[\s_-]/g, '').includes('stripcolor') ||
-                        col.toLowerCase().replace(/[\s_-]/g, '') === 'strip'
-                    );
-                    if (stripCol && data[stripCol]) {
-                        const mc = resolveStripColor(String(data[stripCol]).trim());
-                        if (mc) newEl.fill = mc;
+                // ── Highlight background box for matched size ────────────
+                const isSizeBox = elements.some(other =>
+                    (other.type === 'text' || other.type === 'placeholder') &&
+                    (other.text || '').trim().toUpperCase() === sizeVal &&
+                    sizeVal.length > 0 &&
+                    Math.abs((other.x || 0) - (el.x || 0)) < 2 &&
+                    Math.abs((other.y || 0) - (el.y || 0)) < 2
+                );
+
+                if (isSizeBox) {
+                    newEl.fill = '#000000';
+                    newEl.isHighlightedRect = true;
+                } else {
+                    const isStrip = elName.includes('strip') || elName.includes('color') ||
+                        ((el.width || 0) > 80 && (el.height || 0) < 50);
+                    if (isStrip) {
+                        const stripCol = Object.keys(data).find(col =>
+                            col.toLowerCase().replace(/[\s_-]/g, '').includes('stripcolor') ||
+                            col.toLowerCase().replace(/[\s_-]/g, '') === 'strip'
+                        );
+                        if (stripCol && data[stripCol]) {
+                            const mc = resolveStripColor(String(data[stripCol]).trim());
+                            if (mc) newEl.fill = mc;
+                        }
                     }
                 }
             }
@@ -159,53 +212,121 @@ const LayoutLabel = ({ elements = [], data = {}, mapping = {}, width, height, is
 
     const sorted = useMemo(() => [...mergedElements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0)), [mergedElements]);
 
+    const dW = designW || 166;
+    const dH = designH || 387;
+    const s = Math.min(width / dW, height / dH);
+    const ox = (width - dW * s) / 2;
+    const oy = (height - dH * s) / 2;
+
     return (
         <Group>
             <Rect width={width} height={height} fill="white" stroke="#e2e8f0" strokeWidth={1} cornerRadius={8} />
-            {sorted.map((el, i) => {
-                const key = el.id || `el-${i}`;
-                const common = {
-                    x: el.x || 0, y: el.y || 0,
-                    rotation: el.rotation || 0,
-                    scaleX: ((el.type === 'text' || el.type === 'placeholder') && el.wrap === 'none') ? 1 : (el.scaleX || 1),
-                    scaleY: ((el.type === 'text' || el.type === 'placeholder') && el.wrap === 'none') ? 1 : (el.scaleY || 1),
-                    opacity: el.opacity !== undefined ? el.opacity : 1,
-                    visible: el.visible !== false,
-                };
-                switch (el.type) {
-                    case 'text':
-                    case 'placeholder':
-                        return <Text key={key} {...common} text={el.text || ''} fontSize={el.fontSize || 12}
-                            fontFamily={el.fontFamily || 'Arial'}
-                            fontStyle={`${el.fontStyle === 'italic' ? 'italic' : 'normal'} ${el.fontWeight || 'normal'}`}
-                            align={el.textAlign || 'left'} fill={el.fill || '#000000'}
-                            width={(el.wrap === 'none' || (el.width || 200) < 20) ? undefined : (el.width || 200)}
-                            wrap={(el.width || 200) < 20 ? 'none' : (el.wrap || 'word')}
-                            letterSpacing={el.letterSpacing || 0}
-                            lineHeight={el.lineHeight || 1.2}
-                            textDecoration={el.underline ? 'underline' : 'none'} />;
-                    case 'rect':
-                        return <Rect key={key} {...common} width={el.width || 0} height={el.height || 0}
-                            fill={el.fill || 'transparent'} cornerRadius={el.cornerRadius || 0}
-                            stroke={el.stroke || 'transparent'} strokeWidth={el.strokeWidth || 0} />;
-                    case 'line':
-                        return <Line key={key} {...common} points={el.points || [0, 0, 100, 0]}
-                            stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth || 1} />;
-                    case 'circle':
-                        return <Circle key={key} {...common} radius={el.radius || 10} fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
-                    case 'ellipse':
-                        return <Ellipse key={key} {...common} radiusX={el.radiusX || 10} radiusY={el.radiusY || 10} fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
-                    case 'barcode':
-                        return <BarcodeElement key={key} {...common} el={el} onSelect={() => { }} />;
-                    case 'qrcode':
-                        return <QRElement key={key} {...common} el={el} onSelect={() => { }} />;
-                    case 'image':
-                        if (el.image) return <KImage key={key} {...common} image={el.image} width={el.width} height={el.height} />;
-                        return <ImageElement key={key} {...common} el={el} />;
-                    default:
-                        return null;
-                }
-            })}
+            <Group x={ox} y={oy} scaleX={s} scaleY={s}>
+                {sorted.map((el, i) => {
+                    const key = el.id || `el-${i}`;
+                    const common = {
+                        x: el.x || 0, y: el.y || 0,
+                        rotation: el.rotation || 0,
+                        scaleX: el.scaleX || 1,
+                        scaleY: el.scaleY || 1,
+                        opacity: el.opacity !== undefined ? el.opacity : 1,
+                        visible: el.visible !== false,
+                    };
+                    switch (el.type) {
+                        case 'text':
+                        case 'placeholder':
+                            const txt = el.text || '';
+                            const fs = el.fontSize || 12;
+                            const ff = el.fontFamily || 'Arial';
+                            const col = el.fill || '#000000';
+                            const isItalic = el.fontStyle === 'italic';
+                            const weight = el.fontWeight || 'normal';
+                            const textAlign = el.textAlign || 'left';
+                            const wrapWidth = (el.wrap === 'none' || (el.width || 200) < 20) ? undefined : (el.width || 200);
+
+                            if (!txt.includes('₹')) {
+                                return (
+                                    <Group key={key} {...common}>
+                                        <Text
+                                            text={txt}
+                                            fontSize={fs}
+                                            fontFamily={ff}
+                                            fontStyle={`${isItalic ? 'italic' : 'normal'} ${weight}`}
+                                            align={textAlign}
+                                            fill={el.isHighlightedSize ? '#ffffff' : col}
+                                            width={wrapWidth}
+                                            wrap={wrapWidth ? 'word' : 'none'}
+                                            letterSpacing={el.letterSpacing || 0}
+                                            lineHeight={el.lineHeight || 1.2}
+                                            textDecoration={el.underline ? 'underline' : 'none'}
+                                        />
+                                    </Group>
+                                );
+                            }
+
+                            const parts = txt.split('₹');
+                            return (
+                                <Group key={key} {...common}>
+                                    {(() => {
+                                        let currentX = 0;
+                                        const items = [];
+                                        const rupeeImg = getRupeeImage(fs, col);
+                                        const rH = fs * 0.65;
+                                        const rW = fs * 0.55;
+                                        const rY = fs * 0.28;
+
+                                        parts.forEach((p, i) => {
+                                            if (p) {
+                                                items.push(
+                                                    <Text key={`p-${i}`} x={currentX} y={0} text={p} fontSize={fs}
+                                                        fontFamily={ff} fontStyle={`${isItalic ? 'italic' : 'normal'} ${weight}`}
+                                                        fill={col} letterSpacing={el.letterSpacing || 0} />
+                                                );
+                                                const canvas = document.createElement('canvas');
+                                                const context = canvas.getContext('2d');
+                                                context.font = `${fs}px ${ff}`;
+                                                currentX += context.measureText(p).width + (el.letterSpacing || 0);
+                                            }
+                                            if (i < parts.length - 1) {
+                                                items.push(<KImage key={`r-${i}`} x={currentX} y={rY} image={rupeeImg} width={rW} height={rH} />);
+                                                currentX += rW + 1;
+                                            }
+                                        });
+
+                                        if (textAlign === 'center' && wrapWidth) {
+                                            const offset = (wrapWidth - currentX) / 2;
+                                            return <Group x={offset}>{items}</Group>;
+                                        } else if (textAlign === 'right' && wrapWidth) {
+                                            const offset = wrapWidth - currentX;
+                                            return <Group x={offset}>{items}</Group>;
+                                        }
+                                        return items;
+                                    })()}
+                                </Group>
+                            );
+                        case 'rect':
+                            return <Rect key={key} {...common} width={el.width || 0} height={el.height || 0}
+                                fill={el.fill || 'transparent'} cornerRadius={el.cornerRadius || 0}
+                                stroke={el.stroke || 'transparent'} strokeWidth={el.strokeWidth || 0} />;
+                        case 'line':
+                            return <Line key={key} {...common} points={el.points || [0, 0, 100, 0]}
+                                stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth || 1} />;
+                        case 'circle':
+                            return <Circle key={key} {...common} radius={el.radius || 10} fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
+                        case 'ellipse':
+                            return <Ellipse key={key} {...common} radiusX={el.radiusX || 10} radiusY={el.radiusY || 10} fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
+                        case 'barcode':
+                            return <BarcodeElement key={key} {...common} el={el} onSelect={() => { }} />;
+                        case 'qrcode':
+                            return <QRElement key={key} {...common} el={el} onSelect={() => { }} />;
+                        case 'image':
+                            if (el.image) return <KImage key={key} {...common} image={el.image} width={el.width} height={el.height} />;
+                            return <ImageElement key={key} {...common} el={el} />;
+                        default:
+                            return null;
+                    }
+                })}
+            </Group>
         </Group>
     );
 };
@@ -229,7 +350,6 @@ export default function Layout() {
     const [showExplorer, setShowExplorer] = useState(false);
     const stageRef = useRef();
 
-    // 1 px = 0.264583 mm  (96 DPI)
     const PX_TO_MM = 0.264583;
 
     useEffect(() => {
@@ -239,6 +359,72 @@ export default function Layout() {
         fetchStripColors();
         fetchDesigns();
     }, []);
+
+    const corelPalette = [
+        { name: 'P Yellow 10', cmyk: '0,0,10,0', hex: '#FFFBE6' },
+        { name: 'P Yellow 20', cmyk: '0,0,20,0', hex: '#FFF7CC' },
+        { name: 'P Yellow 40', cmyk: '0,0,40,0', hex: '#FFF099' },
+        { name: 'P Yellow 60', cmyk: '0,0,60,0', hex: '#FFE966' },
+        { name: 'Process Yellow', cmyk: '0,0,100,0', hex: '#FFED00' },
+        { name: 'Golden Yellow', cmyk: '0,20,100,0', hex: '#FFCC00' },
+        { name: 'Orange Yellow', cmyk: '0,30,100,0', hex: '#FFB300' },
+        { name: 'Light Orange', cmyk: '0,40,100,0', hex: '#FF9900' },
+        { name: 'Process Orange', cmyk: '0,60,100,0', hex: '#F7941E' },
+        { name: 'Deep Orange', cmyk: '0,80,100,0', hex: '#D95E1F' },
+        { name: 'Light Red', cmyk: '0,80,80,0', hex: '#F15A29' },
+        { name: 'Press Red', cmyk: '0,100,100,0', hex: '#ED1C24' },
+        { name: 'Deep Red', cmyk: '0,100,100,20', hex: '#BE1E23' },
+        { name: 'Maroon', cmyk: '0,100,100,50', hex: '#800000' },
+        { name: 'P Magenta 20', cmyk: '0,20,0,0', hex: '#FADEEF' },
+        { name: 'P Magenta 40', cmyk: '0,40,0,0', hex: '#F5BEDB' },
+        { name: 'P Magenta 60', cmyk: '0,60,0,0', hex: '#F09EC7' },
+        { name: 'Process Magenta', cmyk: '0,100,0,0', hex: '#EC008C' },
+        { name: 'Deep Magenta', cmyk: '20,100,0,0', hex: '#B9006E' },
+        { name: 'Wine', cmyk: '40,100,40,20', hex: '#7A0026' },
+        { name: 'Lavender', cmyk: '20,20,0,0', hex: '#E6E6FA' },
+        { name: 'Light Purple', cmyk: '40,40,0,0', hex: '#B2B2D8' },
+        { name: 'Purple', cmyk: '60,60,0,0', hex: '#92278F' },
+        { name: 'Royal Purple', cmyk: '80,80,0,0', hex: '#662D91' },
+        { name: 'Deep Purple', cmyk: '100,100,0,0', hex: '#2E3192' },
+        { name: 'Violet', cmyk: '40,100,0,0', hex: '#A84FB0' },
+        { name: 'Dark Violet', cmyk: '60,100,20,0', hex: '#6D2D91' },
+        { name: 'P Cyan 20', cmyk: '20,0,0,0', hex: '#E0F4FB' },
+        { name: 'P Cyan 40', cmyk: '40,0,0,0', hex: '#B3E5F6' },
+        { name: 'P Cyan 60', cmyk: '60,0,0,0', hex: '#80D1F1' },
+        { name: 'Process Cyan', cmyk: '100,0,0,0', hex: '#00AEEF' },
+        { name: 'Sky Blue', cmyk: '100,20,0,0', hex: '#0093D1' },
+        { name: 'Royal Blue', cmyk: '100,60,0,0', hex: '#2E3192' },
+        { name: 'Navy Blue', cmyk: '100,100,0,40', hex: '#000080' },
+        { name: 'Dark Navy', cmyk: '100,100,20,60', hex: '#00004D' },
+        { name: 'Teal Blue', cmyk: '100,40,40,0', hex: '#0071BC' },
+        { name: 'Light Teal', cmyk: '40,0,20,0', hex: '#B3E5E1' },
+        { name: 'Teal', cmyk: '100,0,40,0', hex: '#00A99D' },
+        { name: 'Dark Teal', cmyk: '100,40,60,20', hex: '#005E5E' },
+        { name: 'Light Green', cmyk: '20,0,40,0', hex: '#E6F4E0' },
+        { name: 'Lime', cmyk: '40,0,100,0', hex: '#D9E021' },
+        { name: 'Press Green', cmyk: '100,0,100,0', hex: '#00A651' },
+        { name: 'Forest Green', cmyk: '100,0,100,40', hex: '#006837' },
+        { name: 'Deep Green', cmyk: '100,40,100,20', hex: '#00401A' },
+        { name: 'Olive', cmyk: '40,40,100,20', hex: '#808000' },
+        { name: 'Beige', cmyk: '0,10,20,10', hex: '#E6D2B3' },
+        { name: 'Sand', cmyk: '0,20,40,10', hex: '#D7B58E' },
+        { name: 'Tan', cmyk: '20,40,60,0', hex: '#C69C6D' },
+        { name: 'Gold', cmyk: '0,20,100,20', hex: '#C69C23' },
+        { name: 'Bronze', cmyk: '0,50,100,40', hex: '#996633' },
+        { name: 'Brown', cmyk: '0,60,100,60', hex: '#754C24' },
+        { name: 'Chocolate', cmyk: '40,70,100,50', hex: '#42210B' },
+        { name: 'White', cmyk: '0,0,0,0', hex: '#FFFFFF' },
+        { name: 'Grey 10', cmyk: '0,0,0,10', hex: '#E6E7E8' },
+        { name: 'Grey 20', cmyk: '0,0,0,20', hex: '#D1D3D4' },
+        { name: 'Grey 30', cmyk: '0,0,0,30', hex: '#A7A9AC' },
+        { name: 'Grey 40', cmyk: '0,0,0,40', hex: '#939598' },
+        { name: 'Grey 50', cmyk: '0,0,0,50', hex: '#808285' },
+        { name: 'Grey 60', cmyk: '0,0,0,60', hex: '#6D6E71' },
+        { name: 'Grey 70', cmyk: '0,0,0,70', hex: '#58595B' },
+        { name: 'Grey 80', cmyk: '0,0,0,80', hex: '#414042' },
+        { name: 'Grey 90', cmyk: '0,0,0,90', hex: '#231F20' },
+        { name: 'Process Black', cmyk: '0,0,0,100', hex: '#000000' },
+    ];
 
     const defaultCMYKColors = [
         { _id: 'def-blue', name: 'Blue', hex: '#0d5ce3', cmyk: '95,64,11,0' },
@@ -250,16 +436,11 @@ export default function Layout() {
 
     const fetchStripColors = async () => {
         try {
-            // Load default CMYK colors first
             let colors = [...defaultCMYKColors];
-            
             try {
                 const res = await stripColorsAPI.getAll();
-                if (res?.data?.colors) {
-                    colors = [...colors, ...res.data.colors];
-                }
+                if (res?.data?.colors) colors = [...colors, ...res.data.colors];
             } catch (err) { console.warn('Could not fetch custom strip colors from API'); }
-
             setStripColors(colors);
             const map = {};
             colors.forEach(c => { map[c.name.toLowerCase()] = c.hex; });
@@ -276,44 +457,43 @@ export default function Layout() {
         finally { setLoading(false); }
     };
 
-    // State for manual CMYK color adder
     const [cmykInput, setCmykInput] = useState({ name: '', c: 0, m: 0, y: 0, k: 0 });
+
+    const handleDeleteColor = async (e, colorId) => {
+        e.stopPropagation();
+        try {
+            const updated = stripColors.filter(c => c._id !== colorId);
+            setStripColors(updated);
+            const map = {};
+            updated.forEach(c => { map[c.name.toLowerCase()] = c.hex; });
+            STRIP_COLOR_MAP = map;
+            toast.success('Color removed');
+            if (!String(colorId).startsWith('custom-') && !String(colorId).startsWith('def-')) {
+                await stripColorsAPI.delete(colorId);
+            }
+        } catch (err) { toast.error('Failed to delete color'); }
+    };
 
     const handleAddCMYKColor = async () => {
         if (!cmykInput.name.trim()) return toast.error('Enter a color name');
-        
-        // CMYK to RGB conversion
-        const c = cmykInput.c / 100;
-        const m = cmykInput.m / 100;
-        const y = cmykInput.y / 100;
-        const k = cmykInput.k / 100;
-        
+        const c = cmykInput.c / 100, m = cmykInput.m / 100, y = cmykInput.y / 100, k = cmykInput.k / 100;
         const r = Math.round(255 * (1 - c) * (1 - k));
         const g = Math.round(255 * (1 - m) * (1 - k));
         const b = Math.round(255 * (1 - y) * (1 - k));
-        
-        // RGB to HEX
         const rgbToHex = (v) => v.toString(16).padStart(2, '0');
         const hex = `#${rgbToHex(r)}${rgbToHex(g)}${rgbToHex(b)}`.toUpperCase();
-
         const newColor = {
             _id: `custom-${Date.now()}`,
             name: cmykInput.name.trim(),
-            hex: hex,
+            hex,
             cmyk: `${cmykInput.c},${cmykInput.m},${cmykInput.y},${cmykInput.k}`
         };
-
         const updatedColors = [...stripColors, newColor];
         setStripColors(updatedColors);
         STRIP_COLOR_MAP[newColor.name.toLowerCase()] = hex;
-        
         setCmykInput({ name: '', c: 0, m: 0, y: 0, k: 0 });
         toast.success(`${newColor.name} added with Hex ${hex}`);
-
-        // Try to save to API if available
-        try {
-            await stripColorsAPI.create({ name: newColor.name, hex });
-        } catch(e) {}
+        try { await stripColorsAPI.create({ name: newColor.name, hex }); } catch (e) { }
     };
 
     const handleSelectTemplate = async (designId) => {
@@ -323,22 +503,19 @@ export default function Layout() {
             const res = await designsAPI.getById(designId);
             const design = res.data.design;
             setSelectedTemplate(design);
-
             const fields = [];
             design.elements.forEach(el => {
                 if (!['text', 'placeholder', 'barcode', 'qrcode', 'rect'].includes(el.type)) return;
-                
                 if (el.type === 'rect') {
                     const elName = (el.name || '').toLowerCase();
-                    const isStrip = elName.includes('strip') || elName.includes('color') || 
-                                   ((el.width || 0) > 80 && (el.height || 0) < 50);
+                    const isStrip = elName.includes('strip') || elName.includes('color') ||
+                        ((el.width || 0) > 80 && (el.height || 0) < 50);
                     if (isStrip) {
                         const lbl = el.fieldName || el.name || 'Strip Color';
                         fields.push({ id: el.id, name: el.fieldName || el.name || 'strip', type: 'rect', label: lbl });
                     }
                     return;
                 }
-
                 const matches = el.text?.match(/{{(.*?)}}/g);
                 if (matches) {
                     matches.forEach(m => {
@@ -346,13 +523,12 @@ export default function Layout() {
                         if (!fields.find(f => f.name === name))
                             fields.push({ id: el.id, name, type: 'placeholder', label: `{{${name}}}` });
                     });
-                } else {
+                } else if (el.type !== 'text') {
                     const lbl = el.fieldName || el.text || el.name || `Field ${el.id.slice(0, 4)}`;
                     fields.push({ id: el.id, name: el.fieldName || el.text, type: el.type, label: lbl.length > 30 ? lbl.slice(0, 30) + '…' : lbl });
                 }
             });
             setTemplateFields(fields);
-
             if (columns.length > 0) {
                 const nm = {};
                 fields.forEach(f => {
@@ -371,30 +547,18 @@ export default function Layout() {
         const reader = new FileReader();
         reader.onload = (evt) => {
             const wb = XLSX.read(evt.target.result, { type: 'binary' });
-
-            // ── Pick the sheet with the most non-empty header columns ──────────
-            // This handles workbooks where SheetNames[0] is a summary/template sheet
-            // with fewer columns than the actual data sheet.
             let bestSheet = wb.Sheets[wb.SheetNames[0]];
             let bestColCount = 0;
-
             wb.SheetNames.forEach(name => {
                 const sheet = wb.Sheets[name];
                 const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
                 if (rows.length === 0) return;
-                // Count non-empty cells in the first row (header row)
                 const headerCount = rows[0].filter(c => c !== null && c !== undefined && String(c).trim() !== '').length;
-                if (headerCount > bestColCount) {
-                    bestColCount = headerCount;
-                    bestSheet = sheet;
-                }
+                if (headerCount > bestColCount) { bestColCount = headerCount; bestSheet = sheet; }
             });
-
             const data = XLSX.utils.sheet_to_json(bestSheet, { defval: '', blankrows: true });
-
             if (data.length > 0) {
                 setExcelData(data);
-                // Filter out null/undefined/empty column names from merged cells or blank headers
                 const cols = Object.keys(data[0]).filter(c => c && String(c).trim() !== '' && c !== '__EMPTY');
                 setColumns(cols);
                 toast.success(`Loaded ${data.length} records · ${cols.length} columns`);
@@ -428,17 +592,18 @@ export default function Layout() {
     // ─── Unified text value resolver ─────────────────────────────────────────
     const resolveTextValue = (el, data, mapping) => {
         let val = el.text || '';
-        // If the template element already contains ₹ we never add another one
-        const templateHasRupee = val.includes('₹');
 
-        // Step 1: explicit manual mapping
         const mapped = mapping[el.id];
-        if (mapped && data[mapped] !== undefined) {
-            // Strip any ₹ already in the raw data value (prevents double ₹)
-            const raw = String(data[mapped] ?? '').replace(/^₹\s*/, '');
-            const isPrice = mapped.toLowerCase().includes('mrp') || mapped.toLowerCase().includes('price');
-            val = (isPrice && !templateHasRupee && /^\d/.test(raw)) ? '₹' + raw : raw;
-            return val;
+        const isPlaceholder = el.type === 'placeholder' || (el.text && el.text.includes('{{'));
+        const isBarcodeQR = el.type === 'barcode' || el.type === 'qrcode';
+        const isRect = el.type === 'rect';
+
+        // Step 1: explicit manual mapping — ALWAYS apply formatNetQty before returning
+        if (mapped && data[mapped] !== undefined && (isPlaceholder || isBarcodeQR || isRect)) {
+            const raw = String(data[mapped] ?? '').replace(/^[₹\s]+/, '').trim();
+            const isPrice = isPriceColumn(mapped);
+            val = isPrice ? formatPrice(raw) : raw;
+            return formatNetQty(val); // ← critical: apply formatNetQty here
         }
 
         // Step 2: {{ColumnName}} placeholder replacement
@@ -447,37 +612,29 @@ export default function Layout() {
             const ph = `{{${col}}}`;
             if (val.includes(ph)) {
                 hadPh = true;
-                // Strip any ₹ already in the raw data value
-                const raw = String(data[col] ?? '').replace(/^₹\s*/, '');
-                const isP = col.toLowerCase().includes('mrp') || col.toLowerCase().includes('price');
-                // Don't add ₹ if the template already has ₹ right before this placeholder
-                const phIdx = val.indexOf(ph);
-                const charBefore = phIdx > 0 ? val[phIdx - 1] : '';
-                const alreadyPrefixed = charBefore === '₹';
-                const rep = (isP && !alreadyPrefixed && /^\d/.test(raw)) ? '₹' + raw : raw;
-                val = val.replaceAll(ph, rep);
+                const raw = String(data[col] ?? '').replace(/^[₹\s]+/, '').trim();
+                const isPrice = isPriceColumn(col);
+                const formatted = isPrice ? formatPrice(raw) : raw;
+                val = val.replaceAll(ph, formatted);
             }
         });
 
-        // Step 3: auto-match by element fieldName / name
-        if (!hadPh) {
+        // Step 3: auto-match by fieldName for dynamic types only
+        if (!hadPh && el.fieldName && (isBarcodeQR || isRect || el.type === 'placeholder')) {
             const ac = Object.keys(data).find(col =>
-                col.toLowerCase() === (el.fieldName || el.name || '').toLowerCase()
+                col.toLowerCase() === el.fieldName.toLowerCase()
             );
             if (ac && data[ac] !== undefined) {
-                const raw = String(data[ac] ?? '').replace(/^₹\s*/, '');
-                const isP = ac.toLowerCase().includes('mrp') || ac.toLowerCase().includes('price');
-                val = (isP && !templateHasRupee && /^\d/.test(raw)) ? '₹' + raw : raw;
+                const raw = String(data[ac] ?? '').replace(/^[₹\s]+/, '').trim();
+                val = raw;
             }
         }
 
-        // Final cleanup: remove any accidental double rupee
+        // Cleanup double rupee
         while (/₹\s*₹/.test(val)) val = val.replace(/₹\s*₹/g, '₹');
 
-        // Auto line-break for Net Qty (TOP ... BOTTOM)
-        if (/TOP/i.test(val) && /BOTTOM/i.test(val)) {
-            val = val.replace(/\s+(BOTTOM)/i, '\n$1');
-        }
+        // Apply NET QTY split
+        val = formatNetQty(val);
 
         return val;
     };
@@ -535,28 +692,30 @@ export default function Layout() {
 
     // ─── PDF Label Renderer ───────────────────────────────────────────────────
     const drawVectorLabel = async (pdf, elements, data, mapping, mmX, mmY, mmW, mmH, isBranding = false, isProduction = false) => {
+        const unit = selectedTemplate?.canvasUnit || 'px';
+        const rawW = selectedTemplate?.canvasWidth || selectedTemplate?.width || 166;
+        const rawH = selectedTemplate?.canvasHeight || selectedTemplate?.height || 387;
+        const dWmm = unit === 'mm' ? rawW : rawW * PX_TO_MM;
+        const dHmm = unit === 'mm' ? rawH : rawH * PX_TO_MM;
 
-        const dW = selectedTemplate?.canvasWidth || selectedTemplate?.width || 166;
-        const dH = selectedTemplate?.canvasHeight || selectedTemplate?.height || 387;
-
-        const cs = Math.min(mmW / (dW * PX_TO_MM), mmH / (dH * PX_TO_MM));
-
-        const offX = mmX + (mmW - dW * PX_TO_MM * cs) / 2;
-        const offY = mmY + (mmH - dH * PX_TO_MM * cs) / 2;
-
+        const cs = Math.min(mmW / dWmm, mmH / dHmm);
+        const offX = mmX + (mmW - dWmm * cs) / 2;
+        const offY = mmY + (mmH - dHmm * cs) / 2;
         const canvasRadius = selectedTemplate?.canvasRadius || 10;
         const tagR = Math.min(4, canvasRadius * PX_TO_MM * cs);
 
         pdf.setFillColor('#ffffff');
         pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'F');
+        pdf.setDrawColor('#FF00FF');
+        pdf.setLineWidth(0.15);
+        pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'D');
+        pdf.circle(mmX + mmW / 2, mmY + 5, 1.5, 'D');
 
         if (isBranding) {
             pdf.setFillColor('#000000');
             pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'F');
             pdf.setDrawColor('#ffffff'); pdf.setLineWidth(0.4);
             pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'D');
-            const g = 1;
-            pdf.roundedRect(mmX + g, mmY + g, mmW - g * 2, mmH - g * 2, Math.max(0, tagR - g), Math.max(0, tagR - g), 'D');
             const bImg = brandingImg || logoImg;
             if (bImg) { try { pdf.addImage(bImg, 'PNG', mmX, mmY, mmW, mmH); } catch (e) { } }
             return;
@@ -565,6 +724,15 @@ export default function Layout() {
         pdf.saveGraphicsState();
         pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, null);
         pdf.internal.write('W n');
+
+        // Find size target for size indicator circle
+        const sizeCol = Object.keys(data).find(k => k.toLowerCase() === 'size' || k.toLowerCase().includes('size'));
+        const sizeVal = String(data[sizeCol] || '').trim().toUpperCase();
+        const sizeTarget = elements.find(e =>
+            e.type === 'text' &&
+            !e.text?.includes('{{') &&
+            e.text?.trim().toUpperCase() === sizeVal
+        );
 
         const sorted = [...elements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
 
@@ -575,47 +743,60 @@ export default function Layout() {
             const elSX = el.scaleX || 1;
             const elSY = el.scaleY || 1;
             const elRot = el.rotation || 0;
+            const unitScale = unit === 'mm' ? 1 : PX_TO_MM;
+            let ex = offX + (el.x || 0) * unitScale * cs;
+            let ey = offY + (el.y || 0) * unitScale * cs;
+            const ew = (el.width || 0) * unitScale * cs * elSX;
+            const eh = (el.height || 0) * unitScale * cs * elSY;
 
-            const ex = offX + (el.x || 0) * PX_TO_MM * cs;
-            const ey = offY + (el.y || 0) * PX_TO_MM * cs;
-            const ew = (el.width || 0) * PX_TO_MM * cs * elSX;
-            const eh = (el.height || 0) * PX_TO_MM * cs * elSY;
+            const elName = (el.name || '').toLowerCase();
+
+            // ── SIZE INDICATOR (HIDDEN) ──────────────────────────────────────
+            if (el.type === 'circle' && (elName.includes('sizeindicator') || elName.includes('sizecircle'))) {
+                pdf.restoreGraphicsState();
+                continue;
+            }
 
             // ── TEXT ─────────────────────────────────────────────────────────
             if (el.type === 'text' || el.type === 'placeholder') {
-                const val = resolveTextValue(el, data, mapping);
+                let val = resolveTextValue(el, data, mapping);
                 if (!val || val === 'Text') { pdf.restoreGraphicsState(); continue; }
 
-                const fs = Math.max(3, (el.fontSize || 12) * 0.75 * cs);
+                const fs = Math.max(3, (el.fontSize || 12) * 0.75 * (el.scaleY || 1));
+                const fsMM = fs * 0.352778;
+                
+                // ── Highlight matched size ────────────────────────────────
+                const cleanV = val.trim().toUpperCase();
+                let textColor = el.fill || '#000000';
+                if (sizeVal && cleanV === sizeVal && val.length < 6) {
+                    textColor = '#ffffff';
+                }
+
                 pdf.setFontSize(fs);
-
-                // Set text color — needed so drawRupeeText uses correct color
-                const textColor = el.fill || '#000000';
                 pdf.setTextColor(textColor);
-
                 const bold = String(el.fontWeight || '').includes('bold') || el.fontWeight === '700' || el.fontWeight === 700;
                 const italic = el.fontStyle === 'italic';
                 const pdfStyle = bold && italic ? 'bolditalic' : bold ? 'bold' : italic ? 'italic' : 'normal';
-                pdf.setFont('helvetica', pdfStyle);
 
+                let pdfFont = 'helvetica';
+                const ff = (el.fontFamily || '').toLowerCase();
+                if (ff.includes('times')) pdfFont = 'times';
+                else if (ff.includes('courier')) pdfFont = 'courier';
+
+                pdf.setFont(pdfFont, pdfStyle);
                 const align = el.textAlign || 'left';
-                const wrapW = ew;
+                const wrapW = (el.width || 0) * unitScale * cs;
 
-                // ── Rotated text ──────────────────────────────────────────────
+                // Rotated text
                 if (elRot !== 0) {
-                    // For rotated text with ₹, replace with Rs. (rotation + image is complex)
                     const safeVal = val.replace(/₹/g, 'Rs.');
                     const lines = wrapW > 0 ? pdf.splitTextToSize(safeVal, wrapW) : [safeVal];
-                    pdf.text(lines, ex, ey + fs * 0.352778 * 0.85, {
-                        align,
-                        angle: elRot,
-                        lineHeightFactor: el.lineHeight || 1.2,
-                    });
+                    pdf.text(lines, ex, ey + fs * 0.352778 * 0.85, { align, angle: elRot, lineHeightFactor: el.lineHeight || 1.2 });
                     pdf.restoreGraphicsState();
                     continue;
                 }
 
-                // ── Colon-tab aligned ─────────────────────────────────────────
+                // Colon-tab aligned
                 const tabPos = el.tabPos || 0;
                 if (tabPos > 0 && val.includes(':')) {
                     const lh = fs * 0.352778 * (el.lineHeight || 1.2);
@@ -623,38 +804,51 @@ export default function Layout() {
                         const ci = line.indexOf(':');
                         const ly = ey + fs * 0.352778 * 0.85 + i * lh;
                         if (ci !== -1) {
-                            drawRupeeText(pdf, line.substring(0, ci).trim(), ex, ly);
-                            drawRupeeText(pdf, line.substring(ci).trim(), ex + tabPos * PX_TO_MM * cs, ly);
+                            drawRupeeText(pdf, line.substring(0, ci).trim(), ex, ly, elSX);
+                            drawRupeeText(pdf, line.substring(ci).trim(), ex + tabPos * unitScale * cs, ly, elSX);
                         } else {
-                            drawRupeeText(pdf, line, ex, ly);
+                            drawRupeeText(pdf, line, ex, ly, elSX);
                         }
                     });
                     pdf.restoreGraphicsState();
                     continue;
                 }
 
-                // ── Apply horizontal scale (Tz) for designer scaleX ──────────
                 if (elSX !== 1 && elSX > 0) pdf.internal.write(`${(elSX * 100).toFixed(1)} Tz`);
-
-                const fsMM = fs * 0.352778;
                 const ty = ey + fsMM * 0.85;
 
-                // Split into lines then draw each with rupee support
-                const lines = wrapW > 0 && el.wrap !== 'none'
-                    ? pdf.splitTextToSize(val.replace(/₹/g, ' ₹ ').replace(/\s{2,}/g, ' ').trim(), wrapW)
-                    : [val];
+                // CRITICAL: Split on \n FIRST, then wrap each segment separately
+                // Prevents splitTextToSize from collapsing TOP/BOTTOM onto one line
+                const explicitLines = val.split('\n');
+                const rawLines = [];
+                explicitLines.forEach(seg => {
+                    const segClean = seg.trim();
+                    if (!segClean) return;
+                    const segWithRupee = segClean.replace(/₹/g, ' ₹ ');
+                    if (wrapW > 10 && el.wrap !== 'none') {
+                        const wrapped = pdf.splitTextToSize(segWithRupee, wrapW);
+                        wrapped.forEach(l => rawLines.push(l.trim()));
+                    } else {
+                        rawLines.push(segWithRupee);
+                    }
+                });
 
                 const lh = fsMM * (el.lineHeight || 1.2);
 
-                lines.forEach((line, li) => {
+                rawLines.forEach((line, li) => {
                     const lineY = ty + li * lh;
-                    const lineW = pdf.getTextWidth(line.replace(/₹/g, ''));
-
+                    const trimmedLine = line.trim();
+                    if (!trimmedLine) return;
+                    const lineW = pdf.getTextWidth(trimmedLine.replace(/\s*₹\s*/g, ''));
+                    const visualLineW = lineW * (elSX || 1);
                     let lineX = ex;
-                    if (align === 'center') lineX = ex + (wrapW - lineW) / 2;
-                    else if (align === 'right') lineX = ex + wrapW - lineW;
 
-                    drawRupeeText(pdf, line, lineX, lineY);
+                    if (align === 'center' && wrapW > 0) {
+                        lineX = ex + (wrapW - visualLineW) / 2;
+                    } else if (align === 'right' && wrapW > 0) {
+                        lineX = ex + wrapW - visualLineW;
+                    }
+                    drawRupeeText(pdf, trimmedLine, lineX, lineY, elSX);
                 });
 
                 if (elSX !== 1 && elSX > 0) pdf.internal.write('100 Tz');
@@ -662,12 +856,8 @@ export default function Layout() {
             // ── RECT ─────────────────────────────────────────────────────────
             } else if (el.type === 'rect') {
                 let fill = el.fill;
-
-                const elName = (el.name || '').toLowerCase();
-                // Consider it a strip if named 'strip'/'color', OR if it's wide AND short (height < 50)
-                const isStrip = elName.includes('strip') || elName.includes('color') || 
-                               ((el.width || 0) > 80 && (el.height || 0) < 50);
-
+                const isStrip = elName.includes('strip') || elName.includes('color') ||
+                    ((el.width || 0) > 80 && (el.height || 0) < 50);
                 if (isStrip) {
                     const manualMapped = mapping[el.id];
                     if (manualMapped && data[manualMapped] !== undefined) {
@@ -683,26 +873,28 @@ export default function Layout() {
                     }
                 }
 
+                // ── Highlight background box for matched size ────────────
+                const isSizeBox = elements.some(other =>
+                    (other.type === 'text' || other.type === 'placeholder') &&
+                    (resolveTextValue(other, data, mapping) || '').trim().toUpperCase() === sizeVal &&
+                    sizeVal.length > 0 &&
+                    Math.abs((other.x || 0) - (el.x || 0)) < 2 &&
+                    Math.abs((other.y || 0) - (el.y || 0)) < 2
+                );
+                if (isSizeBox) fill = '#000000';
                 const isLabelBorder = Math.abs(ew - mmW) < 3 && Math.abs(eh - mmH) < 3;
                 const r = el.cornerRadius
-                    ? Math.max(0, el.cornerRadius * PX_TO_MM * cs)
+                    ? Math.max(0, el.cornerRadius * unitScale * cs)
                     : (isLabelBorder ? tagR : 0);
-
                 if (fill && fill !== 'transparent') {
                     pdf.setFillColor(fill);
                     r > 0 ? pdf.roundedRect(ex, ey, ew, eh, r, r, 'F') : pdf.rect(ex, ey, ew, eh, 'F');
                 }
-
                 if (el.stroke && el.stroke !== 'transparent' && (el.strokeWidth || 0) > 0) {
-                    if (!(isProduction && isLabelBorder)) {
+                    if (!isLabelBorder) {
                         pdf.setDrawColor(el.stroke);
-                        pdf.setLineWidth(Math.max(0.05, (el.strokeWidth || 1) * PX_TO_MM * cs));
+                        pdf.setLineWidth(Math.max(0.05, (el.strokeWidth || 1) * unitScale * cs));
                         r > 0 ? pdf.roundedRect(ex, ey, ew, eh, r, r, 'D') : pdf.rect(ex, ey, ew, eh, 'D');
-                        if (isLabelBorder) {
-                            const g = 0.8 * cs;
-                            const ir = Math.max(0, r - g);
-                            pdf.roundedRect(ex + g, ey + g, ew - g * 2, eh - g * 2, ir, ir, 'D');
-                        }
                     }
                 }
 
@@ -738,13 +930,26 @@ export default function Layout() {
             } else if (el.type === 'line') {
                 const pts = el.points || [0, 0, 100, 0];
                 pdf.setDrawColor(el.stroke || '#000000');
-                pdf.setLineWidth(Math.max(0.05, (el.strokeWidth || 1) * PX_TO_MM * cs));
-                pdf.line(ex + pts[0] * PX_TO_MM * cs, ey + pts[1] * PX_TO_MM * cs, ex + pts[2] * PX_TO_MM * cs, ey + pts[3] * PX_TO_MM * cs);
+                pdf.setLineWidth(Math.max(0.05, (el.strokeWidth || 1) * unitScale * cs));
+                pdf.line(ex + pts[0] * unitScale * cs, ey + pts[1] * unitScale * cs, ex + pts[2] * unitScale * cs, ey + pts[3] * unitScale * cs);
+
+            // ── GENERIC CIRCLE (non-size-indicator) ──────────────────────────
+            } else if (el.type === 'circle') {
+                const r = (el.radius || 10) * unitScale * cs;
+                const cx = ex + r;
+                const cy = ey + r;
+                pdf.setDrawColor(el.stroke || '#000000');
+                pdf.setLineWidth(Math.max(0.05, (el.strokeWidth || 1) * unitScale * cs));
+                if (el.fill && el.fill !== 'transparent') {
+                    pdf.setFillColor(el.fill);
+                    pdf.circle(cx, cy, r, 'FD');
+                } else {
+                    pdf.circle(cx, cy, r, 'D');
+                }
             }
 
             pdf.restoreGraphicsState();
         }
-
         pdf.restoreGraphicsState();
     };
 
@@ -754,77 +959,49 @@ export default function Layout() {
         try {
             toast.loading('Generating Proof Sheet…', { id: 'pdf' });
             const PAGE_W = 297, PAGE_H = 210;
-            // No custom font needed — ₹ rendered as canvas image via drawRupeeText
             const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+            const _unit = selectedTemplate.canvasUnit || 'px';
+            const _dW = selectedTemplate.canvasWidth || selectedTemplate.width || 166;
+            const _dH = selectedTemplate.canvasHeight || selectedTemplate.height || 387;
+            const origW = _unit === 'mm' ? _dW : _dW * PX_TO_MM;
+            const origH = _unit === 'mm' ? _dH : _dH * PX_TO_MM;
 
-            const dW = selectedTemplate.canvasWidth || selectedTemplate.width || 166;
-            const dH = selectedTemplate.canvasHeight || selectedTemplate.height || 387;
-            const labelW = dW * PX_TO_MM;
-            const labelH = dH * PX_TO_MM;
-
-            const hGap = 1.5, vGap = 2, hdrH = 27, mSide = 5;
-            const usableW = PAGE_W - mSide * 2;
-            const usableH = PAGE_H - hdrH - mSide;
-            const cols = Math.max(1, Math.floor((usableW + hGap) / (labelW + hGap)));
-            const rows = Math.max(1, Math.floor((usableH + vGap) / (labelH + vGap)));
+            const cols = 5;
+            const rows = 2;
+            const hGap = 3, vGap = 5;
+            const usableW = PAGE_W - 20;
+            const usableH = PAGE_H - 20;
+            const scaleX = (usableW - (cols - 1) * hGap) / (cols * origW);
+            const scaleY = (usableH - (rows - 1) * vGap) / (rows * origH);
+            const masterScale = Math.min(1, scaleX, scaleY);
+            const labelW = origW * masterScale;
+            const labelH = origH * masterScale;
             const maxPP = cols * rows;
+            const gridW = cols * labelW + (cols - 1) * hGap;
+            const gridH = rows * labelH + (rows - 1) * vGap;
+            const startX = (PAGE_W - gridW) / 2;
+            const startY = (PAGE_H - gridH) / 2;
 
-            const drawHeader = (pg) => {
-                if (logoImg) { try { pdf.addImage(logoImg, 'PNG', mSide, 4, 52, 16); } catch (e) { } }
-                pdf.setFontSize(7); pdf.setFont('helvetica', 'normal'); pdf.setTextColor('#64748b');
-                pdf.text(`Saravana Graphics | NO.21/3, MG Street, Tirupur-641602 | 9360807755 | Page ${pg}`, mSide + 56, 12);
-                pdf.setDrawColor('#e2e8f0'); pdf.setLineWidth(0.3);
-                pdf.line(mSide, 22, PAGE_W - mSide, 22);
-            };
-
-            // ─── Step 1: Group data into pages ────────────────────────────────
             const pages = [];
             let currentPage = [];
-
-            // The branding tag is always the first item on Page 1
             currentPage.push({ isBranding: true, data: null });
 
             for (const row of excelData) {
-                // Empty row acts as a manual PAGE BREAK
-                if (Object.values(row).every(v => v === '' || v == null)) {
-                    if (currentPage.length > 0) {
-                        pages.push(currentPage);
-                        currentPage = [];
-                    }
-                    continue;
-                }
-                
-                // If the current page is full, break to a new page
-                if (currentPage.length >= maxPP) {
-                    pages.push(currentPage);
-                    currentPage = [];
-                }
-                
+                if (Object.values(row).every(v => v === '' || v == null)) continue;
+                if (currentPage.length >= maxPP) { pages.push(currentPage); currentPage = []; }
                 currentPage.push({ isBranding: false, data: row });
             }
             if (currentPage.length > 0) pages.push(currentPage);
 
-            // ─── Step 2: Render each page perfectly centered ──────────────────
             for (let pIdx = 0; pIdx < pages.length; pIdx++) {
                 const pgItems = pages[pIdx];
-                const pgNum = pIdx + 1;
-                
-                if (pgNum > 1) pdf.addPage();
-                drawHeader(pgNum);
-                
-                // Calculate dynamic width based on how many columns are actually used on this page
-                const colsUsed = Math.min(pgItems.length, cols);
-                const gridW = colsUsed * labelW + (colsUsed - 1) * hGap;
-                const dynamicMarginX = (PAGE_W - gridW) / 2; // Perfectly center this specific group
-                
+                if (pIdx > 0) pdf.addPage();
                 for (let i = 0; i < pgItems.length; i++) {
                     const item = pgItems[i];
                     const c = i % cols;
                     const r = Math.floor(i / cols);
-                    
-                    const x = dynamicMarginX + c * (labelW + hGap);
-                    const y = hdrH + r * (labelH + vGap);
-                    
+                    const x = startX + c * (labelW + hGap);
+                    const y = startY + r * (labelH + vGap);
                     if (item.isBranding) {
                         await drawVectorLabel(pdf, [], {}, {}, x, y, labelW, labelH, true);
                     } else {
@@ -846,13 +1023,13 @@ export default function Layout() {
         if (!selectedTemplate) return;
         try {
             toast.loading('Generating Individual Labels…', { id: 'ind' });
-            const dW = selectedTemplate.canvasWidth || selectedTemplate.width || 166;
-            const dH = selectedTemplate.canvasHeight || selectedTemplate.height || 387;
-            const lW = dW * PX_TO_MM, lH = dH * PX_TO_MM;
+            const _unit2 = selectedTemplate.canvasUnit || 'px';
+            const _dW2 = selectedTemplate.canvasWidth || selectedTemplate.width || 166;
+            const _dH2 = selectedTemplate.canvasHeight || selectedTemplate.height || 387;
+            const lW = _unit2 === 'mm' ? _dW2 : _dW2 * PX_TO_MM;
+            const lH = _unit2 === 'mm' ? _dH2 : _dH2 * PX_TO_MM;
             const ori = lW > lH ? 'landscape' : 'portrait';
-            // No custom font needed — ₹ rendered as canvas image via drawRupeeText
             const pdf = new jsPDF({ orientation: ori, unit: 'mm', format: [lW, lH] });
-
             let first = true;
             for (const row of excelData) {
                 if (Object.values(row).every(v => v === '' || v == null)) continue;
@@ -868,7 +1045,8 @@ export default function Layout() {
         }
     };
 
-    // ─── Canvas preview dimensions ────────────────────────────────────────────
+    const [isSetupSidebarCollapsed, setIsSetupSidebarCollapsed] = useState(false);
+
     const getDesignPx = () => {
         if (!selectedTemplate) return { w: 166, h: 387 };
         const unit = selectedTemplate.canvasUnit || 'px';
@@ -878,7 +1056,7 @@ export default function Layout() {
     };
     const { w: itemW, h: itemH } = getDesignPx();
     const colsCount = 6, spacing = 6, marginSide = 50;
-    
+
     let requiredRows = 1;
     let tempCol = 1;
     let tempRow = 0;
@@ -895,12 +1073,10 @@ export default function Layout() {
     const sheetW = (itemW + spacing) * colsCount + marginSide * 2;
     const sheetH = (itemH + spacing) * requiredRows + 160;
 
-    // ─── JSX ─────────────────────────────────────────────────────────────────
     return (
         <div className={`layout-page ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
             <Sidebar />
             <main className="db-main" style={{ background: '#f8fafc' }}>
-
                 <div className="layout-header-simple">
                     <div className="flex items-center gap-4">
                         <button className="btn btn-ghost btn-icon" onClick={() => navigate('/dashboard')}><ArrowLeft size={18} /></button>
@@ -931,55 +1107,153 @@ export default function Layout() {
                 </div>
 
                 <div className="layout-content-grid">
-                    <div className="layout-setup-sidebar">
-
-                        <div className="setup-section">
-                            <div className="section-label">1. Choose Design</div>
-                            <select className="select-input-simple" value={selectedTemplate?._id || ''} onChange={e => handleSelectTemplate(e.target.value)}>
-                                <option value="">-- Select Design --</option>
-                                {templates.map(t => <option key={t._id} value={t._id}>{t.title}</option>)}
+                    <div className="layout-toolbar-horizontal">
+                        {/* 1. Design Selector */}
+                        <div className="toolbar-section">
+                            <div className="section-label-mini">1. Select Design</div>
+                            <select
+                                className="select-input-simple h-[38px] min-w-[180px] text-xs font-bold border-muted/20"
+                                value={selectedTemplate?._id || selectedTemplate?.id || ''}
+                                onChange={(e) => handleSelectTemplate(e.target.value)}
+                            >
+                                <option value="">— Choose Design —</option>
+                                {templates.map(t => (
+                                    <option key={t._id || t.id} value={t._id || t.id}>{t.title}</option>
+                                ))}
                             </select>
-                            {selectedTemplate && (
-                                <div className="p-2 bg-primary/5 rounded-lg border border-primary/10 mt-1">
-                                    <button className="btn btn-ghost btn-xs w-full gap-2 text-[10px] font-bold" onClick={() => document.getElementById('branding-upload').click()}>
-                                        <Wand2 size={10} /> {brandingImg ? 'Logo Updated ✓' : 'Add Branding Logo'}
-                                    </button>
-                                    <input type="file" id="branding-upload" hidden accept="image/*" onChange={handleBrandingLogoUpload} />
+                        </div>
+
+                        {/* 2. Branding Logo */}
+                        <div className="toolbar-section">
+                            <div className="section-label-mini">2. Logo</div>
+                            <button
+                                className={`btn btn-ghost btn-sm h-[38px] border border-muted/10 px-4 ${brandingImg ? 'bg-success/10 text-success' : ''}`}
+                                onClick={() => document.getElementById('branding-upload').click()}
+                            >
+                                <Wand2 size={14} className="mr-2" /> {brandingImg ? 'Logo Added' : 'Add Logo'}
+                            </button>
+                            <input type="file" id="branding-upload" hidden accept="image/*" onChange={handleBrandingLogoUpload} />
+                        </div>
+
+                        {/* 3. Strip Colors */}
+                        <div className="toolbar-section relative">
+                            <div className="section-label-mini">3. Palette</div>
+                            <button className="btn btn-ghost btn-sm h-[38px] border border-muted/10 px-4" onClick={() => setShowStripManager(!showStripManager)}>
+                                <Palette size={14} className="mr-2" /> Colors
+                            </button>
+                            {showStripManager && (
+                                <div className="absolute top-[100%] left-0 mt-2 bg-white border border-[#333] shadow-2xl z-[500]"
+                                    style={{ width: '550px', minWidth: '550px', padding: '0', boxSizing: 'border-box' }}>
+                                    <div className="text-white text-[11px] font-bold px-2 py-1.5 flex justify-between items-center"
+                                        style={{ background: '#000080', width: '100%' }}>
+                                        <span style={{ whiteSpace: 'nowrap' }}>CMYK Color Palette</span>
+                                        <button onClick={() => setShowStripManager(false)} style={{ color: 'white', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>×</button>
+                                    </div>
+                                    <div style={{ display: 'flex', minHeight: '400px' }}>
+                                        <div style={{ flex: '1.2', padding: '12px', borderRight: '1px solid #ddd' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: '1px', background: '#999', border: '1px solid #999', marginBottom: '15px', maxHeight: '160px', overflowY: 'auto' }}>
+                                                {corelPalette.map(cp => (
+                                                    <div key={cp.name} style={{ background: cp.hex, height: '18px', cursor: 'pointer' }}
+                                                        title={`${cp.name} (${cp.cmyk})`}
+                                                        onClick={() => { const [c, m, y, k] = cp.cmyk.split(',').map(Number); setCmykInput({ name: cp.name, c, m, y, k }); }} />
+                                                ))}
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px', background: '#f8f8f8', padding: '8px', border: '1px solid #ddd' }}>
+                                                <div style={{ width: '30px', height: '30px', border: '1px solid #666', background: cmykInput.name ? corelPalette.find(p => p.name === cmykInput.name)?.hex || '#fff' : '#fff' }}></div>
+                                                <div style={{ flex: '1' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ fontSize: '11px', fontWeight: 'bold' }}>#</span>
+                                                        <input type="text" readOnly
+                                                            value={(corelPalette.find(p => p.name === cmykInput.name)?.hex || '#FFFFFF').toUpperCase()}
+                                                            style={{ width: '100%', fontSize: '11px', border: '1px solid #999', padding: '1px 4px', background: 'white' }} />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                {[
+                                                    { label: 'C', key: 'c', gradient: 'linear-gradient(to right, #fff, #00FFFF)' },
+                                                    { label: 'M', key: 'm', gradient: 'linear-gradient(to right, #fff, #FF00FF)' },
+                                                    { label: 'Y', key: 'y', gradient: 'linear-gradient(to right, #fff, #FFFF00)' },
+                                                    { label: 'K', key: 'k', gradient: 'linear-gradient(to right, #fff, #000)' }
+                                                ].map(s => (
+                                                    <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ fontSize: '11px', fontWeight: 'bold', width: '12px' }}>{s.label}</span>
+                                                        <div style={{ flex: '1', height: '10px', border: '1px solid #999', position: 'relative', background: s.gradient }}>
+                                                            <div style={{ position: 'absolute', top: '-2px', bottom: '-2px', width: '4px', background: 'white', border: '1px solid #333', left: `${cmykInput[s.key]}%`, transform: 'translateX(-50%)', pointerEvents: 'none' }}></div>
+                                                            <input type="range" style={{ position: 'absolute', inset: '0', opacity: '0', cursor: 'pointer', width: '100%' }}
+                                                                min="0" max="100" value={cmykInput[s.key]}
+                                                                onChange={e => setCmykInput(p => ({ ...p, [s.key]: Number(e.target.value) }))} />
+                                                        </div>
+                                                        <input type="number" min="0" max="100"
+                                                            style={{ width: '35px', fontSize: '10px', border: '1px solid #999', textAlign: 'center', padding: '0 2px' }}
+                                                            value={cmykInput[s.key]}
+                                                            onChange={e => { let v = Math.min(100, Math.max(0, Number(e.target.value))); setCmykInput(p => ({ ...p, [s.key]: v })); }} />
+                                                        <span style={{ fontSize: '10px' }}>%</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div style={{ marginTop: '12px', borderTop: '1px solid #eee', paddingTop: '8px' }}>
+                                                <input type="text" placeholder="Color Name"
+                                                    style={{ width: '100%', fontSize: '11px', border: '1px solid #999', padding: '3px', marginBottom: '6px', boxSizing: 'border-box' }}
+                                                    value={cmykInput.name} onChange={e => setCmykInput(p => ({ ...p, name: e.target.value }))} />
+                                                <button style={{ width: '100%', background: '#000080', color: 'white', fontSize: '11px', padding: '5px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                                                    onClick={handleAddCMYKColor}>ADD TO PALETTE</button>
+                                            </div>
+                                        </div>
+                                        <div style={{ flex: '1', display: 'flex', flexDirection: 'column', background: '#f5f5f5' }}>
+                                            <div style={{ background: '#eee', padding: '6px 10px', fontSize: '10px', fontWeight: 'bold', borderBottom: '1px solid #ddd' }}>Strip Colors</div>
+                                            <div style={{ flex: '1', overflowY: 'auto', padding: '5px' }}>
+                                                {stripColors.length === 0 ? (
+                                                    <div style={{ padding: '20px', fontSize: '10px', color: '#999', textAlign: 'center' }}>No colors added yet</div>
+                                                ) : (
+                                                    stripColors.map(sc => (
+                                                        <div key={sc._id}
+                                                            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', border: '1px solid #eee', background: 'white', marginBottom: '4px', cursor: 'pointer', borderRadius: '2px' }}
+                                                            className="hover:border-blue-300"
+                                                            onClick={() => { if (sc.cmyk) { const [c, m, y, k] = sc.cmyk.split(',').map(Number); setCmykInput({ name: sc.name, c, m, y, k }); } }}>
+                                                            <div style={{ width: '14px', height: '14px', border: '1px solid #666', background: sc.hex }}></div>
+                                                            <div style={{ flex: '1', fontSize: '10px', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sc.name}</div>
+                                                            <div style={{ fontSize: '9px', color: '#666', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                                                                {sc.cmyk ? sc.cmyk.split(',').map((v, i) => `${['C', 'M', 'Y', 'K'][i]}:${v}`).join(' ') : sc.hex}
+                                                            </div>
+                                                            <button onClick={(e) => handleDeleteColor(e, sc._id)}
+                                                                style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '2px', color: '#999' }}>
+                                                                <Trash2 size={11} />
+                                                            </button>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>
 
-                        <div className="setup-section">
-                            <div className="section-label">2. Upload Excel Data</div>
-                            <div className={`excel-dropzone-simple ${excelData.length ? 'has-data' : ''}`} onClick={() => document.getElementById('excel-input').click()}>
-                                <FileSpreadsheet size={20} className={excelData.length ? 'text-success' : 'text-muted'} />
-                                <span>{excelData.length ? `${excelData.length} Rows Loaded` : 'Click to Upload Excel'}</span>
+                        {/* 4. Excel Upload */}
+                        <div className="toolbar-section">
+                            <div className="section-label-mini">4. Data</div>
+                            <div className={`excel-drop-horizontal ${excelData.length ? 'has-data' : ''} px-4`} onClick={() => document.getElementById('excel-input').click()}>
+                                <FileSpreadsheet size={14} className={excelData.length ? 'text-success' : 'text-muted'} />
+                                <span>{excelData.length ? `${excelData.length} Rows` : 'Upload Excel'}</span>
                             </div>
                             <input type="file" id="excel-input" hidden accept=".xlsx,.xls,.csv" onChange={handleFileUpload} />
                         </div>
 
-                        {selectedTemplate && templateFields.length > 0 && (
-                            <div className="setup-section">
-                                <div className="flex justify-between items-center mb-1">
-                                    <div className="section-label">3. Map Fields</div>
-                                    <span className="text-[9px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">
-                                        {Object.keys(manualMapping).length} Mapped
-                                    </span>
-                                </div>
-                                <div className="mapping-list-simple">
+                        {/* 5. Field Mapping */}
+                        {selectedTemplate && excelData.length > 0 && templateFields.length > 0 && (
+                            <div className="toolbar-section flex-1 ml-4 pl-4 border-l border-muted/10">
+                                <div className="section-label-mini">5. Mapping</div>
+                                <div className="mapping-row-toolbar">
                                     {templateFields.map(field => (
-                                        <div key={field.id} className="mapping-row">
-                                            <div className="mapping-label" title={field.label}>{field.label}</div>
-                                            <select
-                                                className="mapping-select-mini"
+                                        <div key={field.id} className="mapping-item-compact">
+                                            <label>{field.label}</label>
+                                            <select className="mapping-select-toolbar"
                                                 value={manualMapping[field.id] || ''}
-                                                title={manualMapping[field.id] || 'Auto / Ignore'}
-                                                onChange={e => setManualMapping(prev => ({ ...prev, [field.id]: e.target.value }))}
-                                                style={{ maxWidth: '100%', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}
-                                            >
-                                                <option value="">— Auto / Ignore —</option>
+                                                onChange={e => setManualMapping(prev => ({ ...prev, [field.id]: e.target.value }))}>
+                                                <option value="">Auto</option>
                                                 {columns.map(col => (
-                                                    <option key={col} value={col} title={col}>{col}</option>
+                                                    <option key={col} value={col}>{col}</option>
                                                 ))}
                                             </select>
                                         </div>
@@ -987,32 +1261,6 @@ export default function Layout() {
                                 </div>
                             </div>
                         )}
-
-                        <div className="setup-section border-t border-muted/10 pt-6 mt-auto">
-                            <button className="btn btn-ghost btn-xs w-full justify-between px-2 text-muted" onClick={() => setShowStripManager(!showStripManager)}>
-                                <span className="flex items-center gap-2"><Palette size={12} /> Strip Colors</span>
-                                {showStripManager ? <X size={12} /> : <Plus size={12} />}
-                            </button>
-                            {showStripManager && (
-                                <div className="mt-2 p-2 bg-muted/5 rounded-lg border border-muted/10">
-                                    <div className="flex flex-wrap gap-1.5 mb-3">
-                                        {stripColors.map(sc => (
-                                            <div key={sc._id} className="w-5 h-5 rounded-sm border border-black/10" style={{ background: sc.hex }} title={`${sc.name} (${sc.cmyk || sc.hex})`} />
-                                        ))}
-                                    </div>
-                                    <div className="border-t border-muted/10 pt-2 flex flex-col gap-2">
-                                        <input type="text" placeholder="Color Name (e.g. Yellow)" className="input-simple text-[10px] p-1 h-6" value={cmykInput.name} onChange={e => setCmykInput(p => ({ ...p, name: e.target.value }))} />
-                                        <div className="flex gap-1">
-                                            <input type="number" placeholder="C" className="input-simple text-[10px] p-1 h-6 w-full text-center" value={cmykInput.c || ''} onChange={e => setCmykInput(p => ({ ...p, c: Number(e.target.value) }))} title="Cyan 0-100" />
-                                            <input type="number" placeholder="M" className="input-simple text-[10px] p-1 h-6 w-full text-center" value={cmykInput.m || ''} onChange={e => setCmykInput(p => ({ ...p, m: Number(e.target.value) }))} title="Magenta 0-100" />
-                                            <input type="number" placeholder="Y" className="input-simple text-[10px] p-1 h-6 w-full text-center" value={cmykInput.y || ''} onChange={e => setCmykInput(p => ({ ...p, y: Number(e.target.value) }))} title="Yellow 0-100" />
-                                            <input type="number" placeholder="K" className="input-simple text-[10px] p-1 h-6 w-full text-center" value={cmykInput.k || ''} onChange={e => setCmykInput(p => ({ ...p, k: Number(e.target.value) }))} title="Black 0-100" />
-                                        </div>
-                                        <button className="btn btn-secondary btn-xs w-full text-[10px]" onClick={handleAddCMYKColor}><Plus size={10} /> Add CMYK Color</button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
                     </div>
 
                     <div className="layout-preview-main">
@@ -1033,14 +1281,15 @@ export default function Layout() {
                                                 <h4 className="text-sm font-bold uppercase tracking-wider text-primary">Excel Inspector</h4>
                                                 <button onClick={() => setShowExplorer(false)} className="text-muted hover:text-primary"><X size={16} /></button>
                                             </div>
-                                    <div className="flex flex-wrap gap-1 overflow-auto max-h-[400px]">
-                                        {columns.map(col => (
-                                            <div key={col} title={col} className={`header-chip-mini ${Object.values(manualMapping).includes(col) ? 'mapped' : ''}`}
-                                                style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                {col}
+                                            <div className="flex flex-wrap gap-1 overflow-auto max-h-[400px]">
+                                                {columns.map(col => (
+                                                    <div key={col} title={col}
+                                                        className={`header-chip-mini ${Object.values(manualMapping).includes(col) ? 'mapped' : ''}`}
+                                                        style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        {col}
+                                                    </div>
+                                                ))}
                                             </div>
-                                        ))}
-                                    </div>
                                         </div>
                                     </div>
                                 )}
@@ -1055,7 +1304,6 @@ export default function Layout() {
                                                 <Text text="DESIGN PROOF APPROVAL SHEET" y={65} fontSize={10} fontFamily="Arial" fill="#94a3b8" letterSpacing={2} />
                                             </Group>
                                             <Group x={marginSide} y={110}>
-                                                {/* Branding slot */}
                                                 <Group x={0} y={0}>
                                                     <LayoutLabel width={itemW} height={itemH} isBranding logoImg={brandingImg || logoImg} />
                                                 </Group>
@@ -1066,12 +1314,19 @@ export default function Layout() {
                                                             if (col > 0) { row++; col = 0; } return null;
                                                         }
                                                         if (col >= colsCount) { row++; col = 0; }
-                                                        
                                                         const gx = col * (itemW + spacing), gy = row * (itemH + spacing);
                                                         col++;
                                                         return (
                                                             <Group key={i} x={gx} y={gy}>
-                                                                <LayoutLabel elements={selectedTemplate.elements} data={rowData} mapping={manualMapping} width={itemW} height={itemH} />
+                                                                <LayoutLabel
+                                                                    elements={selectedTemplate.elements}
+                                                                    data={rowData}
+                                                                    mapping={manualMapping}
+                                                                    width={itemW}
+                                                                    height={itemH}
+                                                                    designW={selectedTemplate.canvasWidth || selectedTemplate.width}
+                                                                    designH={selectedTemplate.canvasHeight || selectedTemplate.height}
+                                                                />
                                                             </Group>
                                                         );
                                                     });

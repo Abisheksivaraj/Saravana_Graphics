@@ -3,10 +3,24 @@ import { useDesignStore } from '../store/designStore';
 import './ComponentsPanel.css';
 
 export default function ComponentsPanel({ onToggle }) {
-  const { elements, selectedIds, selectElement, deleteElement } = useDesignStore();
+  const { elements, selectedIds, selectElement, deleteElement, updateElementAndSave } = useDesignStore();
   const [expanded, setExpanded] = useState({ layers: true, components: false, samples: false });
+  const [editingId, setEditingId] = useState(null);
+  const [tempName, setTempName] = useState('');
 
   const toggle = (key) => setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
+
+  const startRename = (el) => {
+    setEditingId(el.id);
+    setTempName(el.name || el.type);
+  };
+
+  const finishRename = () => {
+    if (editingId) {
+      updateElementAndSave(editingId, { name: tempName });
+    }
+    setEditingId(null);
+  };
 
   return (
     <div className="bt-comp-panel">
@@ -46,7 +60,27 @@ export default function ComponentsPanel({ onToggle }) {
                   <span className="bt-tree-icon">
                     {el.type === 'text' ? '🔤' : el.type === 'barcode' ? '║║' : '⬜'}
                   </span>
-                  <span className="bt-tree-text">{el.name || el.type}</span>
+                  {editingId === el.id ? (
+                    <input
+                      className="bt-tree-input"
+                      autoFocus
+                      value={tempName}
+                      onChange={e => setTempName(e.target.value)}
+                      onBlur={finishRename}
+                      onKeyDown={e => e.key === 'Enter' && finishRename()}
+                      onClick={e => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span 
+                      className="bt-tree-text"
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        startRename(el);
+                      }}
+                    >
+                      {el.name || el.type}
+                    </span>
+                  )}
                   <button 
                     className="bt-tree-delete" 
                     title="Delete Layer"

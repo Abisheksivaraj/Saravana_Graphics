@@ -32,11 +32,11 @@ export default function Landing() {
                         <img src={logo} alt="Saravana Graphics" style={{ height: 52, width: 'auto' }} />
                     </div>
                     <div className="landing-nav-links">
-                        <a href="#features">Features</a>
-                        <a href="#sizes">Sizes</a>
+                        <a href="#features" style={{ color: 'white' }}>Features</a>
+                        <a href="#sizes" style={{ color: 'white' }}>Sizes</a>
                     </div>
                     <div className="landing-nav-actions">
-                        <Link to="/login" className="btn btn-ghost">Sign In</Link>
+                        <Link to="/login" className="btn btn-ghost" style={{ color: 'white' }}>Sign In</Link>
                         <Link to="/register" className="btn btn-primary">Get Started</Link>
                     </div>
                 </div>

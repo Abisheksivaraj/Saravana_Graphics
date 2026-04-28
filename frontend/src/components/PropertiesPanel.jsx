@@ -129,6 +129,20 @@ export default function PropertiesPanel() {
                 </div>
             </div>
 
+            {/* Object Identification */}
+            <div className="props-section" style={{ paddingBottom: 0 }}>
+                <div className="input-group">
+                    <label>Object Name</label>
+                    <input 
+                        className="input" 
+                        value={el.name || ''} 
+                        onChange={e => updateAndSave('name', e.target.value)} 
+                        placeholder={el.type.charAt(0).toUpperCase() + el.type.slice(1)}
+                        style={{ fontWeight: 600, color: 'var(--primary)' }}
+                    />
+                </div>
+            </div>
+
             {/* Position & Size */}
             <div className="props-section">
                 <div className="props-label">Position & Size</div>

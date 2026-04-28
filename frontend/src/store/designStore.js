@@ -516,15 +516,27 @@ export const useDesignStore = create(persist((set, get) => ({
     },
 }));
 
-// Normalizes text elements that have corrupted scaleX from old wrap-text logic
 export function normalizeElements(elements) {
     return (elements || []).map(el => {
         if (el.type === 'text') {
-            const needsFix = (el.wrap === 'none' && (el.scaleX !== 1 || el.scaleY !== 1)) ||
-                             (el.wrap !== 'none' && (el.width || 200) < 20);
-            if (needsFix) {
-                return { ...el, scaleX: 1, scaleY: 1, wrap: 'none', width: Math.max(el.width || 200, 200) };
+            // For wrap='word', we bake the scale into width to reflow text correctly
+            if (el.wrap === 'word' || el.wrap === 'char') {
+                if (el.scaleX !== 1 || el.scaleY !== 1) {
+                    const oldScaleX = el.scaleX !== undefined ? el.scaleX : 1;
+                    const oldScaleY = el.scaleY !== undefined ? el.scaleY : 1;
+                    const newWidth = Math.max(20, (el.width || 200) * oldScaleX);
+                    const newFontSize = Math.max(6, Math.round((el.fontSize || 16) * oldScaleY));
+                    
+                    return { 
+                        ...el, 
+                        scaleX: 1, 
+                        scaleY: 1, 
+                        width: newWidth,
+                        fontSize: newFontSize
+                    };
+                }
             }
+            // For wrap='none', we leave scaleX and scaleY alone so it squashes/stretches
         }
         return el;
     });

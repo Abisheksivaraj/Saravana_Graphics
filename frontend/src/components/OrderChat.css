@@ -1,0 +1,216 @@
+.order-chat-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.4);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 20px;
+    z-index: 1000;
+}
+
+.order-chat-window {
+    width: 400px;
+    height: calc(100vh - 40px);
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.oc-header {
+    padding: 20px;
+    background: #ffffff;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.oc-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.oc-title h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.oc-title span {
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.oc-avatar-group {
+    display: flex;
+    position: relative;
+    width: 32px;
+    height: 32px;
+}
+
+.oc-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    border: 2px solid white;
+}
+
+.oc-avatar.admin { background: #f97316; color: white; top: 0; left: 0; z-index: 2; }
+.oc-avatar.vendor { background: #475569; color: white; bottom: 0; right: 0; z-index: 1; }
+
+.oc-close {
+    background: #fff7ed;
+    border: none;
+    color: #f97316;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.oc-close:hover { background: #ffedd5; color: #ea580c; }
+
+.oc-messages {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    background: #fdfdfd;
+}
+
+.oc-notice {
+    text-align: center;
+    font-size: 11px;
+    color: #f97316;
+    background: #fff7ed;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #ffedd5;
+    line-height: 1.4;
+}
+
+.oc-msg-row {
+    display: flex;
+    width: 100%;
+}
+
+.oc-msg-row.admin { justify-content: flex-start; }
+.oc-msg-row.vendor { justify-content: flex-end; }
+
+.oc-msg-bubble {
+    max-width: 85%;
+    padding: 12px 16px;
+    border-radius: 12px;
+    position: relative;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+}
+
+.oc-msg-row.admin .oc-msg-bubble {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-top-left-radius: 4px;
+}
+
+.oc-msg-row.vendor .oc-msg-bubble {
+    background: #f97316;
+    color: white;
+    border-top-right-radius: 4px;
+}
+
+.oc-msg-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    font-size: 11px;
+}
+
+.oc-sender { font-weight: 700; }
+.oc-time { opacity: 0.7; font-weight: 400; }
+
+.oc-msg-text {
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.oc-input-area {
+    padding: 20px;
+    background: white;
+    border-top: 1px solid #fff7ed;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.oc-attach-btn {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 4px;
+    transition: color 0.2s;
+}
+
+.oc-attach-btn:hover { color: #f97316; }
+
+.oc-input-area input {
+    flex: 1;
+    border: 1px solid #ffedd5;
+    padding: 12px 18px;
+    border-radius: 12px;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s;
+}
+
+.oc-input-area input:focus { 
+    border-color: #f97316; 
+    box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.05);
+}
+
+.oc-send-btn {
+    width: 44px;
+    height: 44px;
+    background: #f97316;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.oc-send-btn:hover:not(:disabled) { 
+    background: #ea580c; 
+    transform: scale(1.05); 
+    box-shadow: 0 4px 12px rgba(234, 88, 12, 0.2);
+}
+.oc-send-btn:disabled { background: #e2e8f0; color: #94a3b8; cursor: not-allowed; }

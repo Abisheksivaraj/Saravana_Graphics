@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const auth = require('../middleware/auth');
 const VendorOrder = require('../models/VendorOrder');
 const User = require('../models/User');
+const Message = require('../models/Message');
 
 // Multer storage config
 const storage = multer.diskStorage({
@@ -118,13 +119,12 @@ router.get('/stats', auth, async (req, res) => {
 // @access  Admin
 router.patch('/status/:id', auth, checkRole(['admin', 'vendor']), async (req, res) => {
     try {
-        const { status, remarks, productionDate } = req.body;
+        const { status, remarks, productionDate, dispatchDate } = req.body;
         const query = req.user.role === 'admin' ? { _id: req.params.id } : { _id: req.params.id, vendorId: req.user._id };
-        const order = await VendorOrder.findOneAndUpdate(
-            query,
-            { status, remarks, productionDate },
-            { new: true }
-        );
+        const update = { status, remarks };
+        if (productionDate !== undefined) update.productionDate = productionDate || null;
+        if (dispatchDate !== undefined) update.dispatchDate = dispatchDate || null;
+        const order = await VendorOrder.findOneAndUpdate(query, update, { new: true });
         if (!order) return res.status(404).json({ message: 'Order not found or unauthorized' });
         res.json(order);
     } catch (error) {
@@ -147,6 +147,46 @@ router.post('/layout/:id', auth, checkRole(['admin']), upload.single('file'), as
         if (!order) return res.status(404).json({ message: 'Order not found' });
         
         res.json({ message: 'Layout uploaded', order });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// @route   POST api/vendors/revised-artwork/:id
+// @desc    Upload revised artwork for an order
+// @access  Vendor
+router.post('/revised-artwork/:id', auth, checkRole(['vendor']), upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+        
+        const order = await VendorOrder.findOneAndUpdate(
+            { _id: req.params.id, vendorId: req.user._id },
+            { revisedArtworkUrl: req.file.path, status: 'Revised Artwork Uploaded' },
+            { new: true }
+        );
+        if (!order) return res.status(404).json({ message: 'Order not found' });
+        
+        res.json({ message: 'Revised artwork uploaded', order });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// @route   POST api/vendors/performa-invoice/:id
+// @desc    Upload performa invoice for an order
+// @access  Admin
+router.post('/performa-invoice/:id', auth, checkRole(['admin']), upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+        
+        const order = await VendorOrder.findByIdAndUpdate(
+            req.params.id,
+            { performaInvoiceUrl: req.file.path, status: 'Performa Invoice Uploaded' },
+            { new: true }
+        );
+        if (!order) return res.status(404).json({ message: 'Order not found' });
+        
+        res.json({ message: 'Performa invoice uploaded', order });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
@@ -254,6 +294,56 @@ router.post('/payment/:id', auth, checkRole(['vendor']), upload.fields([
         await order.save();
 
         res.json({ message: 'Payment details submitted successfully', order });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// @route   GET api/vendors/chat/:orderId
+// @desc    Get chat messages for an order
+// @access  Vendor/Admin
+router.get('/chat/:orderId', auth, async (req, res) => {
+    try {
+        const order = await VendorOrder.findById(req.params.orderId);
+        if (!order) return res.status(404).json({ message: 'Order not found' });
+
+        // Security check: Vendor can only see messages for their own order
+        if (req.user.role === 'vendor' && order.vendorId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Unauthorized' });
+        }
+
+        const messages = await Message.find({ orderId: req.params.orderId })
+            .sort({ createdAt: 1 })
+            .populate('sender', 'name');
+            
+        res.json(messages);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// @route   POST api/vendors/chat/:orderId
+// @desc    Send a chat message
+// @access  Vendor/Admin
+router.post('/chat/:orderId', auth, async (req, res) => {
+    try {
+        const { text } = req.body;
+        const order = await VendorOrder.findById(req.params.orderId);
+        if (!order) return res.status(404).json({ message: 'Order not found' });
+
+        if (req.user.role === 'vendor' && order.vendorId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Unauthorized' });
+        }
+
+        const newMessage = new Message({
+            orderId: req.params.orderId,
+            sender: req.user._id,
+            text,
+            role: req.user.role
+        });
+
+        await newMessage.save();
+        res.status(201).json(newMessage);
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
     }

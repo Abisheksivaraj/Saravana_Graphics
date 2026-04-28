@@ -9,12 +9,25 @@ const vendorOrderSchema = new mongoose.Schema({
     brand: { type: String, trim: true },
     status: { 
         type: String, 
-        enum: ['Queued', 'Verification', 'Excel Uploaded', 'Layout Uploaded', 'Artwork Rejected', 'Artwork Approved', 'Production', 'Despatch', 'Payment Follow-up', 'Reject', 'Artwork Approval', 'APPROVED'],
+        enum: [
+            'Excel Uploaded', 
+            'Layout Uploaded', 
+            'Artwork Rejected', 
+            'Revised Artwork Uploaded',
+            'Artwork Approved', 
+            'Performa Invoice Uploaded', 
+            'Payment Proof Uploaded', 
+            'Production', 
+            'Despatch', 
+            'Delivered'
+        ],
         default: 'Excel Uploaded' 
     },
     uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     remarks: { type: String, default: '' },
     layoutFileUrl: { type: String },
+    revisedArtworkUrl: { type: String },
+    performaInvoiceUrl: { type: String },
     productionDate: { type: Date },
     dispatchDate: { type: Date },
     paymentDetails: {
@@ -36,6 +49,5 @@ const vendorOrderSchema = new mongoose.Schema({
 
 // Index for performance
 vendorOrderSchema.index({ vendorId: 1, status: 1 });
-vendorOrderSchema.index({ orderId: 1 });
 
 module.exports = mongoose.model('VendorOrder', vendorOrderSchema);

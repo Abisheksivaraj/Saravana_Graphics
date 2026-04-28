@@ -33,115 +33,133 @@
 }
 
 .layout-content-grid {
-    display: grid;
-    grid-template-columns: 320px 1fr;
+    display: flex;
+    flex-direction: column;
     flex: 1;
     overflow: hidden;
 }
 
-.layout-setup-sidebar {
-    background: #f8fafc;
-    border-right: 1px solid rgba(0,0,0,0.05);
-    padding: 24px;
+.layout-toolbar-horizontal {
+    background: white;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    padding: 12px 40px;
     display: flex;
-    flex-direction: column;
+    align-items: center;
     gap: 32px;
-    overflow-y: auto;
+    flex-shrink: 0;
+    z-index: 100;
 }
 
-.setup-section {
+.toolbar-section {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 6px;
 }
 
-.section-label {
-    font-size: 11px;
+.section-label-mini {
+    font-size: 9px;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: #64748b;
+    color: #94a3b8;
 }
 
-.select-input-simple {
-    width: 100%;
-    padding: 10px 14px;
-    border-radius: 10px;
-    background: white;
-    border: 1px solid #e2e8f0;
-    font-size: 13px;
-    color: #1e293b;
-    font-weight: 600;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-}
-
-.excel-dropzone-simple {
-    background: white;
-    border: 2px dashed #e2e8f0;
-    border-radius: 12px;
-    padding: 20px;
+.design-selector-compact {
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
+    gap: 8px;
+    overflow-x: auto;
+    max-width: 400px;
+    padding: 2px;
+}
+
+.design-chip-mini {
+    flex-shrink: 0;
+    padding: 8px 16px;
+    background: #f1f5f9;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #475569;
     cursor: pointer;
+    border: 1px solid transparent;
     transition: all 0.2s;
 }
 
-.excel-dropzone-simple:hover {
+.design-chip-mini:hover {
+    background: #e2e8f0;
+}
+
+.design-chip-mini.active {
+    background: white;
+    border-color: var(--primary);
+    color: var(--primary);
+    box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.1);
+}
+
+.excel-drop-horizontal {
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    height: 38px;
+    transition: all 0.2s;
+}
+
+.excel-drop-horizontal:hover {
     border-color: var(--primary);
     background: var(--primary-light);
 }
 
-.excel-dropzone-simple.has-data {
+.excel-drop-horizontal.has-data {
     border-style: solid;
     border-color: #22c55e;
     background: #f0fdf4;
 }
 
-.excel-dropzone-simple span {
-    font-size: 12px;
-    font-weight: 600;
-    color: #475569;
-}
-
-.mapping-list-simple {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    max-height: 300px;
-    overflow-y: auto;
-    padding-right: 4px;
-}
-
-.mapping-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 8px 12px;
-    background: white;
-    border-radius: 8px;
-    border: 1px solid #e2e8f0;
-}
-
-.mapping-label {
+.excel-drop-horizontal span {
     font-size: 11px;
     font-weight: 700;
     color: #475569;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
-.mapping-select-mini {
-    padding: 4px 8px;
-    border-radius: 4px;
+.mapping-row-toolbar {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    max-width: 500px;
+    padding-bottom: 2px;
+}
+
+.mapping-item-compact {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
     background: #f8fafc;
+    border-radius: 6px;
     border: 1px solid #e2e8f0;
+}
+
+.mapping-item-compact label {
+    font-size: 10px;
+    font-weight: 800;
+    color: #64748b;
+    text-transform: uppercase;
+}
+
+.mapping-select-toolbar {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: white;
+    border: 1px solid #cbd5e1;
     font-size: 10px;
     font-weight: 700;
-    max-width: 100px;
+    width: 90px;
 }
 
 .layout-preview-main {
@@ -149,13 +167,77 @@
     position: relative;
     overflow: hidden;
     display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.design-gallery-row {
+    background: white;
+    padding: 16px 40px;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    flex-shrink: 0;
+    scrollbar-width: thin;
+}
+
+.design-card-mini {
+    flex-shrink: 0;
+    width: 140px;
+    padding: 12px;
+    background: #f8fafc;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+}
+
+.design-card-mini:hover {
+    background: white;
+    border-color: #e2e8f0;
+    transform: translateY(-2px);
+}
+
+.design-card-mini.active {
+    background: white;
+    border-color: var(--primary);
+    box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.1);
+}
+
+.design-card-icon {
+    width: 32px;
+    height: 32px;
+    background: white;
+    border-radius: 8px;
+    display: flex;
     align-items: center;
     justify-content: center;
+    color: #64748b;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.active .design-card-icon {
+    color: var(--primary);
+}
+
+.design-card-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #475569;
+    text-align: center;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .canvas-viewport {
-    width: 100%;
-    height: 100%;
+    flex: 1;
     overflow: auto;
     display: flex;
     justify-content: center;

@@ -1,11 +1,11 @@
 import axios from 'axios';
 
 export const BASE_URL = 'http://localhost:5000';
-
 // export const BASE_URL = 'https://saravana-graphics.onrender.com';
 
 const api = axios.create({
-    baseURL: `${BASE_URL}/api`,
+    // Use relative path so Vite proxy handles routing — eliminates CORS entirely
+    baseURL: '/api',
     headers: { 'Content-Type': 'application/json' },
 });
 
@@ -72,11 +72,19 @@ export const vendorAPI = {
     uploadLayout: (id, formData) => api.post(`/vendors/layout/${id}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     }),
+    uploadRevisedArtwork: (id, formData) => api.post(`/vendors/revised-artwork/${id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    uploadPerformaInvoice: (id, formData) => api.post(`/vendors/performa-invoice/${id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
     updateStatus: (id, data) => api.patch(`/vendors/status/${id}`, data),
     updateDates: (id, data) => api.patch(`/vendors/dates/${id}`, data),
     submitPayment: (id, formData) => api.post(`/vendors/payment/${id}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
     createAccount: (data) => api.post('/vendors/account', data),
     getAccounts: () => api.get('/vendors/accounts'),
+    getMessages: (orderId) => api.get(`/vendors/chat/${orderId}`),
+    sendMessage: (orderId, text) => api.post(`/vendors/chat/${orderId}`, { text }),
 };
 
 // Strip Colors

@@ -285,15 +285,19 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
             rotation: node.rotation(),
         };
 
-        // For text elements: bake scale into width/fontSize to avoid scaleX corruption on reload
+        // For text elements: 
         if (el.type === 'text') {
-            updates.scaleX = 1;
-            updates.scaleY = 1;
-            // Bake horizontal scale into width
-            updates.width = (el.width || 200) * node.scaleX();
-            // Bake vertical scale into fontSize
-            if (node.scaleY() !== 1) {
-                updates.fontSize = Math.max(6, Math.round((el.fontSize || 16) * node.scaleY()));
+            if (el.wrap === 'word' || el.wrap === 'char') {
+                updates.scaleX = 1;
+                updates.scaleY = 1;
+                updates.width = (el.width || 200) * node.scaleX();
+                if (node.scaleY() !== 1) {
+                    updates.fontSize = Math.max(6, Math.round((el.fontSize || 16) * node.scaleY()));
+                }
+            } else {
+                // Keep scaleX and scaleY for wrap='none' to squash/stretch text
+                updates.scaleX = node.scaleX();
+                updates.scaleY = node.scaleY();
             }
         }
 
@@ -306,9 +310,9 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
         name: 'design-element',
         x: el.x, y: el.y,
         rotation: el.rotation || 0,
-        // For text with wrap=none, never apply scaleX — it causes squashing after save/reload
-        scaleX: (el.type === 'text' && el.wrap === 'none') ? 1 : (el.scaleX || 1),
-        scaleY: (el.type === 'text' && el.wrap === 'none') ? 1 : (el.scaleY || 1),
+        // Let scaleX and scaleY act normally
+        scaleX: el.scaleX || 1,
+        scaleY: el.scaleY || 1,
         opacity: el.opacity !== undefined ? el.opacity : 1,
         visible: el.visible !== false,
         draggable: selectedTool === 'pick' && !el.locked,
@@ -759,7 +763,9 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
     const handleTransformEnd = () => {
         const nodes = trRef.current.nodes();
         nodes.forEach(node => {
-            const isText = node.className === 'Text';
+            const el = elements.find(e => e.id === node.id());
+            if (!el) return;
+
             let updates = {
                 x: node.x(), y: node.y(),
                 rotation: node.rotation(),
@@ -767,9 +773,19 @@ export default function DesignCanvas({ stageRef, showGrid = true, onElementDblCl
                 scaleY: node.scaleY()
             };
 
-            // Removed the special handling for text that forced wrapping.
-            // By keeping scaleX/scaleY, text will now "tighten" (squash/stretch) 
-            // while preserving its original wrap points.
+            if (el.type === 'text') {
+                if (el.wrap === 'word' || el.wrap === 'char') {
+                    updates.scaleX = 1;
+                    updates.scaleY = 1;
+                    updates.width = Math.max(20, (el.width || 200) * node.scaleX());
+                    if (node.scaleY() !== 1) {
+                        updates.fontSize = Math.max(6, Math.round((el.fontSize || 16) * node.scaleY()));
+                    }
+                } else {
+                    updates.scaleX = node.scaleX();
+                    updates.scaleY = node.scaleY();
+                }
+            }
             
             updateElementAndSave(node.id(), updates);
         });
