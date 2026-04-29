@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-export const BASE_URL = 'http://localhost:5000';
-// export const BASE_URL = 'https://saravana-graphics.onrender.com';
+// export const BASE_URL = 'http://localhost:5000';
+export const BASE_URL = 'https://saravana-graphics.onrender.com';
 
 const api = axios.create({
     // Use relative path so Vite proxy handles routing — eliminates CORS entirely

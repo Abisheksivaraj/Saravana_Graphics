@@ -21,6 +21,67 @@ import ImageElement from '../components/ImageElement';
 import logo from '../assets/logo.png';
 import './Layout.css';
 
+// ─── Font cache (base64 strings cached so we only fetch once per session) ─────
+const _fontCache = {};
+
+const loadCustomFonts = async (pdf) => {
+    const fontFiles = [
+        { name: 'Arial', style: 'normal', file: '/fonts/Arial.ttf' },
+        { name: 'Arial', style: 'bold', file: '/fonts/Arial-Bold.ttf' },
+        { name: 'Arial', style: 'italic', file: '/fonts/Arial-Italic.ttf' },
+        { name: 'Arial', style: 'bolditalic', file: '/fonts/Arial-Bold-Italic.ttf' },
+        { name: 'Calibri', style: 'normal', file: '/fonts/Calibri.ttf' },
+        { name: 'Calibri', style: 'bold', file: '/fonts/Calibri-Bold.ttf' },
+        { name: 'OCR-B', style: 'normal', file: '/fonts/OCRB.ttf' },
+        { name: 'RupeeForbidan', style: 'normal', file: '/fonts/RupeeForbidan.ttf' },
+    ];
+
+    for (const font of fontFiles) {
+        try {
+            const fileName = font.file.split('/').pop();
+            if (!_fontCache[fileName]) {
+                const response = await fetch(font.file);
+                if (!response.ok) {
+                    console.warn(`Font fetch failed: ${font.file} (Status: ${response.status})`);
+                    continue;
+                }
+
+                const contentType = response.headers.get('content-type') || '';
+                if (contentType.includes('text/html') || contentType.includes('text/plain')) {
+                    console.warn(`Skipping font ${font.name}: Received ${contentType} instead of binary.`);
+                    continue;
+                }
+
+                const buffer = await response.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                _fontCache[fileName] = btoa(binary);
+            }
+
+            if (_fontCache[fileName]) {
+                pdf.addFileToVFS(fileName, _fontCache[fileName]);
+                pdf.addFont(fileName, font.name, font.style);
+            }
+        } catch (e) {
+            console.warn(`Font registration failed: ${font.name} ${font.style}`, e);
+        }
+    }
+};
+
+// ─── Resolve PDF font name from element fontFamily ────────────────────────────
+const resolvePdfFont = (fontFamily = '') => {
+    const ff = fontFamily.toLowerCase();
+    if (ff.includes('calibri')) return 'Calibri';
+    if (ff.includes('ocr')) return 'OCR-B';
+    if (ff.includes('rupee') || ff.includes('forbidan')) return 'RupeeForbidan';
+    if (ff.includes('times')) return 'times';
+    if (ff.includes('courier')) return 'courier';
+    return 'Arial'; // default for all others (replaces helvetica)
+};
+
 // ─── Strip Color Map ──────────────────────────────────────────────────────────
 let STRIP_COLOR_MAP = {};
 const resolveStripColor = (colorName) => {
@@ -39,8 +100,6 @@ const formatPrice = (raw) => {
 const formatNetQty = (val) => {
     const s = String(val || '').trim();
     if (!s) return s;
-    // If both TOP and BOTTOM exist, insert \n before BOTTOM
-    // Handles any whitespace/separator between them
     if (/TOP/i.test(s) && /BOTTOM/i.test(s)) {
         return s.replace(/\s{1,}(BOTTOM)/i, '\n$1');
     }
@@ -104,113 +163,183 @@ const drawRupeeText = (pdf, rawText, x, y, scaleX = 1) => {
     });
 };
 
+// ─── Detect label type from design object ────────────────────────────────────
+const getLabelType = (design) => {
+    if (!design) return 'normal';
+    if (design.labelType) return design.labelType.toLowerCase();
+    const title = (design.title || '').toLowerCase();
+    if (title.includes('azortee') || title.includes('azorte')) return 'azortee';
+    if (title.includes('livsmart')) return 'livsmart';
+    return 'normal';
+};
+
+// ─── AZORTEE: Build circle→text pairing using center-to-center distance ──────
+const buildAzorteeCircleMap = (elements, data) => {
+    const sizeTextEls = elements.filter(textEl => {
+        if (textEl.type !== 'text' && textEl.type !== 'placeholder') return false;
+        const t = (textEl.text || '').trim();
+        if (t.includes('{{')) return false;
+        return t.length > 0 && t.length <= 6;
+    });
+
+    const circleTextMap = new Map();
+
+    elements.forEach(circleEl => {
+        const elName = (circleEl.name || '').toLowerCase();
+        const isSizeCircle =
+            circleEl.type === 'circle' &&
+            (elName.includes('sizeindicator') || elName.includes('sizecircle') || elName.includes('circle'));
+        if (!isSizeCircle) return;
+
+        const cCX = circleEl.x || 0;
+        const cCY = circleEl.y || 0;
+
+        let bestText = null;
+        let bestDist = Infinity;
+
+        sizeTextEls.forEach(textEl => {
+            const tX = textEl.x || 0;
+            const tY = textEl.y || 0;
+            const dx = cCX - tX;
+            const dy = cCY - tY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestText = textEl;
+            }
+        });
+
+        if (bestText && bestDist < 120) {
+            let tv = bestText.text || '';
+            Object.keys(data).forEach(col => {
+                tv = tv.replaceAll(`{{${col}}}`, String(data[col] ?? '').trim());
+            });
+            circleTextMap.set(circleEl.id, tv.trim().toUpperCase());
+        }
+    });
+
+    return circleTextMap;
+};
+
 // ─── Canvas Preview Label ─────────────────────────────────────────────────────
-const LayoutLabel = ({ elements = [], data = {}, mapping = {}, width, height, designW, designH, isBranding = false, logoImg = null }) => {
+const LayoutLabel = ({
+    elements = [],
+    data = {},
+    mapping = {},
+    width,
+    height,
+    designW,
+    designH,
+    isBranding = false,
+    logoImg = null,
+    labelType = 'normal',
+}) => {
     const mergedElements = useMemo(() => {
-        const sizeCol = Object.keys(data).find(k => k.toLowerCase() === 'size' || k.toLowerCase().includes('size'));
-        const sizeVal = sizeCol ? String(data[sizeCol] || '').trim().toUpperCase() : '';
-        const sizeTarget = elements.find(e =>
-            e.type === 'text' &&
-            !e.text?.includes('{{') &&
-            e.text?.trim().length < 6 &&
-            e.text?.trim().toUpperCase() === sizeVal
+        const sizeCol = Object.keys(data).find(
+            k => k.toLowerCase() === 'size' || k.toLowerCase().includes('size')
         );
+        const sizeVal = sizeCol ? String(data[sizeCol] || '').trim().toUpperCase() : '';
 
         if (isBranding) {
             return [
                 { type: 'rect', x: 0, y: 0, width, height, fill: '#ffffff' },
-                logoImg ? { type: 'image', x: 0, y: 0, width, height, image: logoImg, zIndex: 10 } : null
+                logoImg
+                    ? { type: 'image', x: 0, y: 0, width, height, image: logoImg, zIndex: 10 }
+                    : null,
             ].filter(Boolean);
         }
 
+        if (labelType === 'azortee') {
+            const circleTextMap = buildAzorteeCircleMap(elements, data);
+            return elements.map(el => {
+                const elName = (el.name || '').toLowerCase();
+                const isSizeCircle =
+                    el.type === 'circle' &&
+                    (elName.includes('sizeindicator') || elName.includes('sizecircle') || elName.includes('circle'));
+                if (isSizeCircle) {
+                    const pairedText = circleTextMap.get(el.id) || '';
+                    return { ...el, visible: !!(sizeVal && pairedText === sizeVal) };
+                }
+                return resolveElement(el, data, mapping);
+            });
+        }
+
+        if (labelType === 'livsmart') {
+            const result = [];
+            elements.forEach(el => {
+                const resolved = resolveElement(el, data, mapping);
+                if (
+                    (el.type === 'text' || el.type === 'placeholder') &&
+                    sizeVal &&
+                    !el.text?.includes('{{')
+                ) {
+                    const cleanText = (el.text || '').trim().toUpperCase();
+                    if (cleanText === sizeVal && cleanText.length < 8) {
+                        const padding = 1.5;
+                        const fsPx = el.fontSize || 12;
+                        const charW = fsPx * 0.6;
+                        const textW = cleanText.length * charW;
+                        const rectW = (el.width && el.width > 10 ? el.width : textW) + padding * 2;
+                        const rectH = fsPx * 1.4;
+                        result.push({
+                            id: `__livsmart_rect_${el.id}`,
+                            type: 'rect',
+                            x: (el.x || 0) - padding,
+                            y: (el.y || 0) - padding,
+                            width: rectW,
+                            height: rectH,
+                            fill: '#000000',
+                            zIndex: (el.zIndex || 0) - 0.5,
+                            visible: true,
+                        });
+                        result.push({ ...resolved, fill: '#ffffff', isHighlightedSize: true });
+                        return;
+                    }
+                }
+                result.push(resolved);
+            });
+            return result;
+        }
+
         return elements.map(el => {
-            let newEl = { ...el };
+            let newEl = resolveElement(el, data, mapping);
             const elName = (el.name || '').toLowerCase();
 
-            // ── Size Indicator ───────────────────────────────────────────
-            // Hide the generic circle indicator as we are switching to black-box-white-text highlighting
-            if (el.type === 'circle' && (elName.includes('sizeindicator') || elName.includes('sizecircle'))) {
+            if (
+                el.type === 'circle' &&
+                (elName.includes('sizeindicator') || elName.includes('sizecircle'))
+            ) {
                 newEl.visible = false;
             }
 
-            const isPlaceholder = el.type === 'placeholder' || (el.text && el.text.includes('{{'));
-            const isBarcodeQR = el.type === 'barcode' || el.type === 'qrcode';
-            const isRect = el.type === 'rect';
-            const manualMapped = mapping[el.id];
-
-            // Priority 1: Manual mapping
-            if (manualMapped && data[manualMapped] !== undefined && (isPlaceholder || isBarcodeQR || isRect)) {
-                const raw = String(data[manualMapped] ?? '').replace(/^[₹\s]+/, '').trim();
-                if (el.type === 'text' || el.type === 'placeholder') {
-                    const isPrice = isPriceColumn(manualMapped);
-                    const formatted = isPrice ? formatPrice(raw) : raw;
-                    newEl.text = formatNetQty(formatted);
-                } else if (el.type === 'barcode') {
-                    newEl.barcodeValue = raw;
-                } else if (el.type === 'qrcode') {
-                    newEl.qrValue = raw;
-                } else if (el.type === 'rect') {
-                    const mc = resolveStripColor(raw.trim());
-                    if (mc) newEl.fill = mc;
-                }
-                return newEl;
-            }
-
-            // Priority 2: Placeholder replacement
             if (el.type === 'text' || el.type === 'placeholder') {
-                let t = el.text || '';
-                Object.keys(data).forEach(col => {
-                    const ph = `{{${col}}}`;
-                    if (t.includes(ph)) {
-                        const raw = String(data[col] ?? '').replace(/^[₹\s]+/, '').trim();
-                        t = t.replaceAll(ph, raw);
-                    }
-                });
-                t = formatNetQty(t);
-                newEl.text = t;
-
-                // ── Highlight matched size ────────────────────────────────
-                const cleanT = t.trim().toUpperCase();
-                if (sizeVal && cleanT === sizeVal && t.length < 6) {
-                    newEl.fill = '#ffffff';
+                const cleanV = (newEl.text || '').trim().toUpperCase();
+                if (sizeVal && cleanV === sizeVal && cleanV.length < 6) {
+                    newEl.fill = '#000000';
                     newEl.isHighlightedSize = true;
                 }
             }
 
-            // Strip color for rect
             if (el.type === 'rect') {
-                // ── Highlight background box for matched size ────────────
-                const isSizeBox = elements.some(other =>
-                    (other.type === 'text' || other.type === 'placeholder') &&
-                    (other.text || '').trim().toUpperCase() === sizeVal &&
-                    sizeVal.length > 0 &&
-                    Math.abs((other.x || 0) - (el.x || 0)) < 2 &&
-                    Math.abs((other.y || 0) - (el.y || 0)) < 2
-                );
-
-                if (isSizeBox) {
-                    newEl.fill = '#000000';
-                    newEl.isHighlightedRect = true;
-                } else {
-                    const isStrip = elName.includes('strip') || elName.includes('color') ||
-                        ((el.width || 0) > 80 && (el.height || 0) < 50);
-                    if (isStrip) {
-                        const stripCol = Object.keys(data).find(col =>
-                            col.toLowerCase().replace(/[\s_-]/g, '').includes('stripcolor') ||
-                            col.toLowerCase().replace(/[\s_-]/g, '') === 'strip'
-                        );
-                        if (stripCol && data[stripCol]) {
-                            const mc = resolveStripColor(String(data[stripCol]).trim());
-                            if (mc) newEl.fill = mc;
-                        }
-                    }
-                }
+                const isSizeBox = elements.some(other => {
+                    if (other.type !== 'text' && other.type !== 'placeholder') return false;
+                    const ot = (other.text || '').trim().toUpperCase();
+                    if (!sizeVal || ot !== sizeVal || ot.length >= 6) return false;
+                    const dx = Math.abs((other.x || 0) - (el.x || 0));
+                    const dy = Math.abs((other.y || 0) - (el.y || 0));
+                    return dx <= 8 && dy <= 8;
+                });
+                if (isSizeBox) newEl.fill = '#000000';
             }
+
             return newEl;
         });
-    }, [elements, data, mapping, isBranding, logoImg, width, height]);
+    }, [elements, data, mapping, isBranding, logoImg, width, height, labelType]);
 
-    const sorted = useMemo(() => [...mergedElements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0)), [mergedElements]);
+    const sorted = useMemo(
+        () => [...mergedElements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0)),
+        [mergedElements]
+    );
 
     const dW = designW || 166;
     const dH = designH || 387;
@@ -220,12 +349,20 @@ const LayoutLabel = ({ elements = [], data = {}, mapping = {}, width, height, de
 
     return (
         <Group>
-            <Rect width={width} height={height} fill="white" stroke="#e2e8f0" strokeWidth={1} cornerRadius={8} />
+            <Rect
+                width={width}
+                height={height}
+                fill="white"
+                stroke="#e2e8f0"
+                strokeWidth={1}
+                cornerRadius={8}
+            />
             <Group x={ox} y={oy} scaleX={s} scaleY={s}>
                 {sorted.map((el, i) => {
                     const key = el.id || `el-${i}`;
                     const common = {
-                        x: el.x || 0, y: el.y || 0,
+                        x: el.x || 0,
+                        y: el.y || 0,
                         rotation: el.rotation || 0,
                         scaleX: el.scaleX || 1,
                         scaleY: el.scaleY || 1,
@@ -234,7 +371,7 @@ const LayoutLabel = ({ elements = [], data = {}, mapping = {}, width, height, de
                     };
                     switch (el.type) {
                         case 'text':
-                        case 'placeholder':
+                        case 'placeholder': {
                             const txt = el.text || '';
                             const fs = el.fontSize || 12;
                             const ff = el.fontFamily || 'Arial';
@@ -242,7 +379,10 @@ const LayoutLabel = ({ elements = [], data = {}, mapping = {}, width, height, de
                             const isItalic = el.fontStyle === 'italic';
                             const weight = el.fontWeight || 'normal';
                             const textAlign = el.textAlign || 'left';
-                            const wrapWidth = (el.wrap === 'none' || (el.width || 200) < 20) ? undefined : (el.width || 200);
+                            const wrapWidth =
+                                el.wrap === 'none' || (el.width || 200) < 20
+                                    ? undefined
+                                    : el.width || 200;
 
                             if (!txt.includes('₹')) {
                                 return (
@@ -253,7 +393,7 @@ const LayoutLabel = ({ elements = [], data = {}, mapping = {}, width, height, de
                                             fontFamily={ff}
                                             fontStyle={`${isItalic ? 'italic' : 'normal'} ${weight}`}
                                             align={textAlign}
-                                            fill={el.isHighlightedSize ? '#ffffff' : col}
+                                            fill={col}
                                             width={wrapWidth}
                                             wrap={wrapWidth ? 'word' : 'none'}
                                             letterSpacing={el.letterSpacing || 0}
@@ -278,17 +418,36 @@ const LayoutLabel = ({ elements = [], data = {}, mapping = {}, width, height, de
                                         parts.forEach((p, i) => {
                                             if (p) {
                                                 items.push(
-                                                    <Text key={`p-${i}`} x={currentX} y={0} text={p} fontSize={fs}
-                                                        fontFamily={ff} fontStyle={`${isItalic ? 'italic' : 'normal'} ${weight}`}
-                                                        fill={col} letterSpacing={el.letterSpacing || 0} />
+                                                    <Text
+                                                        key={`p-${i}`}
+                                                        x={currentX}
+                                                        y={0}
+                                                        text={p}
+                                                        fontSize={fs}
+                                                        fontFamily={ff}
+                                                        fontStyle={`${isItalic ? 'italic' : 'normal'} ${weight}`}
+                                                        fill={col}
+                                                        letterSpacing={el.letterSpacing || 0}
+                                                    />
                                                 );
                                                 const canvas = document.createElement('canvas');
                                                 const context = canvas.getContext('2d');
                                                 context.font = `${fs}px ${ff}`;
-                                                currentX += context.measureText(p).width + (el.letterSpacing || 0);
+                                                currentX +=
+                                                    context.measureText(p).width +
+                                                    (el.letterSpacing || 0);
                                             }
                                             if (i < parts.length - 1) {
-                                                items.push(<KImage key={`r-${i}`} x={currentX} y={rY} image={rupeeImg} width={rW} height={rH} />);
+                                                items.push(
+                                                    <KImage
+                                                        key={`r-${i}`}
+                                                        x={currentX}
+                                                        y={rY}
+                                                        image={rupeeImg}
+                                                        width={rW}
+                                                        height={rH}
+                                                    />
+                                                );
                                                 currentX += rW + 1;
                                             }
                                         });
@@ -304,23 +463,70 @@ const LayoutLabel = ({ elements = [], data = {}, mapping = {}, width, height, de
                                     })()}
                                 </Group>
                             );
+                        }
                         case 'rect':
-                            return <Rect key={key} {...common} width={el.width || 0} height={el.height || 0}
-                                fill={el.fill || 'transparent'} cornerRadius={el.cornerRadius || 0}
-                                stroke={el.stroke || 'transparent'} strokeWidth={el.strokeWidth || 0} />;
+                            return (
+                                <Rect
+                                    key={key}
+                                    {...common}
+                                    width={el.width || 0}
+                                    height={el.height || 0}
+                                    fill={el.fill || 'transparent'}
+                                    cornerRadius={el.cornerRadius || 0}
+                                    stroke={el.stroke || 'transparent'}
+                                    strokeWidth={el.strokeWidth || 0}
+                                />
+                            );
                         case 'line':
-                            return <Line key={key} {...common} points={el.points || [0, 0, 100, 0]}
-                                stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth || 1} />;
+                            return (
+                                <Line
+                                    key={key}
+                                    {...common}
+                                    points={el.points || [0, 0, 100, 0]}
+                                    stroke={el.stroke || '#000000'}
+                                    strokeWidth={el.strokeWidth || 1}
+                                />
+                            );
                         case 'circle':
-                            return <Circle key={key} {...common} radius={el.radius || 10} fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
+                            return (
+                                <Circle
+                                    key={key}
+                                    {...common}
+                                    radius={el.radius || 10}
+                                    fill={el.fill}
+                                    stroke={el.stroke}
+                                    strokeWidth={el.strokeWidth || 0}
+                                />
+                            );
                         case 'ellipse':
-                            return <Ellipse key={key} {...common} radiusX={el.radiusX || 10} radiusY={el.radiusY || 10} fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
+                            return (
+                                <Ellipse
+                                    key={key}
+                                    {...common}
+                                    radiusX={el.radiusX || 10}
+                                    radiusY={el.radiusY || 10}
+                                    fill={el.fill}
+                                    stroke={el.stroke}
+                                    strokeWidth={el.strokeWidth || 0}
+                                />
+                            );
                         case 'barcode':
-                            return <BarcodeElement key={key} {...common} el={el} onSelect={() => { }} />;
+                            return (
+                                <BarcodeElement key={key} {...common} el={el} onSelect={() => { }} />
+                            );
                         case 'qrcode':
                             return <QRElement key={key} {...common} el={el} onSelect={() => { }} />;
                         case 'image':
-                            if (el.image) return <KImage key={key} {...common} image={el.image} width={el.width} height={el.height} />;
+                            if (el.image)
+                                return (
+                                    <KImage
+                                        key={key}
+                                        {...common}
+                                        image={el.image}
+                                        width={el.width}
+                                        height={el.height}
+                                    />
+                                );
                             return <ImageElement key={key} {...common} el={el} />;
                         default:
                             return null;
@@ -330,6 +536,67 @@ const LayoutLabel = ({ elements = [], data = {}, mapping = {}, width, height, de
         </Group>
     );
 };
+
+// ─── Helper: resolve a single element's dynamic values from data/mapping ──────
+function resolveElement(el, data, mapping) {
+    let newEl = { ...el };
+    const elName = (el.name || '').toLowerCase();
+    const manualMapped = mapping[el.id];
+    const isPlaceholder = el.type === 'placeholder' || (el.text && el.text.includes('{{'));
+    const isBarcodeQR = el.type === 'barcode' || el.type === 'qrcode';
+    const isRect = el.type === 'rect';
+
+    if (
+        manualMapped &&
+        data[manualMapped] !== undefined &&
+        (isPlaceholder || isBarcodeQR || isRect)
+    ) {
+        const raw = String(data[manualMapped] ?? '').replace(/^[₹\s]+/, '').trim();
+        if (el.type === 'text' || el.type === 'placeholder') {
+            const isPrice = isPriceColumn(manualMapped);
+            newEl.text = formatNetQty(isPrice ? formatPrice(raw) : raw);
+        } else if (el.type === 'barcode') {
+            newEl.barcodeValue = raw;
+        } else if (el.type === 'qrcode') {
+            newEl.qrValue = raw;
+        } else if (el.type === 'rect') {
+            const mc = resolveStripColor(raw.trim());
+            if (mc) newEl.fill = mc;
+        }
+        return newEl;
+    }
+
+    if (el.type === 'text' || el.type === 'placeholder') {
+        let t = el.text || '';
+        Object.keys(data).forEach(col => {
+            const ph = `{{${col}}}`;
+            if (t.includes(ph)) {
+                const raw = String(data[col] ?? '').replace(/^[₹\s]+/, '').trim();
+                t = t.replaceAll(ph, isPriceColumn(col) ? formatPrice(raw) : raw);
+            }
+        });
+        newEl.text = formatNetQty(t);
+    }
+
+    if (el.type === 'rect') {
+        const isStrip =
+            elName.includes('strip') ||
+            elName.includes('color') ||
+            ((el.width || 0) > 80 && (el.height || 0) < 50);
+        if (isStrip) {
+            const stripCol = Object.keys(data).find(col => {
+                const norm = col.toLowerCase().replace(/[\s_-]/g, '');
+                return norm.includes('stripcolor') || norm === 'strip';
+            });
+            if (stripCol && data[stripCol]) {
+                const mc = resolveStripColor(String(data[stripCol]).trim());
+                if (mc) newEl.fill = mc;
+            }
+        }
+    }
+
+    return newEl;
+}
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Layout() {
@@ -440,12 +707,18 @@ export default function Layout() {
             try {
                 const res = await stripColorsAPI.getAll();
                 if (res?.data?.colors) colors = [...colors, ...res.data.colors];
-            } catch (err) { console.warn('Could not fetch custom strip colors from API'); }
+            } catch (err) {
+                console.warn('Could not fetch custom strip colors from API');
+            }
             setStripColors(colors);
             const map = {};
-            colors.forEach(c => { map[c.name.toLowerCase()] = c.hex; });
+            colors.forEach(c => {
+                map[c.name.toLowerCase()] = c.hex;
+            });
             STRIP_COLOR_MAP = map;
-        } catch (err) { console.error(err); }
+        } catch (err) {
+            console.error(err);
+        }
     };
 
     const fetchDesigns = async () => {
@@ -453,8 +726,11 @@ export default function Layout() {
             setLoading(true);
             const res = await designsAPI.getAll();
             setTemplates(res?.data?.designs || []);
-        } catch { toast.error('Failed to load designs'); }
-        finally { setLoading(false); }
+        } catch {
+            toast.error('Failed to load designs');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const [cmykInput, setCmykInput] = useState({ name: '', c: 0, m: 0, y: 0, k: 0 });
@@ -465,39 +741,55 @@ export default function Layout() {
             const updated = stripColors.filter(c => c._id !== colorId);
             setStripColors(updated);
             const map = {};
-            updated.forEach(c => { map[c.name.toLowerCase()] = c.hex; });
+            updated.forEach(c => {
+                map[c.name.toLowerCase()] = c.hex;
+            });
             STRIP_COLOR_MAP = map;
             toast.success('Color removed');
-            if (!String(colorId).startsWith('custom-') && !String(colorId).startsWith('def-')) {
+            if (
+                !String(colorId).startsWith('custom-') &&
+                !String(colorId).startsWith('def-')
+            ) {
                 await stripColorsAPI.delete(colorId);
             }
-        } catch (err) { toast.error('Failed to delete color'); }
+        } catch (err) {
+            toast.error('Failed to delete color');
+        }
     };
 
     const handleAddCMYKColor = async () => {
         if (!cmykInput.name.trim()) return toast.error('Enter a color name');
-        const c = cmykInput.c / 100, m = cmykInput.m / 100, y = cmykInput.y / 100, k = cmykInput.k / 100;
+        const c = cmykInput.c / 100,
+            m = cmykInput.m / 100,
+            y = cmykInput.y / 100,
+            k = cmykInput.k / 100;
         const r = Math.round(255 * (1 - c) * (1 - k));
         const g = Math.round(255 * (1 - m) * (1 - k));
         const b = Math.round(255 * (1 - y) * (1 - k));
-        const rgbToHex = (v) => v.toString(16).padStart(2, '0');
+        const rgbToHex = v => v.toString(16).padStart(2, '0');
         const hex = `#${rgbToHex(r)}${rgbToHex(g)}${rgbToHex(b)}`.toUpperCase();
         const newColor = {
             _id: `custom-${Date.now()}`,
             name: cmykInput.name.trim(),
             hex,
-            cmyk: `${cmykInput.c},${cmykInput.m},${cmykInput.y},${cmykInput.k}`
+            cmyk: `${cmykInput.c},${cmykInput.m},${cmykInput.y},${cmykInput.k}`,
         };
         const updatedColors = [...stripColors, newColor];
         setStripColors(updatedColors);
         STRIP_COLOR_MAP[newColor.name.toLowerCase()] = hex;
         setCmykInput({ name: '', c: 0, m: 0, y: 0, k: 0 });
         toast.success(`${newColor.name} added with Hex ${hex}`);
-        try { await stripColorsAPI.create({ name: newColor.name, hex }); } catch (e) { }
+        try {
+            await stripColorsAPI.create({ name: newColor.name, hex });
+        } catch (e) { }
     };
 
-    const handleSelectTemplate = async (designId) => {
-        if (!designId) { setSelectedTemplate(null); setTemplateFields([]); return; }
+    const handleSelectTemplate = async designId => {
+        if (!designId) {
+            setSelectedTemplate(null);
+            setTemplateFields([]);
+            return;
+        }
         try {
             setLoading(true);
             const res = await designsAPI.getById(designId);
@@ -505,14 +797,24 @@ export default function Layout() {
             setSelectedTemplate(design);
             const fields = [];
             design.elements.forEach(el => {
-                if (!['text', 'placeholder', 'barcode', 'qrcode', 'rect'].includes(el.type)) return;
+                if (
+                    !['text', 'placeholder', 'barcode', 'qrcode', 'rect'].includes(el.type)
+                )
+                    return;
                 if (el.type === 'rect') {
                     const elName = (el.name || '').toLowerCase();
-                    const isStrip = elName.includes('strip') || elName.includes('color') ||
+                    const isStrip =
+                        elName.includes('strip') ||
+                        elName.includes('color') ||
                         ((el.width || 0) > 80 && (el.height || 0) < 50);
                     if (isStrip) {
                         const lbl = el.fieldName || el.name || 'Strip Color';
-                        fields.push({ id: el.id, name: el.fieldName || el.name || 'strip', type: 'rect', label: lbl });
+                        fields.push({
+                            id: el.id,
+                            name: el.fieldName || el.name || 'strip',
+                            type: 'rect',
+                            label: lbl,
+                        });
                     }
                     return;
                 }
@@ -521,11 +823,22 @@ export default function Layout() {
                     matches.forEach(m => {
                         const name = m.replace(/{{|}}/g, '');
                         if (!fields.find(f => f.name === name))
-                            fields.push({ id: el.id, name, type: 'placeholder', label: `{{${name}}}` });
+                            fields.push({
+                                id: el.id,
+                                name,
+                                type: 'placeholder',
+                                label: `{{${name}}}`,
+                            });
                     });
                 } else if (el.type !== 'text') {
-                    const lbl = el.fieldName || el.text || el.name || `Field ${el.id.slice(0, 4)}`;
-                    fields.push({ id: el.id, name: el.fieldName || el.text, type: el.type, label: lbl.length > 30 ? lbl.slice(0, 30) + '…' : lbl });
+                    const lbl =
+                        el.fieldName || el.text || el.name || `Field ${el.id.slice(0, 4)}`;
+                    fields.push({
+                        id: el.id,
+                        name: el.fieldName || el.text,
+                        type: el.type,
+                        label: lbl.length > 30 ? lbl.slice(0, 30) + '…' : lbl,
+                    });
                 }
             });
             setTemplateFields(fields);
@@ -537,15 +850,18 @@ export default function Layout() {
                 });
                 setManualMapping(nm);
             }
-        } catch { toast.error('Failed to load design'); }
-        finally { setLoading(false); }
+        } catch {
+            toast.error('Failed to load design');
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleFileUpload = (e) => {
+    const handleFileUpload = e => {
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (evt) => {
+        reader.onload = evt => {
             const wb = XLSX.read(evt.target.result, { type: 'binary' });
             let bestSheet = wb.Sheets[wb.SheetNames[0]];
             let bestColCount = 0;
@@ -553,20 +869,29 @@ export default function Layout() {
                 const sheet = wb.Sheets[name];
                 const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
                 if (rows.length === 0) return;
-                const headerCount = rows[0].filter(c => c !== null && c !== undefined && String(c).trim() !== '').length;
-                if (headerCount > bestColCount) { bestColCount = headerCount; bestSheet = sheet; }
+                const headerCount = rows[0].filter(
+                    c => c !== null && c !== undefined && String(c).trim() !== ''
+                ).length;
+                if (headerCount > bestColCount) {
+                    bestColCount = headerCount;
+                    bestSheet = sheet;
+                }
             });
             const data = XLSX.utils.sheet_to_json(bestSheet, { defval: '', blankrows: true });
             if (data.length > 0) {
                 setExcelData(data);
-                const cols = Object.keys(data[0]).filter(c => c && String(c).trim() !== '' && c !== '__EMPTY');
+                const cols = Object.keys(data[0]).filter(
+                    c => c && String(c).trim() !== '' && c !== '__EMPTY'
+                );
                 setColumns(cols);
                 toast.success(`Loaded ${data.length} records · ${cols.length} columns`);
                 if (selectedTemplate) {
                     const nm = { ...manualMapping };
                     templateFields.forEach(f => {
                         if (f.name) {
-                            const m = cols.find(c => c.toLowerCase() === f.name.toLowerCase());
+                            const m = cols.find(
+                                c => c.toLowerCase() === f.name.toLowerCase()
+                            );
                             if (m && !nm[f.id]) nm[f.id] = m;
                         }
                     });
@@ -577,11 +902,11 @@ export default function Layout() {
         reader.readAsBinaryString(file);
     };
 
-    const handleBrandingLogoUpload = (e) => {
+    const handleBrandingLogoUpload = e => {
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (ev) => {
+        reader.onload = ev => {
             const img = new window.Image();
             img.src = ev.target.result;
             img.onload = () => setBrandingImg(img);
@@ -592,21 +917,18 @@ export default function Layout() {
     // ─── Unified text value resolver ─────────────────────────────────────────
     const resolveTextValue = (el, data, mapping) => {
         let val = el.text || '';
-
         const mapped = mapping[el.id];
         const isPlaceholder = el.type === 'placeholder' || (el.text && el.text.includes('{{'));
         const isBarcodeQR = el.type === 'barcode' || el.type === 'qrcode';
         const isRect = el.type === 'rect';
 
-        // Step 1: explicit manual mapping — ALWAYS apply formatNetQty before returning
         if (mapped && data[mapped] !== undefined && (isPlaceholder || isBarcodeQR || isRect)) {
             const raw = String(data[mapped] ?? '').replace(/^[₹\s]+/, '').trim();
             const isPrice = isPriceColumn(mapped);
             val = isPrice ? formatPrice(raw) : raw;
-            return formatNetQty(val); // ← critical: apply formatNetQty here
+            return formatNetQty(val);
         }
 
-        // Step 2: {{ColumnName}} placeholder replacement
         let hadPh = false;
         Object.keys(data).forEach(col => {
             const ph = `{{${col}}}`;
@@ -619,10 +941,13 @@ export default function Layout() {
             }
         });
 
-        // Step 3: auto-match by fieldName for dynamic types only
-        if (!hadPh && el.fieldName && (isBarcodeQR || isRect || el.type === 'placeholder')) {
-            const ac = Object.keys(data).find(col =>
-                col.toLowerCase() === el.fieldName.toLowerCase()
+        if (
+            !hadPh &&
+            el.fieldName &&
+            (isBarcodeQR || isRect || el.type === 'placeholder')
+        ) {
+            const ac = Object.keys(data).find(
+                col => col.toLowerCase() === el.fieldName.toLowerCase()
             );
             if (ac && data[ac] !== undefined) {
                 const raw = String(data[ac] ?? '').replace(/^[₹\s]+/, '').trim();
@@ -630,12 +955,8 @@ export default function Layout() {
             }
         }
 
-        // Cleanup double rupee
         while (/₹\s*₹/.test(val)) val = val.replace(/₹\s*₹/g, '₹');
-
-        // Apply NET QTY split
         val = formatNetQty(val);
-
         return val;
     };
 
@@ -644,54 +965,92 @@ export default function Layout() {
         try {
             const isEAN13 = (format || '').toUpperCase() === 'EAN13';
             if (isEAN13) {
-                const L = { 0: '0001101', 1: '0011001', 2: '0010011', 3: '0111101', 4: '0100011', 5: '0110001', 6: '0101111', 7: '0111011', 8: '0110111', 9: '0001011' };
-                const G = { 0: '0100111', 1: '0110011', 2: '0011011', 3: '0100001', 4: '0011101', 5: '0111001', 6: '0000101', 7: '0010001', 8: '0001001', 9: '0010111' };
-                const R = { 0: '1110010', 1: '1100110', 2: '1101100', 3: '1000010', 4: '1011100', 5: '1001110', 6: '1010000', 7: '1000100', 8: '1001000', 9: '1110100' };
-                const PARITY = { 0: 'LLLLLL', 1: 'LLGLGG', 2: 'LLGGLG', 3: 'LLGGGL', 4: 'LGLLGG', 5: 'LGGLLG', 6: 'LGGGLL', 7: 'LGLGLG', 8: 'LGLGGL', 9: 'LGGLGL' };
+                const L = {
+                    0: '0001101', 1: '0011001', 2: '0010011', 3: '0111101', 4: '0100011',
+                    5: '0110001', 6: '0101111', 7: '0111011', 8: '0110111', 9: '0001011',
+                };
+                const G = {
+                    0: '0100111', 1: '0110011', 2: '0011011', 3: '0100001', 4: '0011101',
+                    5: '0111001', 6: '0000101', 7: '0010001', 8: '0001001', 9: '0010111',
+                };
+                const R = {
+                    0: '1110010', 1: '1100110', 2: '1101100', 3: '1000010', 4: '1011100',
+                    5: '1001110', 6: '1010000', 7: '1000100', 8: '1001000', 9: '1110100',
+                };
+                const PARITY = {
+                    0: 'LLLLLL', 1: 'LLGLGG', 2: 'LLGGLG', 3: 'LLGGGL', 4: 'LGLLGG',
+                    5: 'LGGLLG', 6: 'LGGGLL', 7: 'LGLGLG', 8: 'LGLGGL', 9: 'LGGLGL',
+                };
                 const s = String(value).replace(/\D/g, '').padEnd(13, '0').substring(0, 13);
                 const d = s.split('').map(Number);
                 const parity = PARITY[d[0]] || 'LLLLLL';
                 let bits = '101';
-                for (let i = 0; i < 6; i++) bits += parity[i] === 'G' ? G[d[i + 1]] : L[d[i + 1]];
+                for (let i = 0; i < 6; i++)
+                    bits += parity[i] === 'G' ? G[d[i + 1]] : L[d[i + 1]];
                 bits += '01010';
                 for (let i = 0; i < 6; i++) bits += R[d[i + 7]];
                 bits += '101';
                 const fsPt = 5, fsMM = fsPt * 0.352778, gap = 0.1;
                 const barZoneH = h - fsMM - gap, unitW = w / 109, bsX = x + unitW * 7;
-                const isG = (i) => i < 3 || (i >= 45 && i < 50) || i >= 92;
+                const isG = i => i < 3 || (i >= 45 && i < 50) || i >= 92;
                 pdf.setFillColor(fill || '#000000');
                 let cx = bsX;
                 for (let i = 0; i < 95;) {
-                    if (bits[i] === '1') { let sp = 1; while (i + sp < 95 && bits[i + sp] === '1' && isG(i + sp) === isG(i)) sp++; pdf.rect(cx, y, unitW * sp, isG(i) ? barZoneH : barZoneH - 0.5, 'F'); cx += unitW * sp; i += sp; }
-                    else { cx += unitW; i++; }
+                    if (bits[i] === '1') {
+                        let sp = 1;
+                        while (i + sp < 95 && bits[i + sp] === '1' && isG(i + sp) === isG(i)) sp++;
+                        pdf.rect(cx, y, unitW * sp, isG(i) ? barZoneH : barZoneH - 0.5, 'F');
+                        cx += unitW * sp;
+                        i += sp;
+                    } else { cx += unitW; i++; }
                 }
-                pdf.setFont('courier', 'normal'); pdf.setFontSize(fsPt);
-                const ty = y + barZoneH + gap + fsMM * 0.8;
+                // ── OCR-B font for EAN13 digits ──────────────────────────────
+                try { pdf.setFont('OCR-B', 'normal'); } catch (e) { pdf.setFont('courier', 'normal'); }
+                const scaledFsPt = fsPt * (w / 44); // Scale based on width (approx 44mm for default)
+                pdf.setFontSize(scaledFsPt);
+                const ty = y + barZoneH + gap + (scaledFsPt * 0.352778) * 0.8;
                 pdf.text(s[0], x + unitW * 3.5, ty, { align: 'center' });
-                for (let i = 0; i < 6; i++) pdf.text(s[i + 1], bsX + unitW * 3 + (i * 7 + 3.5) * unitW, ty, { align: 'center' });
-                for (let i = 0; i < 6; i++) pdf.text(s[i + 7], bsX + unitW * 50 + (i * 7 + 3.5) * unitW, ty, { align: 'center' });
+                for (let i = 0; i < 6; i++)
+                    pdf.text(s[i + 1], bsX + unitW * 3 + (i * 7 + 3.5) * unitW, ty, { align: 'center' });
+                for (let i = 0; i < 6; i++)
+                    pdf.text(s[i + 7], bsX + unitW * 50 + (i * 7 + 3.5) * unitW, ty, { align: 'center' });
             } else {
                 const bd = {};
                 JsBarcode(bd, String(value || '123456789'), { format: format || 'CODE128', margin: 0 });
                 const encs = bd.encodings || [];
-                let total = 0; encs.forEach(e => { total += e.data.length; });
+                let total = 0;
+                encs.forEach(e => { total += e.data.length; });
                 const unitW = w / total, fsPt = 6, fsMM = fsPt * 0.352778, barH = h - fsMM - 0.5;
                 pdf.setFillColor(fill || '#000000');
                 let cx = x;
                 encs.forEach(enc => {
                     for (let i = 0; i < enc.data.length;) {
-                        if (enc.data[i] === '1') { let sp = 1; while (i + sp < enc.data.length && enc.data[i + sp] === '1') sp++; pdf.rect(cx, y, unitW * sp, barH, 'F'); cx += unitW * sp; i += sp; }
-                        else { cx += unitW; i++; }
+                        if (enc.data[i] === '1') {
+                            let sp = 1;
+                            while (i + sp < enc.data.length && enc.data[i + sp] === '1') sp++;
+                            pdf.rect(cx, y, unitW * sp, barH, 'F');
+                            cx += unitW * sp; i += sp;
+                        } else { cx += unitW; i++; }
                     }
                 });
-                pdf.setFont('courier', 'normal'); pdf.setFontSize(fsPt);
-                pdf.text(String(value), x + w / 2, y + barH + 0.5 + fsMM * 0.8, { align: 'center' });
+                // ── OCR-B font for CODE128 digits ────────────────────────────
+                try { pdf.setFont('OCR-B', 'normal'); } catch (e) { pdf.setFont('courier', 'normal'); }
+                const scaledFsPt = fsPt * (w / 44);
+                pdf.setFontSize(scaledFsPt);
+                pdf.text(String(value), x + w / 2, y + barH + 0.5 + (scaledFsPt * 0.352778) * 0.8, { align: 'center' });
             }
         } catch (e) { console.warn('Barcode PDF err:', e); }
     };
 
     // ─── PDF Label Renderer ───────────────────────────────────────────────────
-    const drawVectorLabel = async (pdf, elements, data, mapping, mmX, mmY, mmW, mmH, isBranding = false, isProduction = false) => {
+    const drawVectorLabel = async (
+        pdf, elements, data, mapping, mmX, mmY, mmW, mmH,
+        isBranding = false, isProduction = false
+    ) => {
+        // ── Load custom fonts into this PDF instance ──────────────────────────
+        await loadCustomFonts(pdf);
+
+        const labelType = getLabelType(selectedTemplate);
         const unit = selectedTemplate?.canvasUnit || 'px';
         const rawW = selectedTemplate?.canvasWidth || selectedTemplate?.width || 166;
         const rawH = selectedTemplate?.canvasHeight || selectedTemplate?.height || 387;
@@ -714,10 +1073,20 @@ export default function Layout() {
         if (isBranding) {
             pdf.setFillColor('#000000');
             pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'F');
-            pdf.setDrawColor('#ffffff'); pdf.setLineWidth(0.4);
+            pdf.setDrawColor('#ffffff');
+            pdf.setLineWidth(0.4);
             pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'D');
             const bImg = brandingImg || logoImg;
-            if (bImg) { try { pdf.addImage(bImg, 'PNG', mmX, mmY, mmW, mmH); } catch (e) { } }
+            if (bImg) {
+                try {
+                    const aspect = bImg.height / bImg.width;
+                    const drawW = mmW * 0.85;
+                    const drawH = drawW * aspect;
+                    const dx = mmX + (mmW - drawW) / 2;
+                    const dy = mmY + (mmH - drawH) / 2;
+                    pdf.addImage(bImg, 'PNG', dx, dy, drawW, drawH);
+                } catch (e) { }
+            }
             return;
         }
 
@@ -725,14 +1094,53 @@ export default function Layout() {
         pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, null);
         pdf.internal.write('W n');
 
-        // Find size target for size indicator circle
-        const sizeCol = Object.keys(data).find(k => k.toLowerCase() === 'size' || k.toLowerCase().includes('size'));
-        const sizeVal = String(data[sizeCol] || '').trim().toUpperCase();
-        const sizeTarget = elements.find(e =>
-            e.type === 'text' &&
-            !e.text?.includes('{{') &&
-            e.text?.trim().toUpperCase() === sizeVal
+        // ── Resolve active size from data ────────────────────────────────────
+        const sizeCol = Object.keys(data).find(
+            k => k.toLowerCase() === 'size' || k.toLowerCase().includes('size')
         );
+        const sizeVal = String(data[sizeCol] || '').trim().toUpperCase();
+
+        // ── AZORTEE: circle visibility map ──────────────────────────────────
+        const azorteeVisibleCircles = new Set();
+        if (labelType === 'azortee' && sizeVal) {
+            const circleTextMap = buildAzorteeCircleMap(elements, data);
+            circleTextMap.forEach((pairedText, circleId) => {
+                if (pairedText === sizeVal) {
+                    azorteeVisibleCircles.add(circleId);
+                }
+            });
+        }
+
+        // ── LIVSMART / NORMAL: size-highlight rect IDs ───────────────────────
+        const sizeHighlightRectIds = new Set();
+        if ((labelType === 'normal' || labelType === 'livsmart') && sizeVal) {
+            elements.forEach(textEl => {
+                if (textEl.type !== 'text' && textEl.type !== 'placeholder') return;
+                const resolved = resolveTextValue(textEl, data, mapping);
+                if (!resolved) return;
+                const cleanResolved = resolved.trim().toUpperCase();
+                if (cleanResolved !== sizeVal || cleanResolved.length >= 6) return;
+                elements.forEach(rectEl => {
+                    if (rectEl.type !== 'rect') return;
+                    const dx = Math.abs((rectEl.x || 0) - (textEl.x || 0));
+                    const dy = Math.abs((rectEl.y || 0) - (textEl.y || 0));
+                    if (dx <= 8 && dy <= 8) sizeHighlightRectIds.add(rectEl.id);
+                });
+            });
+        }
+
+        // ── LIVSMART: text elements needing black highlight ──────────────────
+        const livsmartHighlightTextIds = new Set();
+        if (labelType === 'livsmart' && sizeVal) {
+            elements.forEach(el => {
+                if (el.type !== 'text' && el.type !== 'placeholder') return;
+                if (el.text?.includes('{{')) return;
+                const cleanText = (el.text || '').trim().toUpperCase();
+                if (cleanText === sizeVal && cleanText.length < 8) {
+                    livsmartHighlightTextIds.add(el.id);
+                }
+            });
+        }
 
         const sorted = [...elements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
 
@@ -748,11 +1156,20 @@ export default function Layout() {
             let ey = offY + (el.y || 0) * unitScale * cs;
             const ew = (el.width || 0) * unitScale * cs * elSX;
             const eh = (el.height || 0) * unitScale * cs * elSY;
-
             const elName = (el.name || '').toLowerCase();
 
-            // ── SIZE INDICATOR (HIDDEN) ──────────────────────────────────────
-            if (el.type === 'circle' && (elName.includes('sizeindicator') || elName.includes('sizecircle'))) {
+            // ── SIZE INDICATOR CIRCLE ────────────────────────────────────────
+            if (
+                el.type === 'circle' &&
+                (elName.includes('sizeindicator') || elName.includes('sizecircle') || elName.includes('circle'))
+            ) {
+                if (labelType === 'azortee' && azorteeVisibleCircles.has(el.id)) {
+                    const rx = (el.radius || 10) * unitScale * cs * (el.scaleX || 1);
+                    const ry = (el.radius || 10) * unitScale * cs * (el.scaleY || 1);
+                    pdf.setDrawColor(el.stroke || el.fill || '#000000');
+                    pdf.setLineWidth(Math.max(0.2, (el.strokeWidth || 1.5) * unitScale * cs * (el.scaleX || 1)));
+                    pdf.ellipse(ex, ey, rx, ry, 'D');
+                }
                 pdf.restoreGraphicsState();
                 continue;
             }
@@ -762,47 +1179,74 @@ export default function Layout() {
                 let val = resolveTextValue(el, data, mapping);
                 if (!val || val === 'Text') { pdf.restoreGraphicsState(); continue; }
 
-                const fs = Math.max(3, (el.fontSize || 12) * 0.75 * (el.scaleY || 1));
+                const fs = Math.max(2, (el.fontSize || 12) * 0.75 * (el.scaleY || 1) * cs);
                 const fsMM = fs * 0.352778;
-                
-                // ── Highlight matched size ────────────────────────────────
                 const cleanV = val.trim().toUpperCase();
+
+                // ── LIVSMART: inject black highlight rect before this text ───
+                if (labelType === 'livsmart' && livsmartHighlightTextIds.has(el.id)) {
+                    const padding = 0.5;
+                    const measuredW = pdf.getTextWidth(val) || 0;
+                    const rectW = (ew > 2 ? ew : measuredW) + padding * 2;
+                    const rectH = fsMM * 1.5;
+                    pdf.setFillColor('#000000');
+                    pdf.rect(ex - padding, ey - padding, rectW, rectH, 'F');
+                }
+
+                // ── Determine text color ─────────────────────────────────────
                 let textColor = el.fill || '#000000';
-                if (sizeVal && cleanV === sizeVal && val.length < 6) {
+                if (labelType === 'livsmart' && livsmartHighlightTextIds.has(el.id)) {
                     textColor = '#ffffff';
+                } else if (labelType === 'normal' && sizeVal && cleanV === sizeVal && cleanV.length < 6) {
+                    textColor = '#000000';
                 }
 
                 pdf.setFontSize(fs);
                 pdf.setTextColor(textColor);
+
                 const bold = String(el.fontWeight || '').includes('bold') || el.fontWeight === '700' || el.fontWeight === 700;
                 const italic = el.fontStyle === 'italic';
                 const pdfStyle = bold && italic ? 'bolditalic' : bold ? 'bold' : italic ? 'italic' : 'normal';
 
-                let pdfFont = 'helvetica';
-                const ff = (el.fontFamily || '').toLowerCase();
-                if (ff.includes('times')) pdfFont = 'times';
-                else if (ff.includes('courier')) pdfFont = 'courier';
+                // ── Use correct font (Arial / Calibri / OCR-B etc.) ──────────
+                const pdfFont = resolvePdfFont(el.fontFamily || '');
+                const availableFonts = pdf.getFontList();
+                const fontExists = availableFonts[pdfFont];
 
-                pdf.setFont(pdfFont, pdfStyle);
+                try {
+                    if (fontExists) {
+                        pdf.setFont(pdfFont, pdfStyle);
+                    } else {
+                        pdf.setFont('helvetica', pdfStyle);
+                    }
+                } catch (e) {
+                    try { pdf.setFont('helvetica', 'normal'); } catch (e2) {}
+                }
+
                 const align = el.textAlign || 'left';
                 const wrapW = (el.width || 0) * unitScale * cs;
 
-                // Rotated text
+                // ── Rotated text ─────────────────────────────────────────────
                 if (elRot !== 0) {
                     const safeVal = val.replace(/₹/g, 'Rs.');
                     const lines = wrapW > 0 ? pdf.splitTextToSize(safeVal, wrapW) : [safeVal];
-                    pdf.text(lines, ex, ey + fs * 0.352778 * 0.85, { align, angle: elRot, lineHeightFactor: el.lineHeight || 1.2 });
+                    let rotAnchorX = ex;
+                    if (align === 'center' && wrapW > 0) rotAnchorX = ex + wrapW / 2;
+                    else if (align === 'right' && wrapW > 0) rotAnchorX = ex + wrapW;
+                    pdf.text(lines, rotAnchorX, ey + fsMM * 0.85, {
+                        align, angle: elRot, lineHeightFactor: el.lineHeight || 1.2,
+                    });
                     pdf.restoreGraphicsState();
                     continue;
                 }
 
-                // Colon-tab aligned
+                // ── Tab-position text ────────────────────────────────────────
                 const tabPos = el.tabPos || 0;
                 if (tabPos > 0 && val.includes(':')) {
                     const lh = fs * 0.352778 * (el.lineHeight || 1.2);
                     val.split('\n').forEach((line, i) => {
                         const ci = line.indexOf(':');
-                        const ly = ey + fs * 0.352778 * 0.85 + i * lh;
+                        const ly = ey + fsMM * 0.85 + i * lh;
                         if (ci !== -1) {
                             drawRupeeText(pdf, line.substring(0, ci).trim(), ex, ly, elSX);
                             drawRupeeText(pdf, line.substring(ci).trim(), ex + tabPos * unitScale * cs, ly, elSX);
@@ -815,10 +1259,8 @@ export default function Layout() {
                 }
 
                 if (elSX !== 1 && elSX > 0) pdf.internal.write(`${(elSX * 100).toFixed(1)} Tz`);
-                const ty = ey + fsMM * 0.85;
 
-                // CRITICAL: Split on \n FIRST, then wrap each segment separately
-                // Prevents splitTextToSize from collapsing TOP/BOTTOM onto one line
+                const ty = ey + fsMM * 0.85;
                 const explicitLines = val.split('\n');
                 const rawLines = [];
                 explicitLines.forEach(seg => {
@@ -835,28 +1277,68 @@ export default function Layout() {
 
                 const lh = fsMM * (el.lineHeight || 1.2);
 
+                // ── Compute effective width for alignment ─────────────────────
+                // wrapW may be 0 for elements without explicit width —
+                // fall back to measuring the longest line so centering works.
+                const effectiveW = wrapW > 10
+                    ? wrapW
+                    : (() => {
+                        let maxW = 0;
+                        rawLines.forEach(l => {
+                            const w = pdf.getTextWidth(l.replace(/\s*₹\s*/g, '').trim());
+                            if (w > maxW) maxW = w;
+                        });
+                        return maxW;
+                    })();
+
                 rawLines.forEach((line, li) => {
                     const lineY = ty + li * lh;
                     const trimmedLine = line.trim();
                     if (!trimmedLine) return;
-                    const lineW = pdf.getTextWidth(trimmedLine.replace(/\s*₹\s*/g, ''));
-                    const visualLineW = lineW * (elSX || 1);
-                    let lineX = ex;
 
-                    if (align === 'center' && wrapW > 0) {
-                        lineX = ex + (wrapW - visualLineW) / 2;
-                    } else if (align === 'right' && wrapW > 0) {
-                        lineX = ex + wrapW - visualLineW;
+                    if (!trimmedLine.includes('₹')) {
+                        // ── Use jsPDF native alignment (most accurate) ────────
+                        let anchorX = ex;
+                        let textOpts = {};
+                        if (align === 'center') {
+                            anchorX = ex + effectiveW / 2;
+                            textOpts = { align: 'center' };
+                        } else if (align === 'right') {
+                            anchorX = ex + effectiveW;
+                            textOpts = { align: 'right' };
+                        }
+                        pdf.text(trimmedLine, anchorX, lineY, textOpts);
+                    } else {
+                        // ── Rupee path: manual measurement centering ──────────
+                        const safeTextForWidth = trimmedLine.replace(/\s*₹\s*/g, '');
+                        let lineW = 0;
+                        try {
+                            const currentFont = pdf.internal.getFont();
+                            if (currentFont && currentFont.metadata && currentFont.metadata.widths) {
+                                lineW = pdf.getTextWidth(safeTextForWidth);
+                            } else {
+                                // emergency fallback for width calculation
+                                lineW = safeTextForWidth.length * (fs * 0.2); 
+                            }
+                        } catch (e) {
+                            lineW = safeTextForWidth.length * (fs * 0.2);
+                        }
+                        
+                        const visualLineW = lineW * (elSX || 1);
+                        let lineX = ex;
+                        if (align === 'center') lineX = ex + (effectiveW - visualLineW) / 2;
+                        else if (align === 'right') lineX = ex + effectiveW - visualLineW;
+                        drawRupeeText(pdf, trimmedLine, lineX, lineY, elSX);
                     }
-                    drawRupeeText(pdf, trimmedLine, lineX, lineY, elSX);
                 });
 
                 if (elSX !== 1 && elSX > 0) pdf.internal.write('100 Tz');
 
-            // ── RECT ─────────────────────────────────────────────────────────
+                // ── RECT ─────────────────────────────────────────────────────────
             } else if (el.type === 'rect') {
                 let fill = el.fill;
-                const isStrip = elName.includes('strip') || elName.includes('color') ||
+                const isStrip =
+                    elName.includes('strip') || elName.includes('color') ||
                     ((el.width || 0) > 80 && (el.height || 0) < 50);
                 if (isStrip) {
                     const manualMapped = mapping[el.id];
@@ -865,27 +1347,23 @@ export default function Layout() {
                         const mc = resolveStripColor(raw.trim());
                         if (mc) fill = mc;
                     } else {
-                        const sc = Object.keys(data || {}).find(col =>
-                            col.toLowerCase().replace(/[\s_-]/g, '').includes('stripcolor') ||
-                            col.toLowerCase().replace(/[\s_-]/g, '') === 'strip'
-                        );
-                        if (sc && data[sc]) { const mc = resolveStripColor(String(data[sc]).trim()); if (mc) fill = mc; }
+                        const sc = Object.keys(data || {}).find(col => {
+                            const norm = col.toLowerCase().replace(/[\s_-]/g, '');
+                            return norm.includes('stripcolor') || norm === 'strip';
+                        });
+                        if (sc && data[sc]) {
+                            const mc = resolveStripColor(String(data[sc]).trim());
+                            if (mc) fill = mc;
+                        }
                     }
                 }
 
-                // ── Highlight background box for matched size ────────────
-                const isSizeBox = elements.some(other =>
-                    (other.type === 'text' || other.type === 'placeholder') &&
-                    (resolveTextValue(other, data, mapping) || '').trim().toUpperCase() === sizeVal &&
-                    sizeVal.length > 0 &&
-                    Math.abs((other.x || 0) - (el.x || 0)) < 2 &&
-                    Math.abs((other.y || 0) - (el.y || 0)) < 2
-                );
-                if (isSizeBox) fill = '#000000';
+                if (sizeHighlightRectIds.has(el.id)) fill = '#000000';
+
                 const isLabelBorder = Math.abs(ew - mmW) < 3 && Math.abs(eh - mmH) < 3;
                 const r = el.cornerRadius
                     ? Math.max(0, el.cornerRadius * unitScale * cs)
-                    : (isLabelBorder ? tagR : 0);
+                    : isLabelBorder ? tagR : 0;
                 if (fill && fill !== 'transparent') {
                     pdf.setFillColor(fill);
                     r > 0 ? pdf.roundedRect(ex, ey, ew, eh, r, r, 'F') : pdf.rect(ex, ey, ew, eh, 'F');
@@ -898,53 +1376,69 @@ export default function Layout() {
                     }
                 }
 
-            // ── BARCODE ───────────────────────────────────────────────────────
+                // ── BARCODE ───────────────────────────────────────────────────────
             } else if (el.type === 'barcode') {
                 let bv = el.barcodeValue || '123456789';
                 const mp = mapping[el.id];
                 if (mp && data[mp] !== undefined) bv = String(data[mp]);
-                else { const ac = Object.keys(data || {}).find(c => c.toLowerCase() === (el.fieldName || el.name || '').toLowerCase()); if (ac) bv = String(data[ac] ?? bv); }
+                else {
+                    const ac = Object.keys(data || {}).find(
+                        c => c.toLowerCase() === (el.fieldName || el.name || '').toLowerCase()
+                    );
+                    if (ac) bv = String(data[ac] ?? bv);
+                }
                 drawVectorBarcode(pdf, bv, ex, ey, ew, eh * 0.9, el.barcodeFormat || 'CODE128', el.fill);
 
-            // ── QR CODE ───────────────────────────────────────────────────────
+                // ── QR CODE ───────────────────────────────────────────────────────
             } else if (el.type === 'qrcode') {
                 try {
                     let qv = el.qrValue || 'QR';
                     const mp = mapping[el.id];
                     if (mp && data[mp] !== undefined) qv = String(data[mp]);
-                    else { const ac = Object.keys(data || {}).find(c => c.toLowerCase() === (el.fieldName || el.name || '').toLowerCase()); if (ac) qv = String(data[ac] ?? qv); }
+                    else {
+                        const ac = Object.keys(data || {}).find(
+                            c => c.toLowerCase() === (el.fieldName || el.name || '').toLowerCase()
+                        );
+                        if (ac) qv = String(data[ac] ?? qv);
+                    }
                     const qr = QRCode.create(qv, { margin: 0 });
                     const { data: qd, size } = qr.modules;
                     const qsz = Math.min(ew, eh), cell = qsz / size;
-                    pdf.setFillColor('#ffffff'); pdf.rect(ex, ey, qsz, qsz, 'F');
+                    pdf.setFillColor('#ffffff');
+                    pdf.rect(ex, ey, qsz, qsz, 'F');
                     pdf.setFillColor(el.fill || '#000000');
-                    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (qd[r * size + c]) pdf.rect(ex + c * cell, ey + r * cell, cell + 0.01, cell + 0.01, 'F');
+                    for (let r = 0; r < size; r++)
+                        for (let c = 0; c < size; c++)
+                            if (qd[r * size + c])
+                                pdf.rect(ex + c * cell, ey + r * cell, cell + 0.01, cell + 0.01, 'F');
                 } catch (e) { console.warn('QR err:', e); }
 
-            // ── IMAGE ─────────────────────────────────────────────────────────
+                // ── IMAGE ─────────────────────────────────────────────────────────
             } else if (el.type === 'image') {
                 const src = el.image || el.src || el.url;
                 if (src) { try { pdf.addImage(src, 'PNG', ex, ey, ew, eh); } catch (e) { } }
 
-            // ── LINE ─────────────────────────────────────────────────────────
+                // ── LINE ─────────────────────────────────────────────────────────
             } else if (el.type === 'line') {
                 const pts = el.points || [0, 0, 100, 0];
                 pdf.setDrawColor(el.stroke || '#000000');
                 pdf.setLineWidth(Math.max(0.05, (el.strokeWidth || 1) * unitScale * cs));
-                pdf.line(ex + pts[0] * unitScale * cs, ey + pts[1] * unitScale * cs, ex + pts[2] * unitScale * cs, ey + pts[3] * unitScale * cs);
+                pdf.line(
+                    ex + pts[0] * unitScale * cs, ey + pts[1] * unitScale * cs,
+                    ex + pts[2] * unitScale * cs, ey + pts[3] * unitScale * cs
+                );
 
-            // ── GENERIC CIRCLE (non-size-indicator) ──────────────────────────
+                // ── GENERIC CIRCLE (non-size-indicator) ──────────────────────────
             } else if (el.type === 'circle') {
-                const r = (el.radius || 10) * unitScale * cs;
-                const cx = ex + r;
-                const cy = ey + r;
+                const rx = (el.radius || 10) * unitScale * cs * (el.scaleX || 1);
+                const ry = (el.radius || 10) * unitScale * cs * (el.scaleY || 1);
                 pdf.setDrawColor(el.stroke || '#000000');
-                pdf.setLineWidth(Math.max(0.05, (el.strokeWidth || 1) * unitScale * cs));
+                pdf.setLineWidth(Math.max(0.05, (el.strokeWidth || 1) * unitScale * cs * (el.scaleX || 1)));
                 if (el.fill && el.fill !== 'transparent') {
                     pdf.setFillColor(el.fill);
-                    pdf.circle(cx, cy, r, 'FD');
+                    pdf.ellipse(ex, ey, rx, ry, 'FD');
                 } else {
-                    pdf.circle(cx, cy, r, 'D');
+                    pdf.ellipse(ex, ey, rx, ry, 'D');
                 }
             }
 
@@ -952,6 +1446,12 @@ export default function Layout() {
         }
         pdf.restoreGraphicsState();
     };
+
+    // ─── Constants for Proof Sheet Branding ────────────────────────────────────
+    const COMPANY_NAME = "SARAVANA GRAPHICS";
+    const COMPANY_TAGLINE = "Professional Label & Card Designer";
+    const COMPANY_ADDRESS = "Tirupur, Tamil Nadu, India";
+    const CONTACT_INFO = "Email: info@saravanagraphics.com | Web: www.saravanagraphics.com";
 
     // ─── Download Proof Sheet ─────────────────────────────────────────────────
     const downloadPDF = async () => {
@@ -966,26 +1466,22 @@ export default function Layout() {
             const origW = _unit === 'mm' ? _dW : _dW * PX_TO_MM;
             const origH = _unit === 'mm' ? _dH : _dH * PX_TO_MM;
 
-            const cols = 5;
-            const rows = 2;
-            const hGap = 3, vGap = 5;
-            const usableW = PAGE_W - 20;
-            const usableH = PAGE_H - 20;
+            const cols = 5, rows = 2, hGap = 6, vGap = 8;
+            const HEADER_H = 35;
+            const usableW = PAGE_W - 25;
+            const usableH = PAGE_H - 30 - HEADER_H;
             const scaleX = (usableW - (cols - 1) * hGap) / (cols * origW);
             const scaleY = (usableH - (rows - 1) * vGap) / (rows * origH);
-            const masterScale = Math.min(1, scaleX, scaleY);
-            const labelW = origW * masterScale;
-            const labelH = origH * masterScale;
+            const masterScale = Math.min(0.95, scaleX, scaleY);
+            const labelW = origW * masterScale, labelH = origH * masterScale;
             const maxPP = cols * rows;
             const gridW = cols * labelW + (cols - 1) * hGap;
             const gridH = rows * labelH + (rows - 1) * vGap;
             const startX = (PAGE_W - gridW) / 2;
-            const startY = (PAGE_H - gridH) / 2;
+            const startY = HEADER_H + 5 + (usableH - gridH) / 2;
 
             const pages = [];
-            let currentPage = [];
-            currentPage.push({ isBranding: true, data: null });
-
+            let currentPage = [{ isBranding: true, data: null }];
             for (const row of excelData) {
                 if (Object.values(row).every(v => v === '' || v == null)) continue;
                 if (currentPage.length >= maxPP) { pages.push(currentPage); currentPage = []; }
@@ -993,15 +1489,64 @@ export default function Layout() {
             }
             if (currentPage.length > 0) pages.push(currentPage);
 
+            const drawBrandingHeader = (pageNum, totalPages) => {
+                pdf.saveGraphicsState();
+                
+                // 1. Logo
+                const bImg = brandingImg || logoImg;
+                if (bImg) {
+                    try {
+                        const aspect = bImg.height / bImg.width;
+                        const imgW = 28;
+                        const imgH = imgW * aspect;
+                        pdf.addImage(bImg, 'PNG', 10, 6, imgW, imgH);
+                    } catch (e) { console.warn("Header logo error", e); }
+                }
+
+                // 2. Company Info
+                pdf.setFont("Arial", "bold");
+                pdf.setFontSize(14);
+                pdf.setTextColor("#000000");
+                pdf.text(COMPANY_NAME, 42, 13);
+                
+                pdf.setFont("Arial", "normal");
+                pdf.setFontSize(8);
+                pdf.setTextColor("#555555");
+                pdf.text(COMPANY_TAGLINE, 42, 17);
+                pdf.text(COMPANY_ADDRESS, 42, 21);
+                pdf.text(CONTACT_INFO, 42, 25);
+
+                // 3. Title & Page Info
+                pdf.setFontSize(16);
+                pdf.setFont("Arial", "bold");
+                pdf.setTextColor("#000080"); 
+                pdf.text("DESIGN PROOF APPROVAL SHEET", PAGE_W - 10, 13, { align: 'right' });
+                
+                pdf.setFontSize(9);
+                pdf.setFont("Arial", "normal");
+                pdf.setTextColor("#777777");
+                pdf.text(`Page ${pageNum} of ${totalPages}`, PAGE_W - 10, 19, { align: 'right' });
+                pdf.text(`Date: ${new Intl.DateTimeFormat('en-IN').format(new Date())}`, PAGE_W - 10, 24, { align: 'right' });
+
+                // 4. Decorative Line
+                pdf.setDrawColor("#e2e8f0");
+                pdf.setLineWidth(0.4);
+                pdf.line(10, 32, PAGE_W - 10, 32);
+
+                pdf.restoreGraphicsState();
+            };
+
             for (let pIdx = 0; pIdx < pages.length; pIdx++) {
                 const pgItems = pages[pIdx];
                 if (pIdx > 0) pdf.addPage();
+                
+                // Draw branding on every page
+                drawBrandingHeader(pIdx + 1, pages.length);
+
                 for (let i = 0; i < pgItems.length; i++) {
                     const item = pgItems[i];
-                    const c = i % cols;
-                    const r = Math.floor(i / cols);
-                    const x = startX + c * (labelW + hGap);
-                    const y = startY + r * (labelH + vGap);
+                    const c = i % cols, r = Math.floor(i / cols);
+                    const x = startX + c * (labelW + hGap), y = startY + r * (labelH + vGap);
                     if (item.isBranding) {
                         await drawVectorLabel(pdf, [], {}, {}, x, y, labelW, labelH, true);
                     } else {
@@ -1009,7 +1554,6 @@ export default function Layout() {
                     }
                 }
             }
-
             pdf.save(`Proof_Sheet_${Date.now()}.pdf`);
             toast.success('Downloaded!', { id: 'pdf' });
         } catch (err) {
@@ -1045,21 +1589,20 @@ export default function Layout() {
         }
     };
 
-    const [isSetupSidebarCollapsed, setIsSetupSidebarCollapsed] = useState(false);
-
     const getDesignPx = () => {
         if (!selectedTemplate) return { w: 166, h: 387 };
         const unit = selectedTemplate.canvasUnit || 'px';
         const w = selectedTemplate.canvasWidth || selectedTemplate.width || 166;
         const h = selectedTemplate.canvasHeight || selectedTemplate.height || 387;
-        return { w: unit === 'px' ? w : unitToPx(w, unit), h: unit === 'px' ? h : unitToPx(h, unit) };
+        return {
+            w: unit === 'px' ? w : unitToPx(w, unit),
+            h: unit === 'px' ? h : unitToPx(h, unit),
+        };
     };
     const { w: itemW, h: itemH } = getDesignPx();
     const colsCount = 6, spacing = 6, marginSide = 50;
 
-    let requiredRows = 1;
-    let tempCol = 1;
-    let tempRow = 0;
+    let requiredRows = 1, tempCol = 1, tempRow = 0;
     excelData.forEach(rowData => {
         if (Object.values(rowData).every(v => v === '' || v == null)) {
             if (tempCol > 0) { tempRow++; tempCol = 0; }
@@ -1072,6 +1615,7 @@ export default function Layout() {
 
     const sheetW = (itemW + spacing) * colsCount + marginSide * 2;
     const sheetH = (itemH + spacing) * requiredRows + 160;
+    const currentLabelType = getLabelType(selectedTemplate);
 
     return (
         <div className={`layout-page ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
@@ -1079,7 +1623,9 @@ export default function Layout() {
             <main className="db-main" style={{ background: '#f8fafc' }}>
                 <div className="layout-header-simple">
                     <div className="flex items-center gap-4">
-                        <button className="btn btn-ghost btn-icon" onClick={() => navigate('/dashboard')}><ArrowLeft size={18} /></button>
+                        <button className="btn btn-ghost btn-icon" onClick={() => navigate('/dashboard')}>
+                            <ArrowLeft size={18} />
+                        </button>
                         <div>
                             <h1>Proofing Center</h1>
                             <div className="flex items-center gap-2 text-[10px] text-muted font-bold uppercase tracking-widest mt-1">
@@ -1092,17 +1638,27 @@ export default function Layout() {
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
-                        {excelData.length > 0 && (<>
-                            <button className="btn btn-ghost btn-sm gap-2" onClick={() => setShowExplorer(!showExplorer)}>
-                                <Search size={14} /> {showExplorer ? 'Hide Data' : 'Inspect Excel'}
-                            </button>
-                            <button className="btn btn-secondary btn-sm gap-2 px-6 shadow-lg shadow-secondary/20" onClick={downloadIndividualPDF} style={{ borderRadius: 50 }}>
-                                <Download size={14} /> Download Labels
-                            </button>
-                            <button className="btn btn-primary btn-sm gap-2 px-6 shadow-lg shadow-primary/20" onClick={downloadPDF} style={{ borderRadius: 50 }}>
-                                <Download size={14} /> Download Proof Sheet
-                            </button>
-                        </>)}
+                        {excelData.length > 0 && (
+                            <>
+                                <button className="btn btn-ghost btn-sm gap-2" onClick={() => setShowExplorer(!showExplorer)}>
+                                    <Search size={14} /> {showExplorer ? 'Hide Data' : 'Inspect Excel'}
+                                </button>
+                                <button
+                                    className="btn btn-secondary btn-sm gap-2 px-6 shadow-lg shadow-secondary/20"
+                                    onClick={downloadIndividualPDF}
+                                    style={{ borderRadius: 50 }}
+                                >
+                                    <Download size={14} /> Download Labels
+                                </button>
+                                <button
+                                    className="btn btn-primary btn-sm gap-2 px-6 shadow-lg shadow-primary/20"
+                                    onClick={downloadPDF}
+                                    style={{ borderRadius: 50 }}
+                                >
+                                    <Download size={14} /> Download Proof Sheet
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
 
@@ -1114,13 +1670,24 @@ export default function Layout() {
                             <select
                                 className="select-input-simple h-[38px] min-w-[180px] text-xs font-bold border-muted/20"
                                 value={selectedTemplate?._id || selectedTemplate?.id || ''}
-                                onChange={(e) => handleSelectTemplate(e.target.value)}
+                                onChange={e => handleSelectTemplate(e.target.value)}
                             >
                                 <option value="">— Choose Design —</option>
                                 {templates.map(t => (
                                     <option key={t._id || t.id} value={t._id || t.id}>{t.title}</option>
                                 ))}
                             </select>
+                            {selectedTemplate && (
+                                <span
+                                    className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ml-1"
+                                    style={{
+                                        background: currentLabelType === 'azortee' ? '#e0f0ff' : currentLabelType === 'livsmart' ? '#f0ffe0' : '#f5f5f5',
+                                        color: currentLabelType === 'azortee' ? '#0055cc' : currentLabelType === 'livsmart' ? '#226600' : '#888',
+                                    }}
+                                >
+                                    {currentLabelType}
+                                </span>
+                            )}
                         </div>
 
                         {/* 2. Branding Logo */}
@@ -1138,24 +1705,40 @@ export default function Layout() {
                         {/* 3. Strip Colors */}
                         <div className="toolbar-section relative">
                             <div className="section-label-mini">3. Palette</div>
-                            <button className="btn btn-ghost btn-sm h-[38px] border border-muted/10 px-4" onClick={() => setShowStripManager(!showStripManager)}>
+                            <button
+                                className="btn btn-ghost btn-sm h-[38px] border border-muted/10 px-4"
+                                onClick={() => setShowStripManager(!showStripManager)}
+                            >
                                 <Palette size={14} className="mr-2" /> Colors
                             </button>
                             {showStripManager && (
-                                <div className="absolute top-[100%] left-0 mt-2 bg-white border border-[#333] shadow-2xl z-[500]"
-                                    style={{ width: '550px', minWidth: '550px', padding: '0', boxSizing: 'border-box' }}>
-                                    <div className="text-white text-[11px] font-bold px-2 py-1.5 flex justify-between items-center"
-                                        style={{ background: '#000080', width: '100%' }}>
+                                <div
+                                    className="absolute top-[100%] left-0 mt-2 bg-white border border-[#333] shadow-2xl z-[500]"
+                                    style={{ width: '550px', minWidth: '550px', padding: '0', boxSizing: 'border-box' }}
+                                >
+                                    <div
+                                        className="text-white text-[11px] font-bold px-2 py-1.5 flex justify-between items-center"
+                                        style={{ background: '#000080', width: '100%' }}
+                                    >
                                         <span style={{ whiteSpace: 'nowrap' }}>CMYK Color Palette</span>
-                                        <button onClick={() => setShowStripManager(false)} style={{ color: 'white', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>×</button>
+                                        <button
+                                            onClick={() => setShowStripManager(false)}
+                                            style={{ color: 'white', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}
+                                        >×</button>
                                     </div>
                                     <div style={{ display: 'flex', minHeight: '400px' }}>
                                         <div style={{ flex: '1.2', padding: '12px', borderRight: '1px solid #ddd' }}>
                                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: '1px', background: '#999', border: '1px solid #999', marginBottom: '15px', maxHeight: '160px', overflowY: 'auto' }}>
                                                 {corelPalette.map(cp => (
-                                                    <div key={cp.name} style={{ background: cp.hex, height: '18px', cursor: 'pointer' }}
+                                                    <div
+                                                        key={cp.name}
+                                                        style={{ background: cp.hex, height: '18px', cursor: 'pointer' }}
                                                         title={`${cp.name} (${cp.cmyk})`}
-                                                        onClick={() => { const [c, m, y, k] = cp.cmyk.split(',').map(Number); setCmykInput({ name: cp.name, c, m, y, k }); }} />
+                                                        onClick={() => {
+                                                            const [c, m, y, k] = cp.cmyk.split(',').map(Number);
+                                                            setCmykInput({ name: cp.name, c, m, y, k });
+                                                        }}
+                                                    />
                                                 ))}
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px', background: '#f8f8f8', padding: '8px', border: '1px solid #ddd' }}>
@@ -1163,9 +1746,11 @@ export default function Layout() {
                                                 <div style={{ flex: '1' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                         <span style={{ fontSize: '11px', fontWeight: 'bold' }}>#</span>
-                                                        <input type="text" readOnly
+                                                        <input
+                                                            type="text" readOnly
                                                             value={(corelPalette.find(p => p.name === cmykInput.name)?.hex || '#FFFFFF').toUpperCase()}
-                                                            style={{ width: '100%', fontSize: '11px', border: '1px solid #999', padding: '1px 4px', background: 'white' }} />
+                                                            style={{ width: '100%', fontSize: '11px', border: '1px solid #999', padding: '1px 4px', background: 'white' }}
+                                                        />
                                                     </div>
                                                 </div>
                                             </div>
@@ -1174,30 +1759,40 @@ export default function Layout() {
                                                     { label: 'C', key: 'c', gradient: 'linear-gradient(to right, #fff, #00FFFF)' },
                                                     { label: 'M', key: 'm', gradient: 'linear-gradient(to right, #fff, #FF00FF)' },
                                                     { label: 'Y', key: 'y', gradient: 'linear-gradient(to right, #fff, #FFFF00)' },
-                                                    { label: 'K', key: 'k', gradient: 'linear-gradient(to right, #fff, #000)' }
+                                                    { label: 'K', key: 'k', gradient: 'linear-gradient(to right, #fff, #000)' },
                                                 ].map(s => (
                                                     <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                         <span style={{ fontSize: '11px', fontWeight: 'bold', width: '12px' }}>{s.label}</span>
                                                         <div style={{ flex: '1', height: '10px', border: '1px solid #999', position: 'relative', background: s.gradient }}>
                                                             <div style={{ position: 'absolute', top: '-2px', bottom: '-2px', width: '4px', background: 'white', border: '1px solid #333', left: `${cmykInput[s.key]}%`, transform: 'translateX(-50%)', pointerEvents: 'none' }}></div>
-                                                            <input type="range" style={{ position: 'absolute', inset: '0', opacity: '0', cursor: 'pointer', width: '100%' }}
+                                                            <input
+                                                                type="range"
+                                                                style={{ position: 'absolute', inset: '0', opacity: '0', cursor: 'pointer', width: '100%' }}
                                                                 min="0" max="100" value={cmykInput[s.key]}
-                                                                onChange={e => setCmykInput(p => ({ ...p, [s.key]: Number(e.target.value) }))} />
+                                                                onChange={e => setCmykInput(p => ({ ...p, [s.key]: Number(e.target.value) }))}
+                                                            />
                                                         </div>
-                                                        <input type="number" min="0" max="100"
+                                                        <input
+                                                            type="number" min="0" max="100"
                                                             style={{ width: '35px', fontSize: '10px', border: '1px solid #999', textAlign: 'center', padding: '0 2px' }}
                                                             value={cmykInput[s.key]}
-                                                            onChange={e => { let v = Math.min(100, Math.max(0, Number(e.target.value))); setCmykInput(p => ({ ...p, [s.key]: v })); }} />
+                                                            onChange={e => { let v = Math.min(100, Math.max(0, Number(e.target.value))); setCmykInput(p => ({ ...p, [s.key]: v })); }}
+                                                        />
                                                         <span style={{ fontSize: '10px' }}>%</span>
                                                     </div>
                                                 ))}
                                             </div>
                                             <div style={{ marginTop: '12px', borderTop: '1px solid #eee', paddingTop: '8px' }}>
-                                                <input type="text" placeholder="Color Name"
+                                                <input
+                                                    type="text" placeholder="Color Name"
                                                     style={{ width: '100%', fontSize: '11px', border: '1px solid #999', padding: '3px', marginBottom: '6px', boxSizing: 'border-box' }}
-                                                    value={cmykInput.name} onChange={e => setCmykInput(p => ({ ...p, name: e.target.value }))} />
-                                                <button style={{ width: '100%', background: '#000080', color: 'white', fontSize: '11px', padding: '5px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
-                                                    onClick={handleAddCMYKColor}>ADD TO PALETTE</button>
+                                                    value={cmykInput.name}
+                                                    onChange={e => setCmykInput(p => ({ ...p, name: e.target.value }))}
+                                                />
+                                                <button
+                                                    style={{ width: '100%', background: '#000080', color: 'white', fontSize: '11px', padding: '5px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                                                    onClick={handleAddCMYKColor}
+                                                >ADD TO PALETTE</button>
                                             </div>
                                         </div>
                                         <div style={{ flex: '1', display: 'flex', flexDirection: 'column', background: '#f5f5f5' }}>
@@ -1207,19 +1802,26 @@ export default function Layout() {
                                                     <div style={{ padding: '20px', fontSize: '10px', color: '#999', textAlign: 'center' }}>No colors added yet</div>
                                                 ) : (
                                                     stripColors.map(sc => (
-                                                        <div key={sc._id}
+                                                        <div
+                                                            key={sc._id}
                                                             style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', border: '1px solid #eee', background: 'white', marginBottom: '4px', cursor: 'pointer', borderRadius: '2px' }}
                                                             className="hover:border-blue-300"
-                                                            onClick={() => { if (sc.cmyk) { const [c, m, y, k] = sc.cmyk.split(',').map(Number); setCmykInput({ name: sc.name, c, m, y, k }); } }}>
+                                                            onClick={() => {
+                                                                if (sc.cmyk) {
+                                                                    const [c, m, y, k] = sc.cmyk.split(',').map(Number);
+                                                                    setCmykInput({ name: sc.name, c, m, y, k });
+                                                                }
+                                                            }}
+                                                        >
                                                             <div style={{ width: '14px', height: '14px', border: '1px solid #666', background: sc.hex }}></div>
                                                             <div style={{ flex: '1', fontSize: '10px', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sc.name}</div>
                                                             <div style={{ fontSize: '9px', color: '#666', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
                                                                 {sc.cmyk ? sc.cmyk.split(',').map((v, i) => `${['C', 'M', 'Y', 'K'][i]}:${v}`).join(' ') : sc.hex}
                                                             </div>
-                                                            <button onClick={(e) => handleDeleteColor(e, sc._id)}
-                                                                style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '2px', color: '#999' }}>
-                                                                <Trash2 size={11} />
-                                                            </button>
+                                                            <button
+                                                                onClick={e => handleDeleteColor(e, sc._id)}
+                                                                style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '2px', color: '#999' }}
+                                                            ><Trash2 size={11} /></button>
                                                         </div>
                                                     ))
                                                 )}
@@ -1233,7 +1835,10 @@ export default function Layout() {
                         {/* 4. Excel Upload */}
                         <div className="toolbar-section">
                             <div className="section-label-mini">4. Data</div>
-                            <div className={`excel-drop-horizontal ${excelData.length ? 'has-data' : ''} px-4`} onClick={() => document.getElementById('excel-input').click()}>
+                            <div
+                                className={`excel-drop-horizontal ${excelData.length ? 'has-data' : ''} px-4`}
+                                onClick={() => document.getElementById('excel-input').click()}
+                            >
                                 <FileSpreadsheet size={14} className={excelData.length ? 'text-success' : 'text-muted'} />
                                 <span>{excelData.length ? `${excelData.length} Rows` : 'Upload Excel'}</span>
                             </div>
@@ -1248,9 +1853,11 @@ export default function Layout() {
                                     {templateFields.map(field => (
                                         <div key={field.id} className="mapping-item-compact">
                                             <label>{field.label}</label>
-                                            <select className="mapping-select-toolbar"
+                                            <select
+                                                className="mapping-select-toolbar"
                                                 value={manualMapping[field.id] || ''}
-                                                onChange={e => setManualMapping(prev => ({ ...prev, [field.id]: e.target.value }))}>
+                                                onChange={e => setManualMapping(prev => ({ ...prev, [field.id]: e.target.value }))}
+                                            >
                                                 <option value="">Auto</option>
                                                 {columns.map(col => (
                                                     <option key={col} value={col}>{col}</option>
@@ -1283,18 +1890,21 @@ export default function Layout() {
                                             </div>
                                             <div className="flex flex-wrap gap-1 overflow-auto max-h-[400px]">
                                                 {columns.map(col => (
-                                                    <div key={col} title={col}
+                                                    <div
+                                                        key={col} title={col}
                                                         className={`header-chip-mini ${Object.values(manualMapping).includes(col) ? 'mapped' : ''}`}
-                                                        style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                        {col}
-                                                    </div>
+                                                        style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                                    >{col}</div>
                                                 ))}
                                             </div>
                                         </div>
                                     </div>
                                 )}
 
-                                <div className="konva-container-clean" style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
+                                <div
+                                    className="konva-container-clean"
+                                    style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}
+                                >
                                     <Stage width={sheetW} height={sheetH} ref={stageRef} className="konva-sheet-simple">
                                         <Layer>
                                             <Rect width={sheetW} height={sheetH} fill="#f1f5f9" />
@@ -1311,10 +1921,12 @@ export default function Layout() {
                                                     let col = 1, row = 0;
                                                     return excelData.map((rowData, i) => {
                                                         if (Object.values(rowData).every(v => v === '' || v == null)) {
-                                                            if (col > 0) { row++; col = 0; } return null;
+                                                            if (col > 0) { row++; col = 0; }
+                                                            return null;
                                                         }
                                                         if (col >= colsCount) { row++; col = 0; }
-                                                        const gx = col * (itemW + spacing), gy = row * (itemH + spacing);
+                                                        const gx = col * (itemW + spacing);
+                                                        const gy = row * (itemH + spacing);
                                                         col++;
                                                         return (
                                                             <Group key={i} x={gx} y={gy}>
@@ -1326,6 +1938,7 @@ export default function Layout() {
                                                                     height={itemH}
                                                                     designW={selectedTemplate.canvasWidth || selectedTemplate.width}
                                                                     designH={selectedTemplate.canvasHeight || selectedTemplate.height}
+                                                                    labelType={currentLabelType}
                                                                 />
                                                             </Group>
                                                         );
@@ -1337,9 +1950,13 @@ export default function Layout() {
                                 </div>
 
                                 <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white/90 backdrop-blur shadow-2xl px-6 py-3 rounded-full border border-white">
-                                    <button className="btn btn-ghost btn-xs" onClick={() => setZoom(z => Math.max(0.1, z - 0.1))}><ZoomOut size={16} /></button>
+                                    <button className="btn btn-ghost btn-xs" onClick={() => setZoom(z => Math.max(0.1, z - 0.1))}>
+                                        <ZoomOut size={16} />
+                                    </button>
                                     <span className="text-xs font-bold w-12 text-center text-primary">{Math.round(zoom * 100)}%</span>
-                                    <button className="btn btn-ghost btn-xs" onClick={() => setZoom(z => Math.min(3, z + 0.1))}><ZoomIn size={16} /></button>
+                                    <button className="btn btn-ghost btn-xs" onClick={() => setZoom(z => Math.min(3, z + 0.1))}>
+                                        <ZoomIn size={16} />
+                                    </button>
                                 </div>
                             </div>
                         )}
