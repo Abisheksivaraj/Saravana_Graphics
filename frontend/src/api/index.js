@@ -1,11 +1,12 @@
 import axios from 'axios';
 
-// export const BASE_URL = 'http://localhost:5000';
-export const BASE_URL = 'https://saravana-graphics.onrender.com';
+export const BASE_URL = window.location.hostname === 'localhost' 
+    ? 'http://localhost:5000' 
+    : 'https://saravana-graphics.onrender.com';
 
 const api = axios.create({
-    // Use relative path so Vite proxy handles routing — eliminates CORS entirely
-    baseURL: '/api',
+    // Use full URL in production because frontend and backend are on different domains
+    baseURL: window.location.hostname === 'localhost' ? '/api' : `${BASE_URL}/api`,
     headers: { 'Content-Type': 'application/json' },
 });
 
