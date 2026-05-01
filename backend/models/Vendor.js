@@ -1,32 +1,33 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
-const userSchema = new mongoose.Schema({
+const vendorSchema = new mongoose.Schema({
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     username: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
     password: { type: String, required: true, minlength: 6 },
     avatar: { type: String, default: '' },
-    role: { type: String, enum: ['user', 'admin', 'vendor', 'staff', 'buyer'], default: 'user' },
+    role: { type: String, default: 'vendor' },
     status: { type: String, enum: ['active', 'pending', 'suspended'], default: 'active' },
-    companyName: { type: String },
-    assignedVendors: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Vendor' }]
+    vendorCode: { type: String, unique: true, sparse: true },
+    vendorGstin: { type: String },
+    vendorName: { type: String }
 }, { timestamps: true });
 
-userSchema.pre('save', async function (next) {
+vendorSchema.pre('save', async function (next) {
     if (!this.isModified('password')) return next();
     this.password = await bcrypt.hash(this.password, 12);
     next();
 });
 
-userSchema.methods.comparePassword = async function (candidatePassword) {
+vendorSchema.methods.comparePassword = async function (candidatePassword) {
     return bcrypt.compare(candidatePassword, this.password);
 };
 
-userSchema.methods.toJSON = function () {
+vendorSchema.methods.toJSON = function () {
     const obj = this.toObject();
     delete obj.password;
     return obj;
 };
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model('Vendor', vendorSchema);

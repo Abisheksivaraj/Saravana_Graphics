@@ -20,6 +20,10 @@ const messageSchema = new mongoose.Schema({
         enum: ['admin', 'vendor'],
         required: true
     },  
+    isRead: {
+        type: Boolean,
+        default: false
+    },
     createdAt: {
         type: Date,
         default: Date.now

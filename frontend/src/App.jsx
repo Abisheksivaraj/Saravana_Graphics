@@ -16,9 +16,11 @@ import ArtworkApproval from './pages/vendor/ArtworkApproval';
 import Payments from './pages/vendor/Payments';
 import AdminVendorPortal from './pages/AdminVendorPortal';
 import AdminVendorManager from './pages/AdminVendorManager';
+import AdminBuyerManager from './pages/AdminBuyerManager';
 
-import UserManagement from './pages/UserManagement';
-import InviteAccept from './pages/InviteAccept';
+import DashboardBuyer from './pages/buyer/Dashboard';
+import VendorHistory from './pages/buyer/VendorHistory';
+import AdminGlobalChat from './components/AdminGlobalChat';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { token, user, isLoading } = useAuthStore();
@@ -29,7 +31,9 @@ function ProtectedRoute({ children, allowedRoles }) {
   );
   if (!token || !user) return <Navigate to="/login" replace />;
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to={user.role === 'vendor' ? '/vendor-portal' : '/dashboard'} replace />;
+    if (user.role === 'vendor') return <Navigate to="/vendor-portal" replace />;
+    if (user.role === 'buyer') return <Navigate to="/buyer/dashboard" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
   return children;
 }
@@ -39,13 +43,14 @@ function PublicRoute({ children }) {
   if (isLoading) return null;
   if (token && user) {
     if (user.role === 'vendor') return <Navigate to="/vendor-portal" replace />;
+    if (user.role === 'buyer') return <Navigate to="/buyer/dashboard" replace />;
     return <Navigate to="/dashboard" replace />;
   }
   return children;
 }
 
 export default function App() {
-  const { init } = useAuthStore();
+  const { init, user } = useAuthStore();
   useEffect(() => { init(); }, []);
 
   return (
@@ -59,7 +64,7 @@ export default function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
         <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
-        <Route path="/invite-accept/:token" element={<InviteAccept />} />
+
 
         {/* Shared Dashboard (Admin/User) */}
         <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['admin', 'user']}><Dashboard /></ProtectedRoute>} />
@@ -68,8 +73,9 @@ export default function App() {
         <Route path="/rfid-format" element={<ProtectedRoute allowedRoles={['admin', 'user']}><RFIDFormat /></ProtectedRoute>} />
         <Route path="/layout" element={<ProtectedRoute allowedRoles={['admin', 'user']}><Layout /></ProtectedRoute>} />
 
-        {/* Admin Specific */}
-        <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['admin']}><UserManagement /></ProtectedRoute>} />
+        {/* Buyer Portal */}
+        <Route path="/buyer/dashboard" element={<ProtectedRoute allowedRoles={['buyer']}><DashboardBuyer /></ProtectedRoute>} />
+        <Route path="/buyer/vendor-history/:vendorId" element={<ProtectedRoute allowedRoles={['buyer']}><VendorHistory /></ProtectedRoute>} />
 
         {/* Vendor Portal Routes */}
         <Route path="/vendor-portal" element={<ProtectedRoute allowedRoles={['vendor']}><VendorLayout /></ProtectedRoute>}>
@@ -79,11 +85,15 @@ export default function App() {
           <Route path="artwork" element={<ArtworkApproval />} />
           <Route path="payments" element={<Payments />} />
         </Route>
+        
+        {/* Admin Specific */}
         <Route path="/admin/vendor-portal" element={<ProtectedRoute allowedRoles={['admin']}><AdminVendorPortal /></ProtectedRoute>} />
         <Route path="/admin/vendors" element={<ProtectedRoute allowedRoles={['admin']}><AdminVendorManager /></ProtectedRoute>} />
+        <Route path="/admin/buyers" element={<ProtectedRoute allowedRoles={['admin']}><AdminBuyerManager /></ProtectedRoute>} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      {user?.role === 'admin' && <AdminGlobalChat />}
     </BrowserRouter>
   );
 }

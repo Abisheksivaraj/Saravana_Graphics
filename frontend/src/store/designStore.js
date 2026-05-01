@@ -634,7 +634,7 @@ function getDefaultProps(type) {
         case 'polygon': return { sides: 6, radius: 50, fill: 'transparent', stroke: '#000000', strokeWidth: 2 };
         case 'placeholder': return { width: 100, height: 100, fill: 'rgba(37, 99, 235, 0.1)', stroke: '#2563eb', strokeWidth: 2, dash: [5, 5], fieldName: '' };
         case 'path': return { data: 'M 0 0 L 100 0 L 50 100 Z', fill: 'transparent', stroke: '#000000', strokeWidth: 2 };
-        case 'barcode': return { barcodeValue: '8905263411803', barcodeFormat: 'CODE128', width: 200, height: 80, fill: '#000000', mappingMode: 'smart' };
+        case 'barcode': return { barcodeValue: '8905263411803', barcodeFormat: 'CODE128', width: 200, height: 50, fill: '#000000', mappingMode: 'smart' };
         case 'qrcode': return { qrValue: 'https://saravanagraphics.com', width: 100, height: 100, mappingMode: 'smart' };
         case 'image': return { width: 150, height: 150, src: '' };
         default: return {};

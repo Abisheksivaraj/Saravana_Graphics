@@ -1,6 +1,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Vendor = require('../models/Vendor');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
@@ -19,7 +20,8 @@ router.post('/register', async (req, res) => {
             return res.status(400).json({ message: 'Password must be at least 6 characters' });
 
         const existingUser = await User.findOne({ email });
-        if (existingUser)
+        const existingVendor = await Vendor.findOne({ email });
+        if (existingUser || existingVendor)
             return res.status(400).json({ message: 'Email already registered' });
 
         const user = new User({ name, email, password });
@@ -39,13 +41,18 @@ router.post('/login', async (req, res) => {
         if (!identifier || !password)
             return res.status(400).json({ message: 'Identifier (email/username) and password are required' });
 
-        // Search for user by email OR username
-        const user = await User.findOne({
+        // Search for user by email OR username in both tables
+        const query = {
             $or: [
                 { email: identifier.toLowerCase() },
                 { username: identifier.toLowerCase() }
             ]
-        });
+        };
+
+        let user = await User.findOne(query);
+        if (!user) {
+            user = await Vendor.findOne(query);
+        }
 
         if (!user)
             return res.status(401).json({ message: 'Invalid credentials' });

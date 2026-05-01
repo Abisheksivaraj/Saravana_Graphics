@@ -5,7 +5,7 @@ export const BASE_URL = window.location.hostname === 'localhost'
     : 'https://saravana-graphics.onrender.com';
 
 const api = axios.create({
-    // Use full URL in production because frontend and backend are on different domains
+    // Use full URL in production because frontend and   backend are on different domains
     baseURL: window.location.hostname === 'localhost' ? '/api' : `${BASE_URL}/api`,
     headers: { 'Content-Type': 'application/json' },
 });
@@ -86,6 +86,8 @@ export const vendorAPI = {
     getAccounts: () => api.get('/vendors/accounts'),
     getMessages: (orderId) => api.get(`/vendors/chat/${orderId}`),
     sendMessage: (orderId, text) => api.post(`/vendors/chat/${orderId}`, { text }),
+    getActiveChats: () => api.get('/vendors/active-chats'),
+    markAsRead: (orderId) => api.patch(`/vendors/chat/${orderId}/read`),
 };
 
 // Strip Colors
@@ -96,12 +98,14 @@ export const stripColorsAPI = {
     delete: (id) => api.delete(`/strip-colors/${id}`),
 };
 
-// Users & Invitations
-export const usersAPI = {
-    getAll: () => api.get('/users'),
-    invite: (data) => api.post('/users/invite', data),
-    verifyInvite: (token) => api.get(`/users/invite-verify/${token}`),
-    completeInvite: (data) => api.post('/users/invite-complete', data),
+
+
+// Buyers
+export const buyerAPI = {
+    createAccount: (data) => api.post('/buyers/account', data),
+    getAccounts: () => api.get('/buyers/accounts'),
+    getVendors: () => api.get('/buyers/vendors'),
+    getVendorHistory: (vendorId) => api.get(`/buyers/vendor-history/${vendorId}`),
 };
 
 export default api;

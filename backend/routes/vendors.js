@@ -7,7 +7,9 @@ const { v4: uuidv4 } = require('uuid');
 const auth = require('../middleware/auth');
 const VendorOrder = require('../models/VendorOrder');
 const User = require('../models/User');
+const Vendor = require('../models/Vendor');
 const Message = require('../models/Message');
+const sendAccountCreationEmail = require('../utils/sendEmail');
 
 // Multer storage config
 const storage = multer.diskStorage({
@@ -59,16 +61,32 @@ router.post('/upload', auth, checkRole(['vendor', 'admin']), upload.single('file
             filePath: req.file.path,
             brand: req.body.brand || 'General',
             uploadedBy: req.user._id,
-            status: 'Queued'
+            uploaderModel: req.user.role === 'admin' ? 'User' : 'Vendor',
+            status: 'Excel Uploaded'
         });
 
         await newOrder.save();
+        
+        let messageSaved = null;
+        if (req.body.initialMessage && req.body.initialMessage.trim()) {
+            const newMessage = new Message({
+                orderId: newOrder._id,
+                sender: req.user._id,
+                text: req.body.initialMessage.trim(),
+                role: req.user.role // 'admin' or 'vendor'
+            });
+            await newMessage.save();
+            messageSaved = newMessage;
+        }
+
         res.status(201).json({ 
             message: 'File Uploaded Successfully',
             orderId: newOrder.orderId,
-            order: newOrder 
+            order: newOrder,
+            initialMessage: messageSaved
         });
     } catch (error) {
+        require('fs').writeFileSync('w:\\Company\\Saravana_Graphics\\backend\\error_log.txt', error.stack || error.message);
         res.status(500).json({ message: 'Upload failed', error: error.message });
     }
 });
@@ -79,8 +97,23 @@ router.post('/upload', auth, checkRole(['vendor', 'admin']), upload.single('file
 router.get('/orders', auth, async (req, res) => {
     try {
         const query = req.user.role === 'admin' ? {} : { vendorId: req.user._id };
-        const orders = await VendorOrder.find(query).sort({ createdAt: -1 }).populate('vendorId', 'name vendorCode');
-        res.json(orders);
+        const orders = await VendorOrder.find(query).sort({ createdAt: -1 }).populate('vendorId', 'name vendorCode vendorName');
+        
+        // Populate unread counts
+        const ordersWithUnread = await Promise.all(orders.map(async (order) => {
+            const targetRole = req.user.role === 'admin' ? 'vendor' : 'admin';
+            const unreadCount = await Message.countDocuments({ 
+                orderId: order._id, 
+                role: targetRole, 
+                isRead: false 
+            });
+            return {
+                ...order.toObject(),
+                unreadCount
+            };
+        }));
+
+        res.json(ordersWithUnread);
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
@@ -221,14 +254,22 @@ router.patch('/dates/:id', auth, checkRole(['vendor']), async (req, res) => {
 router.post('/account', auth, checkRole(['admin']), async (req, res) => {
     try {
          const { name, email, username, password, vendorCode, vendorGstin, vendorName } = req.body;
-         const existingUser = await User.findOne({ $or: [{ email }, { username }, { vendorCode }] });
-         if(existingUser) return res.status(400).json({ message: 'User with this email, username, or vendorCode already exists' });
          
-         const user = new User({
-             name, email, username, password, vendorCode, vendorGstin, vendorName, role: 'vendor'
+         const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+         const existingVendor = await Vendor.findOne({ $or: [{ email }, { username }, { vendorCode }] });
+         
+         if(existingUser || existingVendor) 
+             return res.status(400).json({ message: 'Vendor with this email, username, or vendorCode already exists' });
+         
+         const vendor = new Vendor({
+             name, email, username, password, vendorCode, vendorGstin, vendorName
          });
-         await user.save();
-         res.status(201).json({ message: 'Vendor added', user });
+         await vendor.save();
+         
+         // Send email notification
+         await sendAccountCreationEmail(email, 'vendor', vendorCode, username, password);
+         
+         res.status(201).json({ message: 'Vendor added', user: vendor });
     } catch (error) {
          res.status(500).json({ message: 'Server error', error: error.message });
     }
@@ -239,7 +280,7 @@ router.post('/account', auth, checkRole(['admin']), async (req, res) => {
 // @access  Admin
 router.get('/accounts', auth, checkRole(['admin']), async (req, res) => {
     try {
-        const vendors = await User.find({ role: 'vendor' }).select('-password');
+        const vendors = await Vendor.find().select('-password');
         res.json(vendors);
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
@@ -294,6 +335,72 @@ router.post('/payment/:id', auth, checkRole(['vendor']), upload.fields([
         await order.save();
 
         res.json({ message: 'Payment details submitted successfully', order });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// @route   GET api/vendors/active-chats
+// @desc    Get all active chats for Admin
+// @access  Admin
+router.get('/active-chats', auth, checkRole(['admin']), async (req, res) => {
+    try {
+        const messages = await Message.find()
+            .sort({ createdAt: -1 })
+            .populate('sender', 'name')
+            .lean();
+
+        const orderMap = new Map();
+        messages.forEach(msg => {
+            const oid = msg.orderId.toString();
+            if (!orderMap.has(oid)) {
+                orderMap.set(oid, msg);
+            }
+        });
+
+        const orderIds = Array.from(orderMap.keys());
+        const orders = await VendorOrder.find({ _id: { $in: orderIds } })
+            .populate('vendorId', 'name vendorCode avatar')
+            .lean();
+
+        // Calculate unread counts for each order (sent by vendor, not read by admin)
+        const activeChats = await Promise.all(orders.map(async (order) => {
+            const unreadCount = await Message.countDocuments({ 
+                orderId: order._id, 
+                role: 'vendor', 
+                isRead: false 
+            });
+            return {
+                order,
+                latestMessage: orderMap.get(order._id.toString()),
+                unreadCount
+            };
+        }));
+
+        activeChats.sort((a, b) => new Date(b.latestMessage.createdAt) - new Date(a.latestMessage.createdAt));
+
+        res.json(activeChats);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// @route   PATCH api/vendors/chat/:orderId/read
+// @desc    Mark all messages in an order as read
+// @access  Admin/Vendor
+router.patch('/chat/:orderId/read', auth, async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        // If admin reads, mark vendor messages as read
+        // If vendor reads, mark admin messages as read
+        const targetRole = req.user.role === 'admin' ? 'vendor' : 'admin';
+        
+        await Message.updateMany(
+            { orderId, role: targetRole, isRead: false },
+            { $set: { isRead: true } }
+        );
+        
+        res.json({ message: 'Messages marked as read' });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
     }

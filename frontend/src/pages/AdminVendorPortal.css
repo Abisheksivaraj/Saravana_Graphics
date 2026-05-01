@@ -408,22 +408,112 @@
 .jm-btn-save:hover:not(:disabled) { background: #ea580c; box-shadow: 0 4px 12px rgba(234,88,12,0.25); }
 .jm-btn-save:disabled { opacity: 0.6; cursor: not-allowed; }
 
-/* ── Chat extras ──────────────────────────────────────────────── */
-.oc-loading {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 10px; padding: 40px; color: #94a3b8; font-size: 13px;
+/* ── Admin Chat Panel ─────────────────────────────────────────── */
+.order-chat-overlay {
+    position: fixed; inset: 0;
+    background: rgba(15,23,42,0.4);
+    backdrop-filter: blur(4px);
+    display: flex; align-items: flex-end; justify-content: flex-end;
+    z-index: 1000; padding: 24px;
 }
+
+.order-chat-window {
+    background: white;
+    width: 380px; height: 600px;
+    border-radius: 16px;
+    display: flex; flex-direction: column;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+    overflow: hidden;
+    animation: chatSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes chatSlideUp {
+    from { transform: translateY(40px); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+}
+
+.oc-header {
+    padding: 16px;
+    background: #0f172a; color: white;
+    display: flex; align-items: center; justify-content: space-between;
+}
+
+.oc-title { display: flex; align-items: center; gap: 12px; }
+.oc-title h3 { margin: 0; font-size: 15px; font-weight: 700; line-height: 1.2; }
+.oc-title span { font-size: 12px; color: #94a3b8; }
+
+.oc-avatar-group { display: flex; align-items: center; }
+.oc-avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid #0f172a;
+}
+.oc-avatar.admin { background: #3b82f6; z-index: 2; }
+.oc-avatar.vendor { background: #f97316; margin-left: -8px; z-index: 1; }
+
+.oc-close {
+    background: transparent; border: none; color: #94a3b8;
+    cursor: pointer; display: flex; padding: 4px; border-radius: 6px;
+}
+.oc-close:hover { color: white; background: rgba(255,255,255,0.1); }
+
+.oc-messages {
+    flex: 1; padding: 16px;
+    background: #f8fafc;
+    overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+}
+
+.oc-notice {
+    font-size: 12px; text-align: center; color: #64748b;
+    background: #f1f5f9; padding: 8px; border-radius: 8px; margin-bottom: 8px;
+}
+
+.oc-msg-row { display: flex; width: 100%; margin-bottom: 4px; }
+.oc-msg-row.admin { justify-content: flex-end; }
+.oc-msg-row.vendor { justify-content: flex-start; }
+
+.oc-msg-bubble { max-width: 85%; }
+.oc-msg-row.admin .oc-msg-bubble { align-items: flex-end; }
+
+.oc-msg-info { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+.oc-msg-row.admin .oc-msg-info { flex-direction: row-reverse; }
+
+.oc-sender { font-size: 11px; font-weight: 700; color: #475569; }
+.oc-time { font-size: 10px; color: #94a3b8; }
+
+.oc-msg-text {
+    padding: 10px 14px;
+    font-size: 13px; line-height: 1.4;
+    border-radius: 12px;
+}
+.oc-msg-row.admin .oc-msg-text { background: #3b82f6; color: white; border-bottom-right-radius: 4px; }
+.oc-msg-row.vendor .oc-msg-text { background: white; color: #0f172a; border-bottom-left-radius: 4px; border: 1px solid #e2e8f0; }
+
+.oc-input-area {
+    padding: 12px; background: white; border-top: 1px solid #f1f5f9;
+    display: flex; align-items: center; gap: 8px;
+}
+
+.oc-input-area input {
+    flex: 1; border: none; outline: none; background: #f1f5f9;
+    padding: 10px 14px; border-radius: 20px; font-size: 13px;
+}
+
+.oc-attach-btn, .oc-send-btn {
+    background: transparent; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; border-radius: 50%;
+}
+.oc-attach-btn { color: #64748b; }
+.oc-attach-btn:hover { background: #f1f5f9; }
+.oc-send-btn { background: #3b82f6; color: white; }
+.oc-send-btn:hover:not(:disabled) { background: #2563eb; }
+.oc-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.oc-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 40px; color: #94a3b8; font-size: 13px; }
 .oc-empty { text-align: center; padding: 40px; color: #94a3b8; font-size: 13px; font-style: italic; }
-
-.oc-date-divider {
-    text-align: center;
-    font-size: 11px; font-weight: 700;
-    color: #94a3b8; text-transform: uppercase;
-    padding: 4px 0;
-}
-
+.oc-date-divider { text-align: center; font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; padding: 4px 0; }
 .oc-spin { animation: spin 1s linear infinite; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 /* Modal overlay */
 .modal-overlay {

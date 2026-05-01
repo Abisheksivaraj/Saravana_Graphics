@@ -121,10 +121,15 @@ export default function BarcodeElement({ el, isSelected, onSelect, ...props }) {
                         let span = 1;
                         while (i + span < binaryData.length && binaryData[i + span] === '1') span++;
 
+                        // Revert to respecting elHeight as requested ("keep as it is in old")
+                        const barHeight = isEAN13 
+                            ? (isGuard ? elHeight : elHeight * 0.82) 
+                            : (isGuard ? elHeight : elHeight * 0.82);
+
                         barNodes.push({
                             x:      currentX,
                             width:  unitWidth * span,
-                            height: isGuard ? elHeight : elHeight * 0.82,
+                            height: barHeight,
                             fill:   el.fill || '#000000',
                             key:    `bar-${encIdx}-${i}`,
                         });
@@ -137,7 +142,7 @@ export default function BarcodeElement({ el, isSelected, onSelect, ...props }) {
                 }
             });
 
-            return { barNodes, paddingLeft, drawWidth };
+            return { barNodes, paddingLeft, drawWidth, unitWidth };
         } catch (e) {
             console.warn('1D barcode encode error:', e);
             return null;
@@ -147,7 +152,7 @@ export default function BarcodeElement({ el, isSelected, onSelect, ...props }) {
     // ── Text below 1D barcode ─────────────────────────────────────────────────
     const renderText = () => {
         const textStyle = {
-            fontSize:       el.fontSize   || elHeight * 0.12,
+            fontSize:       el.fontSize   || (isEAN13 ? 10 : elHeight * 0.12),
             fontFamily:     el.fontFamily || 'Arial',
             fontStyle:      `${el.fontStyle === 'italic' ? 'italic' : 'normal'} ${el.fontWeight === 'bold' ? 'bold' : 'normal'}`,
             fill:           el.fill || '#000000',
@@ -170,8 +175,9 @@ export default function BarcodeElement({ el, isSelected, onSelect, ...props }) {
         const p1 = s[0];
         const p2 = s.substring(1, 7);
         const p3 = s.substring(7, 13);
-        const eanFontSize = el.fontSize || elHeight * 0.18;
-        const textY = elHeight * 0.82;
+        const eanFontSize = el.fontSize || 6;
+        const textY = elHeight * 0.82; 
+        const uw = data1D?.unitWidth || 1;
 
         return (
             <>
@@ -185,18 +191,18 @@ export default function BarcodeElement({ el, isSelected, onSelect, ...props }) {
                     fontSize={eanFontSize}
                 />
                 <Text
-                    x={data1D?.paddingLeft}
+                    x={data1D?.paddingLeft + uw * 3}
                     y={textY}
-                    width={data1D?.drawWidth / 2}
+                    width={uw * 42}
                     text={p2}
                     align="center"
                     {...textStyle}
                     fontSize={eanFontSize}
                 />
                 <Text
-                    x={data1D?.paddingLeft + data1D?.drawWidth / 2}
+                    x={data1D?.paddingLeft + uw * 50}
                     y={textY}
-                    width={data1D?.drawWidth / 2}
+                    width={uw * 42}
                     text={p3}
                     align="center"
                     {...textStyle}

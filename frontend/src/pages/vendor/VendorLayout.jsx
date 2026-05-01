@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import { vendorAPI } from '../../api';
 import {
     Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText,
-    Typography, Avatar, Divider, IconButton, Tooltip
+    Typography, Avatar, Divider, IconButton, Tooltip, Badge
 } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -37,17 +38,34 @@ const vendorTheme = createTheme({
     },
 });
 
-const navItems = [
-    { path: '/vendor-portal/dashboard', icon: <DashboardIcon />, label: 'Dashboard' },
-    { path: '/vendor-portal/create', icon: <UploadFileIcon />, label: 'Create Order' },
-    { path: '/vendor-portal/artwork', icon: <BrushIcon />, label: 'Artwork Approval' },
-    { path: '/vendor-portal/payments', icon: <PaymentIcon />, label: 'Payment Details' },
-];
-
 export default function VendorLayout() {
     const { user, logout } = useAuthStore();
     const location = useLocation();
     const navigate = useNavigate();
+    const [unreadTotal, setUnreadTotal] = useState(0);
+
+    const fetchUnreadCount = async () => {
+        try {
+            const res = await vendorAPI.getOrders();
+            const total = res.data.reduce((sum, order) => sum + (order.unreadCount || 0), 0);
+            setUnreadTotal(total);
+        } catch (err) {
+            console.error('Failed to fetch unread count', err);
+        }
+    };
+
+    useEffect(() => {
+        fetchUnreadCount();
+        const interval = setInterval(fetchUnreadCount, 10000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const navItems = [
+        { path: '/vendor-portal/dashboard', icon: <DashboardIcon />, label: 'Dashboard', showBadge: true },
+        { path: '/vendor-portal/create', icon: <UploadFileIcon />, label: 'Create Order' },
+        { path: '/vendor-portal/artwork', icon: <BrushIcon />, label: 'Artwork Approval' },
+        { path: '/vendor-portal/payments', icon: <PaymentIcon />, label: 'Payment Details' },
+    ];
 
     return (
         <ThemeProvider theme={vendorTheme}>
@@ -100,7 +118,11 @@ export default function VendorLayout() {
                                         }}
                                     >
                                         <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>
-                                            {item.icon}
+                                            {item.showBadge ? (
+                                                <Badge badgeContent={unreadTotal} color="error" sx={{ '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16 } }}>
+                                                    {item.icon}
+                                                </Badge>
+                                            ) : item.icon}
                                         </ListItemIcon>
                                         <ListItemText
                                             primary={

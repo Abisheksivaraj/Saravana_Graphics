@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const vendorOrderSchema = new mongoose.Schema({
     orderId: { type: String, required: true, unique: true },
-    vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', required: true },
     barcodeFileId: { type: String, trim: true },
     fileName: { type: String, required: true },
     filePath: { type: String, required: true },
@@ -23,7 +23,8 @@ const vendorOrderSchema = new mongoose.Schema({
         ],
         default: 'Excel Uploaded' 
     },
-    uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    uploadedBy: { type: mongoose.Schema.Types.ObjectId, required: true, refPath: 'uploaderModel' },
+    uploaderModel: { type: String, required: true, enum: ['User', 'Vendor'], default: 'Vendor' },
     remarks: { type: String, default: '' },
     layoutFileUrl: { type: String },
     revisedArtworkUrl: { type: String },

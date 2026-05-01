@@ -2,13 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { vendorAPI } from '../api';
 import Sidebar from '../components/Sidebar';
 import toast from 'react-hot-toast';
-import { Users, Plus, UserPlus, FileText, CheckCircle } from 'lucide-react';
+import { Users, Plus, UserPlus, FileText, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { useAuthStore } from '../store/authStore';
 import './AdminVendorPortal.css'; // Reuse CSS if applicable
 
 export default function AdminVendorManager() {
     const [vendors, setVendors] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const { user } = useAuthStore();
     
     // New vendor form state
     const [formData, setFormData] = useState({
@@ -24,6 +27,22 @@ export default function AdminVendorManager() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const generateVendorCode = () => {
+        const initials = "SG"; // Fixed prefix for Saravana Graphics
+        
+        let maxNum = 0;
+        vendors.forEach(v => {
+            const code = v.vendorCode || '';
+            if (code.startsWith(initials)) {
+                const numPart = code.substring(initials.length);
+                const num = parseInt(numPart);
+                if (!isNaN(num) && num > maxNum) maxNum = num;
+            }
+        });
+        
+        return `${initials}${String(maxNum + 1).padStart(6, '0')}`;
     };
 
     useEffect(() => {
@@ -59,7 +78,11 @@ export default function AdminVendorManager() {
                 </header>
 
                 <div className="ap-controls" style={{ justifyContent: 'flex-end', padding: '15px 30px' }}>
-                     <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+                     <button className="btn btn-primary" onClick={() => {
+                         const code = generateVendorCode();
+                         setFormData({ ...formData, vendorCode: code });
+                         setShowModal(true);
+                     }}>
                          <UserPlus size={16} style={{ marginRight: 8 }}/> Add New Vendor
                      </button>
                 </div>
@@ -109,6 +132,10 @@ export default function AdminVendorManager() {
                             </div>
                             <form onSubmit={handleCreateVendor} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                                 <div className="modal-body" style={{ overflowY: 'auto', paddingRight: '10px' }}>
+                                    <div className="form-group mb-4">
+                                        <label className="form-label block text-sm font-semibold mb-2">Vendor Code *</label>
+                                        <input required name="vendorCode" readOnly className="input w-full uppercase bg-gray-50 cursor-not-allowed font-mono text-primary font-bold" value={formData.vendorCode || ''} />
+                                    </div>
                                     <div className="flex gap-4">
                                         <div className="form-group flex-1">
                                             <label className="form-label block text-sm font-semibold mb-2">Contact Name *</label>
@@ -119,14 +146,10 @@ export default function AdminVendorManager() {
                                             <input required type="email" name="email" className="input w-full" value={formData.email || ''} onChange={handleChange} />
                                         </div>
                                     </div>
-                                    <div className="form-group mt-4">
-                                        <label className="form-label block text-sm font-semibold mb-2">Business/Vendor Name</label>
-                                        <input name="vendorName" className="input w-full" value={formData.vendorName || ''} onChange={handleChange} />
-                                    </div>
                                     <div className="flex gap-4 mt-4">
                                         <div className="form-group flex-1">
-                                            <label className="form-label block text-sm font-semibold mb-2">Vendor Code *</label>
-                                            <input required name="vendorCode" className="input w-full uppercase" value={formData.vendorCode || ''} onChange={handleChange} />
+                                            <label className="form-label block text-sm font-semibold mb-2">Business/Vendor Name</label>
+                                            <input name="vendorName" className="input w-full" value={formData.vendorName || ''} onChange={handleChange} />
                                         </div>
                                         <div className="form-group flex-1">
                                             <label className="form-label block text-sm font-semibold mb-2">Vendor GSTIN</label>
@@ -141,7 +164,17 @@ export default function AdminVendorManager() {
                                         </div>
                                         <div className="form-group flex-1">
                                             <label className="form-label block text-sm font-semibold mb-2">Login Password * (Min 6 chars)</label>
-                                            <input required type="password" name="password" className="input w-full" value={formData.password || ''} onChange={handleChange} />
+                                            <div className="relative w-full">
+                                                <input required type={showPassword ? "text" : "password"} name="password" className="input w-full pr-10" value={formData.password || ''} onChange={handleChange} />
+                                                <button 
+                                                    type="button" 
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                                                    onClick={() => setShowPassword(!showPassword)}
+                                                    tabIndex="-1"
+                                                >
+                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

@@ -179,6 +179,42 @@
     to { opacity: 1; transform: translateY(0); }
 }
 
+.portal-switcher {
+    display: flex;
+    background: #f1f5f9;
+    padding: 6px;
+    border-radius: 12px;
+    margin-bottom: 32px;
+    gap: 4px;
+}
+
+.portal-btn {
+    flex: 1;
+    padding: 10px 0;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--auth-text-dim);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.3s;
+}
+
+.portal-btn:hover {
+    color: var(--auth-text);
+}
+
+.portal-btn.active {
+    background: #ffffff;
+    color: var(--auth-primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
 .auth-card-header {
     margin-bottom: 32px;
 }

@@ -26,9 +26,13 @@ const Sidebar = () => {
     ];
 
     if (user?.role === 'admin') {
-        navItems.push({ path: '/admin/users', icon: Users, label: 'Team Management' });
+        navItems.push({ path: '/admin/buyers', icon: Users, label: 'Buyer Management' });
         navItems.push({ path: '/admin/vendors', icon: Users, label: 'Manage Vendors' });
         navItems.push({ path: '/admin/vendor-portal', icon: Upload, label: 'Vendor Orders' });
+    }
+
+    if (user?.role === 'buyer') {
+        navItems.push({ path: '/buyer/dashboard', icon: Grid, label: 'Vendor Overview' });
     }
 
     const handleNavigation = (path) => {

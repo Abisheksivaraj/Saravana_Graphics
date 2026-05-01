@@ -14,7 +14,7 @@ import { useUIStore, unitToPx } from '../store/uiStore';
 import toast from 'react-hot-toast';
 import { jsPDF } from 'jspdf';
 import JsBarcode from 'jsbarcode';
-import * as QRCode from 'qrcode';
+import QRCode from 'qrcode';
 import BarcodeElement from '../components/BarcodeElement';
 import QRElement from '../components/QRElement';
 import ImageElement from '../components/ImageElement';
@@ -79,7 +79,7 @@ const resolvePdfFont = (fontFamily = '') => {
     if (ff.includes('rupee') || ff.includes('forbidan')) return 'RupeeForbidan';
     if (ff.includes('times')) return 'times';
     if (ff.includes('courier')) return 'courier';
-    return 'Arial'; // default for all others (replaces helvetica)
+    return 'Arial';
 };
 
 // ─── Strip Color Map ──────────────────────────────────────────────────────────
@@ -598,6 +598,49 @@ function resolveElement(el, data, mapping) {
     return newEl;
 }
 
+// ─── QR Value Resolver (centralised, used by both preview and PDF) ────────────
+function resolveQRValue(el, data, mapping) {
+    // Check manual mapping first
+    const mp = mapping[el.id];
+    if (mp && data[mp] !== undefined) {
+        return String(data[mp] ?? '').replace(/^[₹\s]+/, '').trim();
+    }
+
+    // Check all possible property names on the element itself
+    const direct =
+        el.qrValue ||
+        el.value ||
+        el.barcodeValue ||
+        el.qrcode ||
+        el.data ||
+        '';
+
+    if (direct && direct !== 'QR' && direct !== '') {
+        return String(direct).trim();
+    }
+
+    // Try matching by fieldName or element name against data columns
+    const fieldKey = (el.fieldName || el.name || '').toLowerCase();
+    if (fieldKey) {
+        const matchedCol = Object.keys(data || {}).find(
+            c => c.toLowerCase() === fieldKey
+        );
+        if (matchedCol && data[matchedCol] !== undefined) {
+            return String(data[matchedCol] ?? '').replace(/^[₹\s]+/, '').trim();
+        }
+    }
+
+    // Auto-match columns containing 'qr'
+    const qrCol = Object.keys(data || {}).find(
+        c => c.toLowerCase().includes('qr')
+    );
+    if (qrCol && data[qrCol] !== undefined) {
+        return String(data[qrCol] ?? '').replace(/^[₹\s]+/, '').trim();
+    }
+
+    return '';
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Layout() {
     const navigate = useNavigate();
@@ -990,30 +1033,34 @@ export default function Layout() {
                 bits += '01010';
                 for (let i = 0; i < 6; i++) bits += R[d[i + 7]];
                 bits += '101';
-                const fsPt = 5, fsMM = fsPt * 0.352778, gap = 0.1;
-                const barZoneH = h - fsMM - gap, unitW = w / 109, bsX = x + unitW * 7;
+
+                const fsPt = 10;
+                const fsMM = fsPt * 0.352778;
+                const gap = 0.1;
+                const barZoneH = h - fsMM - gap;
+                const guardH = barZoneH + 1.2;
+                const unitW = w / 109, bsX = x + unitW * 7;
                 const isG = i => i < 3 || (i >= 45 && i < 50) || i >= 92;
+
                 pdf.setFillColor(fill || '#000000');
                 let cx = bsX;
                 for (let i = 0; i < 95;) {
                     if (bits[i] === '1') {
                         let sp = 1;
                         while (i + sp < 95 && bits[i + sp] === '1' && isG(i + sp) === isG(i)) sp++;
-                        pdf.rect(cx, y, unitW * sp, isG(i) ? barZoneH : barZoneH - 0.5, 'F');
+                        pdf.rect(cx, y, unitW * sp, isG(i) ? guardH : barZoneH, 'F');
                         cx += unitW * sp;
                         i += sp;
                     } else { cx += unitW; i++; }
                 }
-                // ── OCR-B font for EAN13 digits ──────────────────────────────
                 try { pdf.setFont('OCR-B', 'normal'); } catch (e) { pdf.setFont('courier', 'normal'); }
-                const scaledFsPt = fsPt * (w / 44); // Scale based on width (approx 44mm for default)
-                pdf.setFontSize(scaledFsPt);
-                const ty = y + barZoneH + gap + (scaledFsPt * 0.352778) * 0.8;
-                pdf.text(s[0], x + unitW * 3.5, ty, { align: 'center' });
+                pdf.setFontSize(fsPt);
+                const ty = y + barZoneH + fsMM * 1.0;
+                pdf.text(s[0], x + unitW * 2.5, ty, { align: 'center' });
                 for (let i = 0; i < 6; i++)
-                    pdf.text(s[i + 1], bsX + unitW * 3 + (i * 7 + 3.5) * unitW, ty, { align: 'center' });
+                    pdf.text(s[i + 1], bsX + unitW * (3 + i * 7 + 3.5), ty, { align: 'center' });
                 for (let i = 0; i < 6; i++)
-                    pdf.text(s[i + 7], bsX + unitW * 50 + (i * 7 + 3.5) * unitW, ty, { align: 'center' });
+                    pdf.text(s[i + 7], bsX + unitW * (50 + i * 7 + 3.5), ty, { align: 'center' });
             } else {
                 const bd = {};
                 JsBarcode(bd, String(value || '123456789'), { format: format || 'CODE128', margin: 0 });
@@ -1033,7 +1080,6 @@ export default function Layout() {
                         } else { cx += unitW; i++; }
                     }
                 });
-                // ── OCR-B font for CODE128 digits ────────────────────────────
                 try { pdf.setFont('OCR-B', 'normal'); } catch (e) { pdf.setFont('courier', 'normal'); }
                 const scaledFsPt = fsPt * (w / 44);
                 pdf.setFontSize(scaledFsPt);
@@ -1047,7 +1093,6 @@ export default function Layout() {
         pdf, elements, data, mapping, mmX, mmY, mmW, mmH,
         isBranding = false, isProduction = false
     ) => {
-        // ── Load custom fonts into this PDF instance ──────────────────────────
         await loadCustomFonts(pdf);
 
         const labelType = getLabelType(selectedTemplate);
@@ -1061,14 +1106,21 @@ export default function Layout() {
         const offX = mmX + (mmW - dWmm * cs) / 2;
         const offY = mmY + (mmH - dHmm * cs) / 2;
         const canvasRadius = selectedTemplate?.canvasRadius || 10;
-        const tagR = Math.min(4, canvasRadius * PX_TO_MM * cs);
+        const tagR = isProduction ? 0 : Math.min(4, canvasRadius * PX_TO_MM * cs);
 
         pdf.setFillColor('#ffffff');
-        pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'F');
-        pdf.setDrawColor('#FF00FF');
-        pdf.setLineWidth(0.15);
-        pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'D');
-        pdf.circle(mmX + mmW / 2, mmY + 5, 1.5, 'D');
+        if (tagR > 0) {
+            pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'F');
+        } else {
+            pdf.rect(mmX, mmY, mmW, mmH, 'F');
+        }
+
+        if (!isProduction) {
+            pdf.setDrawColor('#FF00FF');
+            pdf.setLineWidth(0.15);
+            pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'D');
+            pdf.circle(mmX + mmW / 2, mmY + 5, 1.5, 'D');
+        }
 
         if (isBranding) {
             pdf.setFillColor('#000000');
@@ -1094,13 +1146,11 @@ export default function Layout() {
         pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, null);
         pdf.internal.write('W n');
 
-        // ── Resolve active size from data ────────────────────────────────────
         const sizeCol = Object.keys(data).find(
             k => k.toLowerCase() === 'size' || k.toLowerCase().includes('size')
         );
         const sizeVal = String(data[sizeCol] || '').trim().toUpperCase();
 
-        // ── AZORTEE: circle visibility map ──────────────────────────────────
         const azorteeVisibleCircles = new Set();
         if (labelType === 'azortee' && sizeVal) {
             const circleTextMap = buildAzorteeCircleMap(elements, data);
@@ -1111,7 +1161,6 @@ export default function Layout() {
             });
         }
 
-        // ── LIVSMART / NORMAL: size-highlight rect IDs ───────────────────────
         const sizeHighlightRectIds = new Set();
         if ((labelType === 'normal' || labelType === 'livsmart') && sizeVal) {
             elements.forEach(textEl => {
@@ -1129,7 +1178,6 @@ export default function Layout() {
             });
         }
 
-        // ── LIVSMART: text elements needing black highlight ──────────────────
         const livsmartHighlightTextIds = new Set();
         if (labelType === 'livsmart' && sizeVal) {
             elements.forEach(el => {
@@ -1183,7 +1231,6 @@ export default function Layout() {
                 const fsMM = fs * 0.352778;
                 const cleanV = val.trim().toUpperCase();
 
-                // ── LIVSMART: inject black highlight rect before this text ───
                 if (labelType === 'livsmart' && livsmartHighlightTextIds.has(el.id)) {
                     const padding = 0.5;
                     const measuredW = pdf.getTextWidth(val) || 0;
@@ -1193,7 +1240,6 @@ export default function Layout() {
                     pdf.rect(ex - padding, ey - padding, rectW, rectH, 'F');
                 }
 
-                // ── Determine text color ─────────────────────────────────────
                 let textColor = el.fill || '#000000';
                 if (labelType === 'livsmart' && livsmartHighlightTextIds.has(el.id)) {
                     textColor = '#ffffff';
@@ -1208,7 +1254,6 @@ export default function Layout() {
                 const italic = el.fontStyle === 'italic';
                 const pdfStyle = bold && italic ? 'bolditalic' : bold ? 'bold' : italic ? 'italic' : 'normal';
 
-                // ── Use correct font (Arial / Calibri / OCR-B etc.) ──────────
                 const pdfFont = resolvePdfFont(el.fontFamily || '');
                 const availableFonts = pdf.getFontList();
                 const fontExists = availableFonts[pdfFont];
@@ -1226,21 +1271,21 @@ export default function Layout() {
                 const align = el.textAlign || 'left';
                 const wrapW = (el.width || 0) * unitScale * cs;
 
-                // ── Rotated text ─────────────────────────────────────────────
                 if (elRot !== 0) {
                     const safeVal = val.replace(/₹/g, 'Rs.');
-                    const lines = wrapW > 0 ? pdf.splitTextToSize(safeVal, wrapW) : [safeVal];
+                    const lines = wrapW > 10 ? pdf.splitTextToSize(safeVal, wrapW) : [safeVal];
                     let rotAnchorX = ex;
                     if (align === 'center' && wrapW > 0) rotAnchorX = ex + wrapW / 2;
                     else if (align === 'right' && wrapW > 0) rotAnchorX = ex + wrapW;
-                    pdf.text(lines, rotAnchorX, ey + fsMM * 0.85, {
-                        align, angle: elRot, lineHeightFactor: el.lineHeight || 1.2,
+                    pdf.text(lines.join('\n'), rotAnchorX, ey + fsMM * 0.85, {
+                        align,
+                        angle: -elRot,
+                        lineHeightFactor: el.lineHeight || 1.2,
                     });
                     pdf.restoreGraphicsState();
                     continue;
                 }
 
-                // ── Tab-position text ────────────────────────────────────────
                 const tabPos = el.tabPos || 0;
                 if (tabPos > 0 && val.includes(':')) {
                     const lh = fs * 0.352778 * (el.lineHeight || 1.2);
@@ -1277,9 +1322,6 @@ export default function Layout() {
 
                 const lh = fsMM * (el.lineHeight || 1.2);
 
-                // ── Compute effective width for alignment ─────────────────────
-                // wrapW may be 0 for elements without explicit width —
-                // fall back to measuring the longest line so centering works.
                 const effectiveW = wrapW > 10
                     ? wrapW
                     : (() => {
@@ -1297,7 +1339,6 @@ export default function Layout() {
                     if (!trimmedLine) return;
 
                     if (!trimmedLine.includes('₹')) {
-                        // ── Use jsPDF native alignment (most accurate) ────────
                         let anchorX = ex;
                         let textOpts = {};
                         if (align === 'center') {
@@ -1309,7 +1350,6 @@ export default function Layout() {
                         }
                         pdf.text(trimmedLine, anchorX, lineY, textOpts);
                     } else {
-                        // ── Rupee path: manual measurement centering ──────────
                         const safeTextForWidth = trimmedLine.replace(/\s*₹\s*/g, '');
                         let lineW = 0;
                         try {
@@ -1317,13 +1357,12 @@ export default function Layout() {
                             if (currentFont && currentFont.metadata && currentFont.metadata.widths) {
                                 lineW = pdf.getTextWidth(safeTextForWidth);
                             } else {
-                                // emergency fallback for width calculation
-                                lineW = safeTextForWidth.length * (fs * 0.2); 
+                                lineW = safeTextForWidth.length * (fs * 0.2);
                             }
                         } catch (e) {
                             lineW = safeTextForWidth.length * (fs * 0.2);
                         }
-                        
+
                         const visualLineW = lineW * (elSX || 1);
                         let lineX = ex;
                         if (align === 'center') lineX = ex + (effectiveW - visualLineW) / 2;
@@ -1334,12 +1373,13 @@ export default function Layout() {
 
                 if (elSX !== 1 && elSX > 0) pdf.internal.write('100 Tz');
 
-                // ── RECT ─────────────────────────────────────────────────────────
+            // ── RECT ─────────────────────────────────────────────────────────
             } else if (el.type === 'rect') {
                 let fill = el.fill;
                 const isStrip =
                     elName.includes('strip') || elName.includes('color') ||
                     ((el.width || 0) > 80 && (el.height || 0) < 50);
+                if (isProduction && isStrip) { pdf.restoreGraphicsState(); continue; }
                 if (isStrip) {
                     const manualMapped = mapping[el.id];
                     if (manualMapped && data[manualMapped] !== undefined) {
@@ -1376,7 +1416,7 @@ export default function Layout() {
                     }
                 }
 
-                // ── BARCODE ───────────────────────────────────────────────────────
+            // ── BARCODE ───────────────────────────────────────────────────────
             } else if (el.type === 'barcode') {
                 let bv = el.barcodeValue || '123456789';
                 const mp = mapping[el.id];
@@ -1387,38 +1427,81 @@ export default function Layout() {
                     );
                     if (ac) bv = String(data[ac] ?? bv);
                 }
-                drawVectorBarcode(pdf, bv, ex, ey, ew, eh * 0.9, el.barcodeFormat || 'CODE128', el.fill);
+                const format = (el.barcodeFormat || 'CODE128').toUpperCase();
+                let bw = ew;
+                let bh = eh * 0.9;
+                let bx = ex;
+                let by = ey;
 
-                // ── QR CODE ───────────────────────────────────────────────────────
+                if (isProduction && format === 'EAN13') {
+                    bw = 30;
+                    bh = 14;
+                    // Center within original element bounds
+                    bx = ex + (ew - bw) / 2;
+                    by = ey + (eh - bh) / 2;
+                } else if (!isProduction) {
+                    bh += 2; 
+                }
+
+                drawVectorBarcode(pdf, bv, bx, by, bw, bh, el.barcodeFormat || 'CODE128', el.fill);
+
+            // ── QR CODE ── FULLY FIXED ────────────────────────────────────────
             } else if (el.type === 'qrcode') {
                 try {
-                    let qv = el.qrValue || 'QR';
-                    const mp = mapping[el.id];
-                    if (mp && data[mp] !== undefined) qv = String(data[mp]);
-                    else {
-                        const ac = Object.keys(data || {}).find(
-                            c => c.toLowerCase() === (el.fieldName || el.name || '').toLowerCase()
-                        );
-                        if (ac) qv = String(data[ac] ?? qv);
-                    }
-                    const qr = QRCode.create(qv, { margin: 0 });
-                    const { data: qd, size } = qr.modules;
-                    const qsz = Math.min(ew, eh), cell = qsz / size;
-                    pdf.setFillColor('#ffffff');
-                    pdf.rect(ex, ey, qsz, qsz, 'F');
-                    pdf.setFillColor(el.fill || '#000000');
-                    for (let r = 0; r < size; r++)
-                        for (let c = 0; c < size; c++)
-                            if (qd[r * size + c])
-                                pdf.rect(ex + c * cell, ey + r * cell, cell + 0.01, cell + 0.01, 'F');
-                } catch (e) { console.warn('QR err:', e); }
+                    // Use centralised resolver to get QR value
+                    const qv = resolveQRValue(el, data, mapping);
 
-                // ── IMAGE ─────────────────────────────────────────────────────────
+                    if (!qv) {
+                        console.warn('QR skipped — no value for el:', el.id, el.name);
+                        pdf.restoreGraphicsState();
+                        continue;
+                    }
+
+                    // Generate QR at high resolution for crisp PDF output
+                    const dataUrl = await QRCode.toDataURL(qv, {
+                        margin: 1,
+                        errorCorrectionLevel: 'M',
+                        width: 512,
+                        color: { dark: '#000000', light: '#ffffff' },
+                    });
+
+                    if (!dataUrl || !dataUrl.startsWith('data:image/png')) {
+                        console.warn('QR generation failed for value:', qv);
+                        pdf.restoreGraphicsState();
+                        continue;
+                    }
+
+                    // Square QR, centered within the element bounds
+                    const qsz = Math.min(ew, eh);
+                    const qx = ex + (ew - qsz) / 2;
+                    const qy = ey + (eh - qsz) / 2;
+
+                    // Try base64 string first (more reliable with jsPDF)
+                    const base64Data = dataUrl.split(',')[1];
+                    try {
+                        if (base64Data) {
+                            pdf.addImage(base64Data, 'PNG', qx, qy, qsz, qsz);
+                        } else {
+                            pdf.addImage(dataUrl, 'PNG', qx, qy, qsz, qsz);
+                        }
+                    } catch (imgErr) {
+                        // Fallback: try full data URL
+                        try {
+                            pdf.addImage(dataUrl, 'PNG', qx, qy, qsz, qsz);
+                        } catch (imgErr2) {
+                            console.warn('QR addImage failed both ways:', imgErr2.message, 'value:', qv);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('QR render error — el.id:', el.id, 'msg:', e.message);
+                }
+
+            // ── IMAGE ─────────────────────────────────────────────────────────
             } else if (el.type === 'image') {
                 const src = el.image || el.src || el.url;
                 if (src) { try { pdf.addImage(src, 'PNG', ex, ey, ew, eh); } catch (e) { } }
 
-                // ── LINE ─────────────────────────────────────────────────────────
+            // ── LINE ─────────────────────────────────────────────────────────
             } else if (el.type === 'line') {
                 const pts = el.points || [0, 0, 100, 0];
                 pdf.setDrawColor(el.stroke || '#000000');
@@ -1428,7 +1511,7 @@ export default function Layout() {
                     ex + pts[2] * unitScale * cs, ey + pts[3] * unitScale * cs
                 );
 
-                // ── GENERIC CIRCLE (non-size-indicator) ──────────────────────────
+            // ── GENERIC CIRCLE ────────────────────────────────────────────────
             } else if (el.type === 'circle') {
                 const rx = (el.radius || 10) * unitScale * cs * (el.scaleX || 1);
                 const ry = (el.radius || 10) * unitScale * cs * (el.scaleY || 1);
@@ -1491,8 +1574,7 @@ export default function Layout() {
 
             const drawBrandingHeader = (pageNum, totalPages) => {
                 pdf.saveGraphicsState();
-                
-                // 1. Logo
+
                 const bImg = brandingImg || logoImg;
                 if (bImg) {
                     try {
@@ -1503,12 +1585,11 @@ export default function Layout() {
                     } catch (e) { console.warn("Header logo error", e); }
                 }
 
-                // 2. Company Info
                 pdf.setFont("Arial", "bold");
                 pdf.setFontSize(14);
                 pdf.setTextColor("#000000");
                 pdf.text(COMPANY_NAME, 42, 13);
-                
+
                 pdf.setFont("Arial", "normal");
                 pdf.setFontSize(8);
                 pdf.setTextColor("#555555");
@@ -1516,19 +1597,17 @@ export default function Layout() {
                 pdf.text(COMPANY_ADDRESS, 42, 21);
                 pdf.text(CONTACT_INFO, 42, 25);
 
-                // 3. Title & Page Info
                 pdf.setFontSize(16);
                 pdf.setFont("Arial", "bold");
-                pdf.setTextColor("#000080"); 
+                pdf.setTextColor("#000080");
                 pdf.text("DESIGN PROOF APPROVAL SHEET", PAGE_W - 10, 13, { align: 'right' });
-                
+
                 pdf.setFontSize(9);
                 pdf.setFont("Arial", "normal");
                 pdf.setTextColor("#777777");
                 pdf.text(`Page ${pageNum} of ${totalPages}`, PAGE_W - 10, 19, { align: 'right' });
                 pdf.text(`Date: ${new Intl.DateTimeFormat('en-IN').format(new Date())}`, PAGE_W - 10, 24, { align: 'right' });
 
-                // 4. Decorative Line
                 pdf.setDrawColor("#e2e8f0");
                 pdf.setLineWidth(0.4);
                 pdf.line(10, 32, PAGE_W - 10, 32);
@@ -1539,8 +1618,7 @@ export default function Layout() {
             for (let pIdx = 0; pIdx < pages.length; pIdx++) {
                 const pgItems = pages[pIdx];
                 if (pIdx > 0) pdf.addPage();
-                
-                // Draw branding on every page
+
                 drawBrandingHeader(pIdx + 1, pages.length);
 
                 for (let i = 0; i < pgItems.length; i++) {
