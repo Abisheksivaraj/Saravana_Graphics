@@ -276,7 +276,13 @@ export default function BarcodePropertiesDialog({ elementId, onClose }) {
                                     <input 
                                         className="bt-win-input w-full"
                                         value={el.barcodeValue || ''} 
-                                        onChange={e => update({ barcodeValue: e.target.value })}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            const updates = { barcodeValue: val };
+                                            if (val.length === 13) updates.barcodeFormat = 'EAN13';
+                                            else if (val.length === 8) updates.barcodeFormat = 'EAN8';
+                                            update(updates);
+                                        }}
                                     />
                                 </div>
                                 <div className="bt-info-box mt-4">

@@ -175,7 +175,7 @@ export default function BarcodeElement({ el, isSelected, onSelect, ...props }) {
         const p1 = s[0];
         const p2 = s.substring(1, 7);
         const p3 = s.substring(7, 13);
-        const eanFontSize = el.fontSize || 6;
+        const eanFontSize = el.fontSize || 10;
         const textY = elHeight * 0.82; 
         const uw = data1D?.unitWidth || 1;
 

@@ -18,7 +18,7 @@ import QRCode from 'qrcode';
 import BarcodeElement from '../components/BarcodeElement';
 import QRElement from '../components/QRElement';
 import ImageElement from '../components/ImageElement';
-import logo from '../assets/logo.png';
+import logo from '../assets/final.jpeg';
 import './Layout.css';
 
 // ─── Font cache (base64 strings cached so we only fetch once per session) ─────
@@ -32,7 +32,7 @@ const loadCustomFonts = async (pdf) => {
         { name: 'Arial', style: 'bolditalic', file: '/fonts/Arial-Bold-Italic.ttf' },
         { name: 'Calibri', style: 'normal', file: '/fonts/Calibri.ttf' },
         { name: 'Calibri', style: 'bold', file: '/fonts/Calibri-Bold.ttf' },
-        { name: 'OCR-B', style: 'normal', file: '/fonts/OCRB.ttf' },
+        { name: 'OCR-BT', style: 'normal', file: '/fonts/OCRB.ttf' },
         { name: 'RupeeForbidan', style: 'normal', file: '/fonts/RupeeForbidan.ttf' },
     ];
 
@@ -75,7 +75,7 @@ const loadCustomFonts = async (pdf) => {
 const resolvePdfFont = (fontFamily = '') => {
     const ff = fontFamily.toLowerCase();
     if (ff.includes('calibri')) return 'Calibri';
-    if (ff.includes('ocr')) return 'OCR-B';
+    if (ff.includes('ocr')) return 'OCR-BT';
     if (ff.includes('rupee') || ff.includes('forbidan')) return 'RupeeForbidan';
     if (ff.includes('times')) return 'times';
     if (ff.includes('courier')) return 'courier';
@@ -143,9 +143,9 @@ const drawRupeeText = (pdf, rawText, x, y, scaleX = 1) => {
     }
     const fs = pdf.getFontSize();
     const fsMM = fs * 0.352778;
-    const imgH = fsMM * 0.9;
-    const imgW = fsMM * 0.8 * scaleX;
-    const imgY = y - fsMM * 0.78;
+    const imgH = fsMM * 1.10;
+    const imgW = fsMM * 0.95 * scaleX;
+    const imgY = y - fsMM * 1.01;
     const tc = pdf.getTextColor();
     const colorHex = typeof tc === 'string' && tc.startsWith('#') ? tc : '#000000';
     const rupeeImg = getRupeeImage(fs, colorHex);
@@ -157,8 +157,9 @@ const drawRupeeText = (pdf, rawText, x, y, scaleX = 1) => {
             curX += pdf.getTextWidth(part) * scaleX;
         }
         if (i < parts.length - 1) {
-            try { pdf.addImage(rupeeImg, 'PNG', curX - 2.5 * scaleX, imgY, imgW, imgH); } catch (e) { }
-            curX += imgW + 1.5 * scaleX;
+            try { pdf.addImage(rupeeImg, 'PNG', curX, imgY, imgW, imgH); } catch (e) { }
+            const gapMM = fs * 0.352778 * 0.30; // 30% of font size in mm
+            curX += imgW + gapMM;
         }
     });
 };
@@ -233,6 +234,7 @@ const LayoutLabel = ({
     isBranding = false,
     logoImg = null,
     labelType = 'normal',
+    modes = {},
 }) => {
     const mergedElements = useMemo(() => {
         const sizeCol = Object.keys(data).find(
@@ -260,14 +262,14 @@ const LayoutLabel = ({
                     const pairedText = circleTextMap.get(el.id) || '';
                     return { ...el, visible: !!(sizeVal && pairedText === sizeVal) };
                 }
-                return resolveElement(el, data, mapping);
+                return resolveElement(el, data, mapping, modes);
             });
         }
 
         if (labelType === 'livsmart') {
             const result = [];
             elements.forEach(el => {
-                const resolved = resolveElement(el, data, mapping);
+                const resolved = resolveElement(el, data, mapping, modes);
                 if (
                     (el.type === 'text' || el.type === 'placeholder') &&
                     sizeVal &&
@@ -302,7 +304,7 @@ const LayoutLabel = ({
         }
 
         return elements.map(el => {
-            let newEl = resolveElement(el, data, mapping);
+            let newEl = resolveElement(el, data, mapping, modes);
             const elName = (el.name || '').toLowerCase();
 
             if (
@@ -334,7 +336,7 @@ const LayoutLabel = ({
 
             return newEl;
         });
-    }, [elements, data, mapping, isBranding, logoImg, width, height, labelType]);
+    }, [elements, data, mapping, modes, isBranding, logoImg, width, height, labelType]);
 
     const sorted = useMemo(
         () => [...mergedElements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0)),
@@ -411,9 +413,9 @@ const LayoutLabel = ({
                                         let currentX = 0;
                                         const items = [];
                                         const rupeeImg = getRupeeImage(fs, col);
-                                        const rH = fs * 0.65;
-                                        const rW = fs * 0.55;
-                                        const rY = fs * 0.28;
+                                        const rH = fs * 0.85;
+                                        const rW = fs * 0.72;
+                                        const rY = fs * 0.05;
 
                                         parts.forEach((p, i) => {
                                             if (p) {
@@ -448,7 +450,7 @@ const LayoutLabel = ({
                                                         height={rH}
                                                     />
                                                 );
-                                                currentX += rW + 1;
+                                                currentX += rW + 4;
                                             }
                                         });
 
@@ -538,7 +540,7 @@ const LayoutLabel = ({
 };
 
 // ─── Helper: resolve a single element's dynamic values from data/mapping ──────
-function resolveElement(el, data, mapping) {
+function resolveElement(el, data, mapping, modes = {}) {
     let newEl = { ...el };
     const elName = (el.name || '').toLowerCase();
     const manualMapped = mapping[el.id];
@@ -552,6 +554,30 @@ function resolveElement(el, data, mapping) {
         (isPlaceholder || isBarcodeQR || isRect)
     ) {
         const raw = String(data[manualMapped] ?? '').replace(/^[₹\s]+/, '').trim();
+        const forcedMode = modes[el.id];
+
+        if (forcedMode === 'qrcode') {
+            newEl.type = 'qrcode';
+            newEl.qrValue = raw;
+            return newEl;
+        }
+        if (forcedMode === 'ean13') {
+            newEl.type = 'barcode';
+            newEl.barcodeValue = raw;
+            newEl.barcodeFormat = 'EAN13';
+            return newEl;
+        }
+        if (forcedMode === 'barcode') {
+            newEl.type = 'barcode';
+            newEl.barcodeValue = raw;
+            newEl.barcodeFormat = 'CODE128';
+            return newEl;
+        }
+        if (forcedMode === 'text') {
+            newEl.type = 'text';
+            newEl.text = raw;
+            return newEl;
+        }
         if (el.type === 'text' || el.type === 'placeholder') {
             const isPrice = isPriceColumn(manualMapped);
             newEl.text = formatNetQty(isPrice ? formatPrice(raw) : raw);
@@ -564,6 +590,15 @@ function resolveElement(el, data, mapping) {
             if (mc) newEl.fill = mc;
         }
         return newEl;
+    }
+
+    if (el.type === 'barcode' && !manualMapped) {
+        const eanCol = Object.keys(data || {}).find(
+            c => c.toLowerCase().includes('ean')
+        );
+        if (eanCol && data[eanCol] !== undefined) {
+            newEl.barcodeValue = String(data[eanCol] ?? '').replace(/^[₹\s]+/, '').trim();
+        }
     }
 
     if (el.type === 'text' || el.type === 'placeholder') {
@@ -650,6 +685,7 @@ export default function Layout() {
     const [excelData, setExcelData] = useState([]);
     const [columns, setColumns] = useState([]);
     const [manualMapping, setManualMapping] = useState({});
+    const [mappingModes, setMappingModes] = useState({});
     const [templateFields, setTemplateFields] = useState([]);
     const [loading, setLoading] = useState(true);
     const [zoom, setZoom] = useState(1.0);
@@ -1003,10 +1039,36 @@ export default function Layout() {
         return val;
     };
 
-    // ─── Vector Barcode ───────────────────────────────────────────────────────
-    const drawVectorBarcode = (pdf, value, x, y, w, h, format, fill) => {
+    const renderQRAtPos = async (pdf, qv, qx, qy, qsz, fill = '#000000') => {
         try {
-            const isEAN13 = (format || '').toUpperCase() === 'EAN13';
+            const dataUrl = await QRCode.toDataURL(qv, {
+                margin: 1,
+                errorCorrectionLevel: 'M',
+                width: 512,
+                color: { dark: fill || '#000000', light: '#ffffff' },
+            });
+            const base64Data = dataUrl.split(',')[1];
+            pdf.addImage(base64Data, 'PNG', qx, qy, qsz, qsz);
+        } catch (e) {
+            console.warn('QR render failed:', e);
+        }
+    };
+
+    // ─── Vector Barcode ───────────────────────────────────────────────────────
+    const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill) => {
+        try {
+            const fmt = (format || 'CODE128').toUpperCase();
+
+            // Redirect 2D formats to their respective renderers if they happen to be in a barcode element
+            if (fmt === 'QRCODE') {
+                const qsz = Math.min(w, h);
+                const qx = x + (w - qsz) / 2;
+                const qy = y + (h - qsz) / 2;
+                await renderQRAtPos(pdf, value, qx, qy, qsz, fill);
+                return;
+            }
+
+            const isEAN13 = fmt === 'EAN13';
             if (isEAN13) {
                 const L = {
                     0: '0001101', 1: '0011001', 2: '0010011', 3: '0111101', 4: '0100011',
@@ -1034,7 +1096,7 @@ export default function Layout() {
                 for (let i = 0; i < 6; i++) bits += R[d[i + 7]];
                 bits += '101';
 
-                const fsPt = 10;
+                const fsPt = 6;
                 const fsMM = fsPt * 0.352778;
                 const gap = 0.1;
                 const barZoneH = h - fsMM - gap;
@@ -1053,7 +1115,7 @@ export default function Layout() {
                         i += sp;
                     } else { cx += unitW; i++; }
                 }
-                try { pdf.setFont('OCR-B', 'normal'); } catch (e) { pdf.setFont('courier', 'normal'); }
+                try { pdf.setFont('OCR-BT', 'normal'); } catch (e) { pdf.setFont('courier', 'normal'); }
                 pdf.setFontSize(fsPt);
                 const ty = y + barZoneH + fsMM * 1.0;
                 pdf.text(s[0], x + unitW * 2.5, ty, { align: 'center' });
@@ -1063,7 +1125,9 @@ export default function Layout() {
                     pdf.text(s[i + 7], bsX + unitW * (50 + i * 7 + 3.5), ty, { align: 'center' });
             } else {
                 const bd = {};
-                JsBarcode(bd, String(value || '123456789'), { format: format || 'CODE128', margin: 0 });
+                // Normalize format for JsBarcode (e.g. "CODE128")
+                const safeFmt = fmt.replace(/\s/g, '');
+                JsBarcode(bd, String(value || '123456789'), { format: safeFmt, margin: 0 });
                 const encs = bd.encodings || [];
                 let total = 0;
                 encs.forEach(e => { total += e.data.length; });
@@ -1080,7 +1144,7 @@ export default function Layout() {
                         } else { cx += unitW; i++; }
                     }
                 });
-                try { pdf.setFont('OCR-B', 'normal'); } catch (e) { pdf.setFont('courier', 'normal'); }
+                try { pdf.setFont('OCR-BT', 'normal'); } catch (e) { pdf.setFont('courier', 'normal'); }
                 const scaledFsPt = fsPt * (w / 44);
                 pdf.setFontSize(scaledFsPt);
                 pdf.text(String(value), x + w / 2, y + barH + 0.5 + (scaledFsPt * 0.352778) * 0.8, { align: 'center' });
@@ -1091,7 +1155,7 @@ export default function Layout() {
     // ─── PDF Label Renderer ───────────────────────────────────────────────────
     const drawVectorLabel = async (
         pdf, elements, data, mapping, mmX, mmY, mmW, mmH,
-        isBranding = false, isProduction = false
+        isBranding = false, isProduction = false, modes = {}
     ) => {
         await loadCustomFonts(pdf);
 
@@ -1206,6 +1270,30 @@ export default function Layout() {
             const eh = (el.height || 0) * unitScale * cs * elSY;
             const elName = (el.name || '').toLowerCase();
 
+            const forcedMode = modes[el.id] || mappingModes[el.id];
+            if (forcedMode === 'qrcode') {
+                const qv = String(data[manualMapping[el.id]] || resolveQRValue(el, data, manualMapping));
+                if (qv) {
+                    await renderQRAtPos(pdf, qv, ex, ey, ew, eh, el.fill);
+                    pdf.restoreGraphicsState();
+                    continue;
+                }
+            } else if (forcedMode === 'ean13' || forcedMode === 'barcode') {
+                const bv = String(data[manualMapping[el.id]] || resolveBarcodeValue(el, data, manualMapping));
+                const fmt = forcedMode === 'ean13' ? 'EAN13' : 'CODE128';
+                drawVectorBarcode(pdf, bv, ex, ey, ew, eh, fmt, el.fill);
+                pdf.restoreGraphicsState();
+                continue;
+            } else if (forcedMode === 'text') {
+                const val = String(data[manualMapping[el.id]] || '');
+                const fs = Math.max(2, (el.fontSize || 12) * 0.75 * (el.scaleY || 1) * cs);
+                const fsMM = fs * 0.352778;
+                pdf.setFontSize(fs);
+                pdf.text(val, ex, ey + fsMM * 0.85);
+                pdf.restoreGraphicsState();
+                continue;
+            }
+
             // ── SIZE INDICATOR CIRCLE ────────────────────────────────────────
             if (
                 el.type === 'circle' &&
@@ -1265,7 +1353,7 @@ export default function Layout() {
                         pdf.setFont('helvetica', pdfStyle);
                     }
                 } catch (e) {
-                    try { pdf.setFont('helvetica', 'normal'); } catch (e2) {}
+                    try { pdf.setFont('helvetica', 'normal'); } catch (e2) { }
                 }
 
                 const align = el.textAlign || 'left';
@@ -1373,7 +1461,7 @@ export default function Layout() {
 
                 if (elSX !== 1 && elSX > 0) pdf.internal.write('100 Tz');
 
-            // ── RECT ─────────────────────────────────────────────────────────
+                // ── RECT ─────────────────────────────────────────────────────────
             } else if (el.type === 'rect') {
                 let fill = el.fill;
                 const isStrip =
@@ -1416,16 +1504,29 @@ export default function Layout() {
                     }
                 }
 
-            // ── BARCODE ───────────────────────────────────────────────────────
+                // ── BARCODE ───────────────────────────────────────────────────────
+                // REPLACE WITH:
             } else if (el.type === 'barcode') {
                 let bv = el.barcodeValue || '123456789';
                 const mp = mapping[el.id];
-                if (mp && data[mp] !== undefined) bv = String(data[mp]);
-                else {
+                if (mp && data[mp] !== undefined) {
+                    bv = String(data[mp]);
+                } else {
+                    // 1. Try exact match by fieldName or element name
                     const ac = Object.keys(data || {}).find(
                         c => c.toLowerCase() === (el.fieldName || el.name || '').toLowerCase()
                     );
-                    if (ac) bv = String(data[ac] ?? bv);
+                    if (ac) {
+                        bv = String(data[ac] ?? bv);
+                    } else {
+                        // 2. Auto-match any column whose header contains 'ean'
+                        const eanCol = Object.keys(data || {}).find(
+                            c => c.toLowerCase().includes('ean')
+                        );
+                        if (eanCol && data[eanCol] !== undefined) {
+                            bv = String(data[eanCol] ?? bv).replace(/^[₹\s]+/, '').trim();
+                        }
+                    }
                 }
                 const format = (el.barcodeFormat || 'CODE128').toUpperCase();
                 let bw = ew;
@@ -1440,68 +1541,55 @@ export default function Layout() {
                     bx = ex + (ew - bw) / 2;
                     by = ey + (eh - bh) / 2;
                 } else if (!isProduction) {
-                    bh += 2; 
+                    bh += 2;
                 }
 
-                drawVectorBarcode(pdf, bv, bx, by, bw, bh, el.barcodeFormat || 'CODE128', el.fill);
+                await drawVectorBarcode(pdf, bv, bx, by, bw, bh, el.barcodeFormat || 'CODE128', el.fill);
 
-            // ── QR CODE ── FULLY FIXED ────────────────────────────────────────
+                // ── QR CODE ── FULLY FIXED ────────────────────────────────────────
             } else if (el.type === 'qrcode') {
                 try {
-                    // Use centralised resolver to get QR value
-                    const qv = resolveQRValue(el, data, mapping);
-
+                    let qv = resolveQRValue(el, data, mapping);
                     if (!qv) {
-                        console.warn('QR skipped — no value for el:', el.id, el.name);
-                        pdf.restoreGraphicsState();
-                        continue;
-                    }
-
-                    // Generate QR at high resolution for crisp PDF output
-                    const dataUrl = await QRCode.toDataURL(qv, {
-                        margin: 1,
-                        errorCorrectionLevel: 'M',
-                        width: 512,
-                        color: { dark: '#000000', light: '#ffffff' },
-                    });
-
-                    if (!dataUrl || !dataUrl.startsWith('data:image/png')) {
-                        console.warn('QR generation failed for value:', qv);
-                        pdf.restoreGraphicsState();
-                        continue;
-                    }
-
-                    // Square QR, centered within the element bounds
-                    const qsz = Math.min(ew, eh);
-                    const qx = ex + (ew - qsz) / 2;
-                    const qy = ey + (eh - qsz) / 2;
-
-                    // Try base64 string first (more reliable with jsPDF)
-                    const base64Data = dataUrl.split(',')[1];
-                    try {
-                        if (base64Data) {
-                            pdf.addImage(base64Data, 'PNG', qx, qy, qsz, qsz);
-                        } else {
-                            pdf.addImage(dataUrl, 'PNG', qx, qy, qsz, qsz);
+                        const qrCol = Object.keys(data || {}).find(
+                            c => c.toLowerCase().includes('qr')
+                        );
+                        if (qrCol && data[qrCol]) {
+                            qv = String(data[qrCol]).replace(/^[₹\s]+/, '').trim();
                         }
-                    } catch (imgErr) {
-                        // Fallback: try full data URL
+                    }
+
+                    if (qv) {
+                        const dataUrl = await QRCode.toDataURL(qv, {
+                            margin: 1,
+                            errorCorrectionLevel: 'M',
+                            width: 512,
+                            color: { dark: '#000000', light: '#ffffff' },
+                        });
+
+                        const qsz = Math.min(ew, eh);
+                        const qx = ex + (ew - qsz) / 2;
+                        const qy = ey + (eh - qsz) / 2;
+                        const base64Data = dataUrl.split(',')[1];
+
                         try {
-                            pdf.addImage(dataUrl, 'PNG', qx, qy, qsz, qsz);
-                        } catch (imgErr2) {
-                            console.warn('QR addImage failed both ways:', imgErr2.message, 'value:', qv);
+                            pdf.addImage(base64Data || dataUrl, 'PNG', qx, qy, qsz, qsz);
+                        } catch (imgErr) {
+                            console.warn('QR addImage failed:', imgErr.message);
                         }
                     }
                 } catch (e) {
-                    console.warn('QR render error — el.id:', el.id, 'msg:', e.message);
+                    console.warn('QR render error:', e.message);
                 }
+                pdf.restoreGraphicsState();
+                continue;
 
-            // ── IMAGE ─────────────────────────────────────────────────────────
+                // ── IMAGE ─────────────────────────────────────────────────────────
             } else if (el.type === 'image') {
                 const src = el.image || el.src || el.url;
                 if (src) { try { pdf.addImage(src, 'PNG', ex, ey, ew, eh); } catch (e) { } }
 
-            // ── LINE ─────────────────────────────────────────────────────────
+                // ── LINE ─────────────────────────────────────────────────────────
             } else if (el.type === 'line') {
                 const pts = el.points || [0, 0, 100, 0];
                 pdf.setDrawColor(el.stroke || '#000000');
@@ -1511,7 +1599,7 @@ export default function Layout() {
                     ex + pts[2] * unitScale * cs, ey + pts[3] * unitScale * cs
                 );
 
-            // ── GENERIC CIRCLE ────────────────────────────────────────────────
+                // ── GENERIC CIRCLE ────────────────────────────────────────────────
             } else if (el.type === 'circle') {
                 const rx = (el.radius || 10) * unitScale * cs * (el.scaleX || 1);
                 const ry = (el.radius || 10) * unitScale * cs * (el.scaleY || 1);
@@ -1628,7 +1716,7 @@ export default function Layout() {
                     if (item.isBranding) {
                         await drawVectorLabel(pdf, [], {}, {}, x, y, labelW, labelH, true);
                     } else {
-                        await drawVectorLabel(pdf, selectedTemplate.elements, item.data, manualMapping, x, y, labelW, labelH);
+                        await drawVectorLabel(pdf, selectedTemplate.elements, item.data, manualMapping, x, y, labelW, labelH, false, false, mappingModes);
                     }
                 }
             }
@@ -1930,17 +2018,32 @@ export default function Layout() {
                                 <div className="mapping-row-toolbar">
                                     {templateFields.map(field => (
                                         <div key={field.id} className="mapping-item-compact">
-                                            <label>{field.label}</label>
-                                            <select
-                                                className="mapping-select-toolbar"
-                                                value={manualMapping[field.id] || ''}
-                                                onChange={e => setManualMapping(prev => ({ ...prev, [field.id]: e.target.value }))}
-                                            >
-                                                <option value="">Auto</option>
-                                                {columns.map(col => (
-                                                    <option key={col} value={col}>{col}</option>
-                                                ))}
-                                            </select>
+                                            <div className="flex flex-col gap-1">
+                                                <div className="flex items-center justify-between">
+                                                    <label>{field.label}</label>
+                                                    <select
+                                                        className="text-[9px] bg-transparent border-none opacity-50 hover:opacity-100 cursor-pointer outline-none"
+                                                        value={mappingModes[field.id] || ''}
+                                                        onChange={e => setMappingModes(prev => ({ ...prev, [field.id]: e.target.value }))}
+                                                    >
+                                                        <option value="">Auto</option>
+                                                        <option value="text">Text</option>
+                                                        <option value="barcode">Barcode</option>
+                                                        <option value="ean13">EAN13</option>
+                                                        <option value="qrcode">QR Code</option>
+                                                    </select>
+                                                </div>
+                                                <select
+                                                    className="mapping-select-toolbar"
+                                                    value={manualMapping[field.id] || ''}
+                                                    onChange={e => setManualMapping(prev => ({ ...prev, [field.id]: e.target.value }))}
+                                                >
+                                                    <option value="">Auto</option>
+                                                    {columns.map(col => (
+                                                        <option key={col} value={col}>{col}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -2012,6 +2115,7 @@ export default function Layout() {
                                                                     elements={selectedTemplate.elements}
                                                                     data={rowData}
                                                                     mapping={manualMapping}
+                                                                    modes={mappingModes}
                                                                     width={itemW}
                                                                     height={itemH}
                                                                     designW={selectedTemplate.canvasWidth || selectedTemplate.width}

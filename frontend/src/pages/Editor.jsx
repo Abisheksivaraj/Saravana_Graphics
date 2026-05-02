@@ -12,6 +12,7 @@ import PropertyBar from '../components/PropertyBar';
 import ComponentsPanel from '../components/ComponentsPanel';
 import PropertiesPanel from '../components/PropertiesPanel';
 import BarcodePropertiesDialog from '../components/BarcodePropertiesDialog';
+import QRPropertiesDialog from '../components/QRPropertiesDialog';
 import ShapePropertiesDialog from '../components/ShapePropertiesDialog';
 import TextPropertiesDialog from '../components/TextPropertiesDialog';
 import LinePropertiesDialog from '../components/LinePropertiesDialog';
@@ -191,13 +192,16 @@ export default function Editor() {
   const [scrollPos, setScrollPos] = useState({ x: 0, y: 0 });
   const [editingTitle, setEditingTitle] = useState(false);
   const [showBarcodeProps, setShowBarcodeProps] = useState(null); // stores elementId
+  const [showQRProps, setShowQRProps] = useState(null); // stores elementId
   const [showShapeProps, setShowShapeProps] = useState(null); // stores elementId
   const [showTextProps, setShowTextProps] = useState(null); // stores elementId
   const [showLineProps, setShowLineProps] = useState(null); // stores elementId
   const [showImageProps, setShowImageProps] = useState(null); // stores elementId
   const [showNewModal, setShowNewModal] = useState(false);
 
-  const { companies, fetchCompanies } = useCompanyStore();
+  const { companies, fetchCompanies, createCompany } = useCompanyStore();
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
   const selectedEl = selectedIds.length > 0 ? elements.find(e => e.id === selectedIds[0]) : null;
 
   // ── Load design ──
@@ -295,8 +299,24 @@ export default function Editor() {
   const confirmSave = async (silent = false) => {
     setIsSaving(true);
     try {
+      let targetCompany = company;
+
+      // Handle new folder creation
+      if (isCreatingFolder && newFolderName.trim()) {
+        const created = await createCompany(newFolderName.trim());
+        if (created) {
+          targetCompany = created.name;
+          setCompany(targetCompany); // Update store state
+          setIsCreatingFolder(false);
+          setNewFolderName('');
+        } else {
+          setIsSaving(false);
+          return; // Stop if folder creation failed
+        }
+      }
+
       const payload = {
-        title, company, canvasWidth, canvasHeight, backgroundColor, sizePreset, elements,
+        title, company: targetCompany, canvasWidth, canvasHeight, backgroundColor, sizePreset, elements,
         thumbnail: getThumbnail(),
       };
       if (designId) {
@@ -312,7 +332,10 @@ export default function Editor() {
         setShowSaveModal(false); 
         navigate('/dashboard');
       }
-    } catch { if (!silent) toast.error('Failed to save'); }
+    } catch (err) { 
+      console.error('Save error:', err);
+      if (!silent) toast.error('Failed to save'); 
+    }
     finally { setIsSaving(false); }
   };
 
@@ -526,6 +549,8 @@ export default function Editor() {
     
     if (el.type === 'barcode') {
       setShowBarcodeProps(elId);
+    } else if (el.type === 'qrcode') {
+      setShowQRProps(elId);
     } else if (el.type === 'text') {
       setShowTextProps(elId);
     } else if (el.type === 'line') {
@@ -711,16 +736,46 @@ export default function Editor() {
               </div>
               <div className="bt-field">
                 <label>Target Folder</label>
-                <select
-                  className="bt-input"
-                  value={company}
-                  onChange={e => setCompany(e.target.value)}
-                >
-                  <option value="">No Folder</option>
-                  {companies.map(c => (
-                    <option key={c._id} value={c.name}>{c.name}</option>
-                  ))}
-                </select>
+                {!isCreatingFolder ? (
+                  <div className="bt-field-row">
+                    <select
+                      className="bt-input"
+                      value={company}
+                      onChange={e => setCompany(e.target.value)}
+                    >
+                      <option value="">No Folder</option>
+                      {companies.map(c => (
+                        <option key={c._id} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
+                    <button 
+                      className="bt-btn-cancel" 
+                      style={{ padding: '0 8px', height: 22, minWidth: 32 }}
+                      onClick={() => setIsCreatingFolder(true)}
+                      title="Create New Folder"
+                    >
+                      +
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bt-field-row">
+                    <input
+                      className="bt-input"
+                      placeholder="New folder name..."
+                      value={newFolderName}
+                      onChange={e => setNewFolderName(e.target.value)}
+                      autoFocus
+                    />
+                    <button 
+                      className="bt-btn-cancel" 
+                      style={{ padding: '0 8px', height: 22, minWidth: 32 }}
+                      onClick={() => { setIsCreatingFolder(false); setNewFolderName(''); }}
+                      title="Select Existing Folder"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
             <div className="bt-modal-foot">
@@ -742,6 +797,14 @@ export default function Editor() {
         <BarcodePropertiesDialog 
           elementId={showBarcodeProps} 
           onClose={() => setShowBarcodeProps(null)} 
+        />
+      )}
+
+      {/* QR Properties Dialog */}
+      {showQRProps && (
+        <QRPropertiesDialog 
+          elementId={showQRProps} 
+          onClose={() => setShowQRProps(null)} 
         />
       )}
 

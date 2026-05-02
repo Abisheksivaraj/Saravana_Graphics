@@ -429,9 +429,31 @@ function ElementWrapper({ el, isSelected, onSelect, onDblClick, onChange }) {
             } else if (el.type === 'barcode' || el.type === 'qrcode') {
                 if (mode !== 'fixed') {
                     const mappedColumn = el.fieldName;
+                    let val = null;
                     if (mappedColumn && previewData[mappedColumn] !== undefined) {
-                        const val = String(previewData[mappedColumn]);
-                        if (el.type === 'barcode') displayProps.barcodeValue = val;
+                        val = String(previewData[mappedColumn]);
+                    } else if (el.type === 'qrcode') {
+                        // Fallback: look for QR, EAN or BARCODE columns
+                        const autoCol = Object.keys(previewData).find(c => {
+                            const lower = c.toLowerCase();
+                            return lower.includes('qr') || lower === 'ean' || lower === 'barcode' || lower === 'ean13';
+                        });
+                        if (autoCol) val = String(previewData[autoCol]);
+                    } else if (el.type === 'barcode') {
+                        // Fallback: look for EAN or BARCODE columns
+                        const autoCol = Object.keys(previewData).find(c => {
+                            const lower = c.toLowerCase();
+                            return lower === 'ean' || lower === 'barcode' || lower === 'ean13';
+                        });
+                        if (autoCol) val = String(previewData[autoCol]);
+                    }
+
+                    if (val !== null) {
+                        if (el.type === 'barcode') {
+                            displayProps.barcodeValue = val;
+                            if (val.length === 13) displayProps.barcodeFormat = 'EAN13';
+                            else if (val.length === 8) displayProps.barcodeFormat = 'EAN8';
+                        }
                         if (el.type === 'qrcode') displayProps.qrValue = val;
                     }
                 }
