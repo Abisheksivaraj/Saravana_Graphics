@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import {
     Layers, FileSpreadsheet, Download,
     ArrowLeft, Search, ZoomIn, ZoomOut, Palette, Plus, X, Wand2,
-    ChevronLeft,
+    ChevronLeft, Save,
     Trash2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Stage, Layer, Group, Rect, Text, Image as KImage, Line, Circle, Ellipse, Star, RegularPolygon, Path } from 'react-konva';
 import Sidebar from '../components/Sidebar';
-import { designsAPI, stripColorsAPI } from '../api';
+import { designsAPI, stripColorsAPI, filesAPI } from '../api';
 import { useUIStore, unitToPx } from '../store/uiStore';
 import toast from 'react-hot-toast';
 import { jsPDF } from 'jspdf';
@@ -20,6 +20,8 @@ import QRElement from '../components/QRElement';
 import ImageElement from '../components/ImageElement';
 import logo from '../assets/final.jpeg';
 import './Layout.css';
+
+const PX_TO_MM = 0.264583;
 
 // ─── Font cache (base64 strings cached so we only fetch once per session) ─────
 const _fontCache = {};
@@ -158,7 +160,7 @@ const drawRupeeText = (pdf, rawText, x, y, scaleX = 1) => {
         }
         if (i < parts.length - 1) {
             try { pdf.addImage(rupeeImg, 'PNG', curX, imgY, imgW, imgH); } catch (e) { }
-            const gapMM = fs * 0.352778 * 0.30; // 30% of font size in mm
+            const gapMM = 3 * PX_TO_MM; // 3px gap as requested
             curX += imgW + gapMM;
         }
     });
@@ -696,7 +698,6 @@ export default function Layout() {
     const [showExplorer, setShowExplorer] = useState(false);
     const stageRef = useRef();
 
-    const PX_TO_MM = 0.264583;
 
     useEffect(() => {
         const img = new window.Image();
@@ -1055,7 +1056,7 @@ export default function Layout() {
     };
 
     // ─── Vector Barcode ───────────────────────────────────────────────────────
-    const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill) => {
+    const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduction = false) => {
         try {
             const fmt = (format || 'CODE128').toUpperCase();
 
@@ -1096,7 +1097,7 @@ export default function Layout() {
                 for (let i = 0; i < 6; i++) bits += R[d[i + 7]];
                 bits += '101';
 
-                const fsPt = 6;
+                const fsPt = isProduction ? 9 : 6; // 9PT for single page labels, 6PT for proofs
                 const fsMM = fsPt * 0.352778;
                 const gap = 0.1;
                 const barZoneH = h - fsMM - gap;
@@ -1117,7 +1118,7 @@ export default function Layout() {
                 }
                 try { pdf.setFont('OCR-BT', 'normal'); } catch (e) { pdf.setFont('courier', 'normal'); }
                 pdf.setFontSize(fsPt);
-                const ty = y + barZoneH + fsMM * 1.0;
+                const ty = y + barZoneH + fsMM * 1.0 - 2 * PX_TO_MM; // Move numbers 2px up
                 pdf.text(s[0], x + unitW * 2.5, ty, { align: 'center' });
                 for (let i = 0; i < 6; i++)
                     pdf.text(s[i + 1], bsX + unitW * (3 + i * 7 + 3.5), ty, { align: 'center' });
@@ -1281,7 +1282,7 @@ export default function Layout() {
             } else if (forcedMode === 'ean13' || forcedMode === 'barcode') {
                 const bv = String(data[manualMapping[el.id]] || resolveBarcodeValue(el, data, manualMapping));
                 const fmt = forcedMode === 'ean13' ? 'EAN13' : 'CODE128';
-                drawVectorBarcode(pdf, bv, ex, ey, ew, eh, fmt, el.fill);
+                drawVectorBarcode(pdf, bv, ex, ey, ew, eh, fmt, el.fill, isProduction);
                 pdf.restoreGraphicsState();
                 continue;
             } else if (forcedMode === 'text') {
@@ -1359,6 +1360,15 @@ export default function Layout() {
                 const align = el.textAlign || 'left';
                 const wrapW = (el.width || 0) * unitScale * cs;
 
+                if (!isProduction && elRot !== 0) {
+                    if (val.trim().startsWith('SG')) {
+                        ex += 3 * PX_TO_MM; // Move serial number right
+                        ey += 2 * PX_TO_MM; // Move SG down by 5px (was -3, now +2)
+                    } else if (val.toUpperCase().includes('SARAVANA')) {
+                        ey += 9 * PX_TO_MM; // Move SARAVANA down by 10px (was -1)
+                    }
+                }
+
                 if (elRot !== 0) {
                     const safeVal = val.replace(/₹/g, 'Rs.');
                     const lines = wrapW > 10 ? pdf.splitTextToSize(safeVal, wrapW) : [safeVal];
@@ -1399,7 +1409,7 @@ export default function Layout() {
                 explicitLines.forEach(seg => {
                     const segClean = seg.trim();
                     if (!segClean) return;
-                    const segWithRupee = segClean.replace(/₹/g, ' ₹ ');
+                    const segWithRupee = segClean;
                     if (wrapW > 10 && el.wrap !== 'none') {
                         const wrapped = pdf.splitTextToSize(segWithRupee, wrapW);
                         wrapped.forEach(l => rawLines.push(l.trim()));
@@ -1451,7 +1461,11 @@ export default function Layout() {
                             lineW = safeTextForWidth.length * (fs * 0.2);
                         }
 
-                        const visualLineW = lineW * (elSX || 1);
+                        const rupeeCount = (trimmedLine.match(/₹/g) || []).length;
+                        const imgW = fsMM * 0.95 * (elSX || 1);
+                        const gapMM = 3 * PX_TO_MM; // Reduced gap to 3px
+                        const visualLineW = (lineW * (elSX || 1)) + (rupeeCount * (imgW + gapMM));
+
                         let lineX = ex;
                         if (align === 'center') lineX = ex + (effectiveW - visualLineW) / 2;
                         else if (align === 'right') lineX = ex + effectiveW - visualLineW;
@@ -1535,18 +1549,25 @@ export default function Layout() {
                 let by = ey;
 
                 if (isProduction && format === 'EAN13') {
-                    bw = 30;
-                    bh = 14;
+                    bw = 26.2;
+                    bh = 10.4;
                     // Center within original element bounds
                     bx = ex + (ew - bw) / 2;
-                    by = ey + (eh - bh) / 2;
+                    by = ey + (eh - bh) / 2 + 5 * PX_TO_MM;
                 } else if (!isProduction) {
-                    bh += 2;
+                    const targetH = 32 * PX_TO_MM;
+                    if (bh < targetH) {
+                        const diff = targetH - bh;
+                        by -= diff / 2;
+                        bh = targetH;
+                    }
+                    by -= 0.6 * PX_TO_MM;
+                    by += 2.4 * PX_TO_MM; // Net shift down 2.4px (was 6.4px, moved up by 4px for all)
                 }
 
-                await drawVectorBarcode(pdf, bv, bx, by, bw, bh, el.barcodeFormat || 'CODE128', el.fill);
+                await drawVectorBarcode(pdf, bv, bx, by, bw, bh, el.barcodeFormat || 'CODE128', el.fill, isProduction);
 
-                // ── QR CODE ── FULLY FIXED ────────────────────────────────────────
+                // ── QR CODE ───────────────────────────────────────────────────────
             } else if (el.type === 'qrcode') {
                 try {
                     let qv = resolveQRValue(el, data, mapping);
@@ -1567,9 +1588,14 @@ export default function Layout() {
                             color: { dark: '#000000', light: '#ffffff' },
                         });
 
-                        const qsz = Math.min(ew, eh);
-                        const qx = ex + (ew - qsz) / 2;
-                        const qy = ey + (eh - qsz) / 2;
+                        let qsz = isProduction ? Math.min(ew, eh) : 6; // Fixed size of 6mm for proof sheets
+                        let qx = ex + (ew - qsz) / 2;
+                        let qy = ey + (eh - qsz) / 2;
+
+                        if (!isProduction) {
+                            qx -= 2 * PX_TO_MM; // Shift 2px to the left
+                            qy -= 10 * PX_TO_MM; // Shift 10px up
+                        }
                         const base64Data = dataUrl.split(',')[1];
 
                         try {
@@ -1587,7 +1613,21 @@ export default function Layout() {
                 // ── IMAGE ─────────────────────────────────────────────────────────
             } else if (el.type === 'image') {
                 const src = el.image || el.src || el.url;
-                if (src) { try { pdf.addImage(src, 'PNG', ex, ey, ew, eh); } catch (e) { } }
+                let iw = ew, ih = eh, ix = ex, iy = ey;
+                if (!isProduction) {
+                    if (src && (src.toLowerCase().includes('azorte') || src.toLowerCase().includes('azortee'))) {
+                        ih = 20 * PX_TO_MM; // Set height to 5px as requested
+                        const ratio = ew / (eh || 1);
+                        iw = ih * ratio; // Maintain aspect ratio
+                        ix = ex + (ew - iw) / 2;
+                        iy = ey + (eh - ih) / 2;
+                    } else {
+                        iw = 6; ih = 6; // Default to 6mm for other images like RFID logo
+                        ix = ex + (ew - iw) / 2;
+                        iy = ey + (eh - ih) / 2; // Shifted 10px down from previous -10 shift
+                    }
+                }
+                if (src) { try { pdf.addImage(src, 'PNG', ix, iy, iw, ih); } catch (e) { } }
 
                 // ── LINE ─────────────────────────────────────────────────────────
             } else if (el.type === 'line') {
@@ -1673,17 +1713,7 @@ export default function Layout() {
                     } catch (e) { console.warn("Header logo error", e); }
                 }
 
-                pdf.setFont("Arial", "bold");
-                pdf.setFontSize(14);
-                pdf.setTextColor("#000000");
-                pdf.text(COMPANY_NAME, 42, 13);
-
-                pdf.setFont("Arial", "normal");
-                pdf.setFontSize(8);
-                pdf.setTextColor("#555555");
-                pdf.text(COMPANY_TAGLINE, 42, 17);
-                pdf.text(COMPANY_ADDRESS, 42, 21);
-                pdf.text(CONTACT_INFO, 42, 25);
+                // Company text removed as requested
 
                 pdf.setFontSize(16);
                 pdf.setFont("Arial", "bold");
@@ -1727,6 +1757,112 @@ export default function Layout() {
             toast.error('Failed to generate PDF', { id: 'pdf' });
         }
     };
+
+    // ─── Save Proof Sheet to Server ──────────────────────────────────────────
+    const saveProofSheet = async () => {
+        if (!selectedTemplate) return;
+        
+        const fileNameInput = window.prompt("Enter a name for the Proof Sheet:", "Proof_Sheet");
+        if (!fileNameInput) return; // User cancelled or entered nothing
+        
+        const finalFileName = fileNameInput.endsWith('.pdf') ? fileNameInput : `${fileNameInput}.pdf`;
+
+        try {
+            toast.loading('Saving Proof Sheet…', { id: 'save_pdf' });
+            const PAGE_W = 297, PAGE_H = 210;
+            const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+            const _unit = selectedTemplate.canvasUnit || 'px';
+            const _dW = selectedTemplate.canvasWidth || selectedTemplate.width || 166;
+            const _dH = selectedTemplate.canvasHeight || selectedTemplate.height || 387;
+            const origW = _unit === 'mm' ? _dW : _dW * PX_TO_MM;
+            const origH = _unit === 'mm' ? _dH : _dH * PX_TO_MM;
+
+            const cols = 5, rows = 2, hGap = 6, vGap = 8;
+            const HEADER_H = 35;
+            const usableW = PAGE_W - 25;
+            const usableH = PAGE_H - 30 - HEADER_H;
+            const scaleX = (usableW - (cols - 1) * hGap) / (cols * origW);
+            const scaleY = (usableH - (rows - 1) * vGap) / (rows * origH);
+            const masterScale = Math.min(0.95, scaleX, scaleY);
+            const labelW = origW * masterScale, labelH = origH * masterScale;
+            const maxPP = cols * rows;
+            const gridW = cols * labelW + (cols - 1) * hGap;
+            const gridH = rows * labelH + (rows - 1) * vGap;
+            const startX = (PAGE_W - gridW) / 2;
+            const startY = HEADER_H + 5 + (usableH - gridH) / 2;
+
+            const pages = [];
+            let currentPage = [{ isBranding: true, data: null }];
+            for (const row of excelData) {
+                if (Object.values(row).every(v => v === '' || v == null)) continue;
+                if (currentPage.length >= maxPP) { pages.push(currentPage); currentPage = []; }
+                currentPage.push({ isBranding: false, data: row });
+            }
+            if (currentPage.length > 0) pages.push(currentPage);
+
+            const drawBrandingHeader = (pageNum, totalPages) => {
+                pdf.saveGraphicsState();
+
+                const bImg = brandingImg || logoImg;
+                if (bImg) {
+                    try {
+                        const aspect = bImg.height / bImg.width;
+                        const imgW = 28;
+                        const imgH = imgW * aspect;
+                        pdf.addImage(bImg, 'PNG', 10, 6, imgW, imgH);
+                    } catch (e) { console.warn("Header logo error", e); }
+                }
+
+                // Company text removed as requested
+
+                pdf.setFontSize(16);
+                pdf.setFont("Arial", "bold");
+                pdf.setTextColor("#000080");
+                pdf.text("DESIGN PROOF APPROVAL SHEET", PAGE_W - 10, 13, { align: 'right' });
+
+                pdf.setFontSize(9);
+                pdf.setFont("Arial", "normal");
+                pdf.setTextColor("#777777");
+                pdf.text(`Page ${pageNum} of ${totalPages}`, PAGE_W - 10, 19, { align: 'right' });
+                pdf.text(`Date: ${new Intl.DateTimeFormat('en-IN').format(new Date())}`, PAGE_W - 10, 24, { align: 'right' });
+
+                pdf.setDrawColor("#e2e8f0");
+                pdf.setLineWidth(0.4);
+                pdf.line(10, 32, PAGE_W - 10, 32);
+
+                pdf.restoreGraphicsState();
+            };
+
+            for (let pIdx = 0; pIdx < pages.length; pIdx++) {
+                const pgItems = pages[pIdx];
+                if (pIdx > 0) pdf.addPage();
+
+                drawBrandingHeader(pIdx + 1, pages.length);
+
+                for (let i = 0; i < pgItems.length; i++) {
+                    const item = pgItems[i];
+                    const c = i % cols, r = Math.floor(i / cols);
+                    const x = startX + c * (labelW + hGap), y = startY + r * (labelH + vGap);
+                    if (item.isBranding) {
+                        await drawVectorLabel(pdf, [], {}, {}, x, y, labelW, labelH, true);
+                    } else {
+                        await drawVectorLabel(pdf, selectedTemplate.elements, item.data, manualMapping, x, y, labelW, labelH, false, false, mappingModes);
+                    }
+                }
+            }
+            const blob = pdf.output('blob');
+            const formData = new FormData();
+            formData.append('file', blob, finalFileName);
+            
+            await filesAPI.upload(formData);
+
+            toast.success('Saved successfully!', { id: 'save_pdf' });
+        } catch (err) {
+            console.error(err);
+            toast.error('Failed to save PDF', { id: 'save_pdf' });
+        }
+    };
+
 
     // ─── Download Individual Labels ───────────────────────────────────────────
     const downloadIndividualPDF = async () => {
@@ -1822,6 +1958,13 @@ export default function Layout() {
                                     style={{ borderRadius: 50 }}
                                 >
                                     <Download size={14} /> Download Proof Sheet
+                                </button>
+                                <button
+                                    className="btn btn-primary btn-sm gap-2 px-6 shadow-lg shadow-primary/20"
+                                    onClick={saveProofSheet}
+                                    style={{ borderRadius: 50 }}
+                                >
+                                    <Save size={14} /> Save Proof Sheet
                                 </button>
                             </>
                         )}

@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, User, ShieldCheck, X, Paperclip, Loader2 } from 'lucide-react';
+import { Send, User, ShieldCheck, X, Paperclip, Loader2, Info } from 'lucide-react';
 import { vendorAPI } from '../api';
+import { useAuthStore } from '../store/authStore';
 import toast from 'react-hot-toast';
 import './OrderChat.css';
 
 export default function OrderChat({ order, onClose }) {
+    const { user } = useAuthStore();
+    const isBuyer = user?.role === 'buyer';
+    
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
     const [input, setInput] = useState('');
@@ -37,7 +41,7 @@ export default function OrderChat({ order, onClose }) {
     }, [messages]);
 
     const handleSend = async () => {
-        if (!input.trim() || sending) return;
+        if (!input.trim() || sending || isBuyer) return;
         
         setSending(true);
         try {
@@ -56,6 +60,13 @@ export default function OrderChat({ order, onClose }) {
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     };
 
+    const getSenderLabel = (msg) => {
+        if (isBuyer) {
+            return msg.role === 'admin' ? 'Admin' : 'Vendor';
+        }
+        return msg.role === user?.role ? 'You' : (msg.role === 'admin' ? 'Admin' : 'Vendor');
+    };
+
     return (
         <div className="order-chat-overlay" onClick={onClose}>
             <div className="order-chat-window" onClick={e => e.stopPropagation()}>
@@ -66,8 +77,8 @@ export default function OrderChat({ order, onClose }) {
                             <div className="oc-avatar vendor"><User size={14} /></div>
                         </div>
                         <div>
-                            <h3>Order Support</h3>
-                            <span>#{order.orderId} • Private Channel</span>
+                            <h3>{isBuyer ? 'Conversation Thread' : 'Order Support'}</h3>
+                            <span>#{order.orderNumber || order.orderId || order._id.slice(-6).toUpperCase()}</span>
                         </div>
                     </div>
                     <button className="oc-close" onClick={onClose}><X size={20} /></button>
@@ -75,7 +86,14 @@ export default function OrderChat({ order, onClose }) {
 
                 <div className="oc-messages" ref={scrollRef}>
                     <div className="oc-notice">
-                        This is a private conversation between you and the Admin regarding this specific order.
+                        {isBuyer ? (
+                            <div className="flex items-center gap-2">
+                                <Info size={14} />
+                                <span>You are viewing the conversation between Vendor and Admin.</span>
+                            </div>
+                        ) : (
+                            "This is a private conversation between you and the Admin regarding this specific order."
+                        )}
                     </div>
                     
                     {loading ? (
@@ -85,14 +103,14 @@ export default function OrderChat({ order, onClose }) {
                         </div>
                     ) : messages.length === 0 ? (
                         <div className="text-center p-8 text-gray-400 italic text-sm">
-                            No messages yet. Start the conversation!
+                            No messages yet.
                         </div>
                     ) : (
                         messages.map(msg => (
-                            <div key={msg._id} className={`oc-msg-row ${msg.role}`}>
+                            <div key={msg._id} className={`oc-msg-row ${msg.role === user?.role ? 'vendor' : 'admin'}`}>
                                 <div className="oc-msg-bubble">
                                     <div className="oc-msg-info">
-                                        <span className="oc-sender">{msg.role === 'admin' ? 'Admin' : 'You'}</span>
+                                        <span className="oc-sender">{getSenderLabel(msg)}</span>
                                         <span className="oc-time">{formatTime(msg.createdAt)}</span>
                                     </div>
                                     <div className="oc-msg-text">{msg.text}</div>
@@ -102,20 +120,22 @@ export default function OrderChat({ order, onClose }) {
                     )}
                 </div>
 
-                <div className="oc-input-area">
-                    <button className="oc-attach-btn"><Paperclip size={20} /></button>
-                    <input 
-                        type="text" 
-                        placeholder="Type a message..." 
-                        value={input}
-                        onChange={e => setInput(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleSend()}
-                        disabled={sending}
-                    />
-                    <button className="oc-send-btn" onClick={handleSend} disabled={!input.trim() || sending}>
-                        {sending ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
-                    </button>
-                </div>
+                {!isBuyer && (
+                    <div className="oc-input-area">
+                        <button className="oc-attach-btn"><Paperclip size={20} /></button>
+                        <input 
+                            type="text" 
+                            placeholder="Type a message..." 
+                            value={input}
+                            onChange={e => setInput(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleSend()}
+                            disabled={sending}
+                        />
+                        <button className="oc-send-btn" onClick={handleSend} disabled={!input.trim() || sending}>
+                            {sending ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

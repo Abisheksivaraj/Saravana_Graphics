@@ -2,20 +2,32 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { vendorAPI, BASE_URL } from '../api';
 import { 
-    FileText, CheckCircle, Clock, XCircle, Upload,
-    AlertCircle, Truck, Package, Search, Calendar,
-    Filter, Edit, MessageSquare, Send, X, Eye,
-    ShieldCheck, User, Loader2, Paperclip, RefreshCcw,
-    CheckCircle2, FileSearch, CreditCard, FileSpreadsheet
+    Search, Filter, RefreshCcw, FileText, Clock, Package, Truck, 
+    MessageSquare, Edit, AlertCircle, Loader2, Calendar, Upload, Trash2,
+    FileSpreadsheet, FileSearch, CheckCircle2, CreditCard, ShieldCheck, User, X,
+    Paperclip, Send,
+    CheckCircle,
+    Eye
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Sidebar from '../components/Sidebar';
+import FileHistory from '../components/FileHistory';
 import './AdminVendorPortal.css';
 
 const STATUS_OPTIONS = [
     'Excel Uploaded', 'Layout Uploaded', 'Artwork Rejected', 'Revised Artwork Uploaded',
-    'Artwork Approved', 'Performa Invoice Uploaded', 'Payment Proof Uploaded',
-    'Production', 'Despatch', 'Delivered'
+    'Artwork Approved', 'Performa Invoice Uploaded', 'Performa Invoice Upload',
+    'Payment Proof Uploaded', 'Production', 'Delivered', 'Completed'
+];
+
+// Only statuses the Admin can manually set
+const ADMIN_STATUS_OPTIONS = [
+    'Layout Uploaded',
+    'Revised Artwork Uploaded',
+    'Performa Invoice Upload',
+    'Production',
+    'Delivered',
+    'Completed',
 ];
 
 const STAGES = [
@@ -25,7 +37,7 @@ const STAGES = [
     { label: 'Invoice', icon: FileText },
     { label: 'Payment', icon: CreditCard },
     { label: 'Production', icon: Package },
-    { label: 'Dispatch', icon: Truck },
+    { label: 'Delivered', icon: Truck },
 ];
 
 function getStageIndex(status) {
@@ -37,7 +49,7 @@ function getStageIndex(status) {
     if (s.includes('performa')) return 3;
     if (s.includes('payment')) return 4;
     if (s.includes('production')) return 5;
-    if (s.includes('despatch') || s.includes('delivered')) return 6;
+    if (s.includes('delivered') || s.includes('completed')) return 6;
     return 0;
 }
 
@@ -191,14 +203,25 @@ function JobModal({ order, onClose, onRefresh }) {
 
     const stageIdx = getStageIndex(order.status);
 
+    const [deliveryRemarks, setDeliveryRemarks] = useState(order.deliveryRemarks || '');
+    const [deliveryFile, setDeliveryFile] = useState(null);
+
     const handleSave = async () => {
         setSaving(true);
         try {
+            // If Delivered is selected, upload the proof first if exists
+            if (newStatus === 'Delivered' && deliveryFile) {
+                const fd = new FormData();
+                fd.append('file', deliveryFile);
+                await vendorAPI.uploadDeliveryProof(order._id, fd);
+            }
+
             await vendorAPI.updateStatus(order._id, {
                 status: newStatus,
                 remarks,
                 productionDate,
-                dispatchDate: commitmentDate
+                dispatchDate: commitmentDate,
+                deliveryRemarks: newStatus === 'Delivered' ? deliveryRemarks : undefined
             });
             toast.success('Order updated successfully');
             onRefresh();
@@ -244,6 +267,23 @@ function JobModal({ order, onClose, onRefresh }) {
         }
     };
 
+    const handleRevisedArtworkUpload = async (file) => {
+        if (!file) return;
+        setUploading(true);
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+            await vendorAPI.uploadRevisedArtwork(order._id, fd);
+            toast.success('Revised artwork uploaded');
+            onRefresh();
+            onClose();
+        } catch (err) {
+            toast.error('Failed to upload revised artwork');
+        } finally {
+            setUploading(false);
+        }
+    };
+
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="jm-modal" onClick={e => e.stopPropagation()}>
@@ -282,17 +322,15 @@ function JobModal({ order, onClose, onRefresh }) {
                             <div className="jm-field">
                                 <label>Status</label>
                                 <select value={newStatus} onChange={e => setNewStatus(e.target.value)}>
-                                    {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                                    {ADMIN_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
                             </div>
-                            <div className="jm-field">
-                                <label>Production Date</label>
-                                <input type="date" value={productionDate} onChange={e => setProductionDate(e.target.value)} />
-                            </div>
-                            <div className="jm-field">
-                                <label>Commitment Date</label>
-                                <input type="date" value={commitmentDate} onChange={e => setCommitmentDate(e.target.value)} />
-                            </div>
+                            {newStatus === 'Production' && (
+                                <div className="jm-field">
+                                    <label>Commitment Date</label>
+                                    <input type="date" value={commitmentDate} onChange={e => setCommitmentDate(e.target.value)} />
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -320,44 +358,47 @@ function JobModal({ order, onClose, onRefresh }) {
                                 </label>
                             </div>
 
-                            {/* Performa Invoice Upload */}
-                            <div className="jm-action-card invoice">
-                                <div className="jm-action-info">
-                                    <FileText size={18} className="jm-action-icon invoice" />
-                                    <div>
-                                        <div className="jm-action-name">Performa Invoice</div>
-                                        <div className="jm-action-sub">
-                                            {order.performaInvoiceUrl
-                                                ? <a href={`${BASE_URL}/${order.performaInvoiceUrl}`} target="_blank" rel="noreferrer" className="jm-link">View Invoice ↗</a>
-                                                : 'Required after artwork approval'}
+                            {/* Performa Invoice Upload — only shown when status is Performa Invoice Upload */}
+                            {newStatus === 'Performa Invoice Upload' && (
+                                <div className="jm-action-card invoice">
+                                    <div className="jm-action-info">
+                                        <FileText size={18} className="jm-action-icon invoice" />
+                                        <div>
+                                            <div className="jm-action-name">Performa Invoice</div>
+                                            <div className="jm-action-sub">
+                                                {order.performaInvoiceUrl
+                                                    ? <a href={`${BASE_URL}/${order.performaInvoiceUrl}`} target="_blank" rel="noreferrer" className="jm-link">View Invoice ↗</a>
+                                                    : 'Upload the Performa Invoice for vendor approval'}
+                                            </div>
                                         </div>
                                     </div>
+                                    <label className={`jm-upload-btn invoice-btn ${uploading ? 'disabled' : ''}`}>
+                                        <Upload size={14} />
+                                        {order.performaInvoiceUrl ? 'Replace' : 'Upload'}
+                                        <input type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden-input" onChange={e => handleInvoiceUpload(e.target.files[0])} />
+                                    </label>
                                 </div>
-                                <label className={`jm-upload-btn invoice-btn ${uploading ? 'disabled' : ''}`}>
-                                    <Upload size={14} />
-                                    {order.performaInvoiceUrl ? 'Replace' : 'Upload'}
-                                    <input type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden-input" onChange={e => handleInvoiceUpload(e.target.files[0])} />
-                                </label>
-                            </div>
+                            )}
 
-                            {/* Revised Artwork from Vendor */}
-                            {order.revisedArtworkUrl && (
+                            {/* Revised Artwork Upload — only shown when status is Revised Artwork Uploaded */}
+                            {newStatus === 'Revised Artwork Uploaded' && (
                                 <div className="jm-action-card revised">
                                     <div className="jm-action-info">
                                         <Eye size={18} className="jm-action-icon revised" />
                                         <div>
-                                            <div className="jm-action-name">Revised Artwork (from Vendor)</div>
-                                            <div className="jm-action-sub">Vendor uploaded a revision</div>
+                                            <div className="jm-action-name">Revised Artwork</div>
+                                            <div className="jm-action-sub">
+                                                {order.revisedArtworkUrl
+                                                    ? <a href={`${BASE_URL}/${order.revisedArtworkUrl}`} target="_blank" rel="noreferrer" className="jm-link">View Latest ↗</a>
+                                                    : 'Upload revised artwork'}
+                                            </div>
                                         </div>
                                     </div>
-                                    <a
-                                        href={`${BASE_URL}/${order.revisedArtworkUrl}`}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="jm-upload-btn revised-btn"
-                                    >
-                                        <Eye size={14} /> View
-                                    </a>
+                                    <label className={`jm-upload-btn revised-btn ${uploading ? 'disabled' : ''}`}>
+                                        <Upload size={14} />
+                                        Upload New
+                                        <input type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden-input" onChange={e => handleRevisedArtworkUpload(e.target.files[0])} />
+                                    </label>
                                 </div>
                             )}
 
@@ -387,6 +428,13 @@ function JobModal({ order, onClose, onRefresh }) {
                         </div>
                     </div>
 
+                    {/* File Upload History */}
+                    <FileHistory
+                        layoutHistory={order.layoutHistory || []}
+                        revisedArtworkHistory={order.revisedArtworkHistory || []}
+                        reviewHistory={order.reviewHistory || []}
+                    />
+
                     {/* Remarks / Comment Box */}
                     <div className="jm-section">
                         <h3 className="jm-section-title">Remarks & Comments</h3>
@@ -395,10 +443,38 @@ function JobModal({ order, onClose, onRefresh }) {
                             placeholder="Add remarks, rejection reasons, or instructions for the vendor..."
                             value={remarks}
                             onChange={e => setRemarks(e.target.value)}
-                            rows={4}
+                            rows={3}
                         />
                         <p className="jm-hint">These remarks will be visible to the vendor when they check the order status.</p>
                     </div>
+
+                    {/* Delivery Section (Conditional) */}
+                    {newStatus === 'Delivered' && (
+                        <div className="jm-section" style={{ border: '2px solid #22c55e', background: '#f0fdf4' }}>
+                            <h3 className="jm-section-title" style={{ color: '#166534' }}>Delivery Details</h3>
+                            <div className="jm-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                <div className="jm-field">
+                                    <label>Delivery Remarks / Data</label>
+                                    <input 
+                                        type="text" 
+                                        className="jm-input" 
+                                        placeholder="Enter delivery details..."
+                                        value={deliveryRemarks}
+                                        onChange={e => setDeliveryRemarks(e.target.value)}
+                                        style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #bdf1cc' }}
+                                    />
+                                </div>
+                                <div className="jm-field">
+                                    <label>Upload Delivery Proof (POD)</label>
+                                    <label className="jm-upload-btn" style={{ background: '#22c55e', border: 'none' }}>
+                                        <Upload size={14} />
+                                        {deliveryFile ? deliveryFile.name : 'Choose Proof'}
+                                        <input type="file" className="hidden-input" onChange={e => setDeliveryFile(e.target.files[0])} />
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="jm-footer">
@@ -418,8 +494,20 @@ export default function AdminVendorPortal() {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
+    const [activeTab, setActiveTab] = useState('active'); // 'active' or 'completed'
     const [activeChat, setActiveChat] = useState(null);
     const [managingOrder, setManagingOrder] = useState(null);
+
+    const handleDelete = async (orderId) => {
+        if (!window.confirm('Are you sure you want to delete this order? This action cannot be undone.')) return;
+        try {
+            await vendorAPI.deleteOrder(orderId);
+            toast.success('Order deleted successfully');
+            fetchData();
+        } catch (err) {
+            toast.error('Failed to delete order');
+        }
+    };
 
     const fetchData = async () => {
         try {
@@ -435,12 +523,18 @@ export default function AdminVendorPortal() {
     useEffect(() => { fetchData(); }, []);
 
     const filteredOrders = orders.filter(o => {
-        const matchesSearch =
-            (o.orderId || '').toLowerCase().includes(search.toLowerCase()) ||
-            (o.fileName || '').toLowerCase().includes(search.toLowerCase()) ||
-            (o.vendorId?.name || '').toLowerCase().includes(search.toLowerCase());
+        const matchesSearch = 
+            o.orderId?.toLowerCase().includes(search.toLowerCase()) ||
+            o.vendorId?.name?.toLowerCase().includes(search.toLowerCase()) ||
+            o.fileName?.toLowerCase().includes(search.toLowerCase());
+        
         const matchesStatus = statusFilter === 'All' || o.status === statusFilter;
-        return matchesSearch && matchesStatus;
+        
+        // Tab filtering
+        const isCompleted = o.status === 'Delivered' || o.status === 'Completed';
+        const matchesTab = activeTab === 'active' ? !isCompleted : isCompleted;
+
+        return matchesSearch && matchesStatus && matchesTab;
     });
 
     const stats = STATUS_OPTIONS.reduce((acc, s) => {
@@ -469,12 +563,15 @@ export default function AdminVendorPortal() {
                         { label: 'Pending Layout', value: stats['Excel Uploaded'] || 0, color: '#6366f1' },
                         { label: 'Artwork Review', value: (stats['Layout Uploaded'] || 0) + (stats['Revised Artwork Uploaded'] || 0), color: '#3b82f6' },
                         { label: 'Rejected', value: stats['Artwork Rejected'] || 0, color: '#ef4444' },
-                        { label: 'Invoice Pending', value: stats['Artwork Approved'] || 0, color: '#f59e0b' },
+                        { label: 'Invoice Pending', value: (stats['Artwork Approved'] || 0) + (stats['Performa Invoice Uploaded'] || 0), color: '#f59e0b' },
                         { label: 'In Production', value: stats['Production'] || 0, color: '#8b5cf6' },
-                        { label: 'Dispatched', value: stats['Despatch'] || 0, color: '#14b8a6' },
-                        { label: 'Delivered', value: stats['Delivered'] || 0, color: '#10b981' },
+                        { label: 'Delivered', value: (stats['Delivered'] || 0) + (stats['Completed'] || 0), color: '#10b981' },
                     ].map(s => (
-                        <div key={s.label} className="ap-stat-card" onClick={() => setStatusFilter(s.label === 'Total' ? 'All' : s.label)}>
+                        <div key={s.label} className="ap-stat-card" onClick={() => {
+                            if (s.label === 'Delivered') setActiveTab('completed');
+                            else if (s.label !== 'Total') setActiveTab('active');
+                            setStatusFilter(s.label === 'Total' ? 'All' : s.label);
+                        }}>
                             <div className="ap-stat-value" style={{ color: s.color }}>{s.value}</div>
                             <div className="ap-stat-label">{s.label}</div>
                         </div>
@@ -498,6 +595,28 @@ export default function AdminVendorPortal() {
                             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                     </div>
+                </div>
+
+                {/* Tabs */}
+                <div className="ap-tabs">
+                    <button 
+                        className={`ap-tab ${activeTab === 'active' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('active')}
+                    >
+                        Active Orders
+                        <span className="ap-tab-count">
+                            {orders.filter(o => o.status !== 'Delivered' && o.status !== 'Completed').length}
+                        </span>
+                    </button>
+                    <button 
+                        className={`ap-tab ${activeTab === 'completed' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('completed')}
+                    >
+                        Completed
+                        <span className="ap-tab-count">
+                            {orders.filter(o => o.status === 'Delivered' || o.status === 'Completed').length}
+                        </span>
+                    </button>
                 </div>
 
                 {/* Table */}
@@ -591,6 +710,14 @@ export default function AdminVendorPortal() {
                                                     onClick={() => setManagingOrder(o)}
                                                 >
                                                     <Edit size={16} />
+                                                </button>
+                                                <button
+                                                    className="ap-icon-btn delete"
+                                                    title="Delete Order"
+                                                    onClick={() => handleDelete(o._id)}
+                                                    style={{ background: '#fef2f2', color: '#ef4444' }}
+                                                >
+                                                    <Trash2 size={16} />
                                                 </button>
                                                 {o.remarks && (
                                                     <span className="ap-remark-dot" title={o.remarks} />

@@ -16,10 +16,11 @@ const vendorOrderSchema = new mongoose.Schema({
             'Revised Artwork Uploaded',
             'Artwork Approved', 
             'Performa Invoice Uploaded', 
+            'Performa Invoice Approved',
             'Payment Proof Uploaded', 
             'Production', 
-            'Despatch', 
-            'Delivered'
+            'Delivered',
+            'Completed'
         ],
         default: 'Excel Uploaded' 
     },
@@ -27,8 +28,28 @@ const vendorOrderSchema = new mongoose.Schema({
     uploaderModel: { type: String, required: true, enum: ['User', 'Vendor'], default: 'Vendor' },
     remarks: { type: String, default: '' },
     layoutFileUrl: { type: String },
+    layoutHistory: [{
+        version: { type: Number },
+        fileUrl: { type: String },
+        uploadedAt: { type: Date, default: Date.now },
+        uploadedBy: { type: String, default: 'Admin' }
+    }],
     revisedArtworkUrl: { type: String },
+    revisedArtworkHistory: [{
+        version: { type: Number },
+        fileUrl: { type: String },
+        uploadedAt: { type: Date, default: Date.now },
+        uploadedBy: { type: String, default: 'Vendor' }
+    }],
+    reviewHistory: [{
+        status: { type: String },
+        remarks: { type: String },
+        reviewedAt: { type: Date, default: Date.now },
+        reviewedBy: { type: String }
+    }],
     performaInvoiceUrl: { type: String },
+    deliveryProofUrl: { type: String },
+    deliveryRemarks: { type: String },
     productionDate: { type: Date },
     dispatchDate: { type: Date },
     paymentDetails: {

@@ -88,6 +88,14 @@ export const vendorAPI = {
     sendMessage: (orderId, text) => api.post(`/vendors/chat/${orderId}`, { text }),
     getActiveChats: () => api.get('/vendors/active-chats'),
     markAsRead: (orderId) => api.patch(`/vendors/chat/${orderId}/read`),
+    approvePerforma: (id) => api.patch(`/vendors/approve-performa/${id}`),
+    uploadDeliveryProof: (id, formData) => api.post(`/vendors/delivery-proof/${id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    deleteOrder: (id) => api.delete(`/vendors/order/${id}`),
+    uploadRevisedArtwork: (id, formData) => api.post(`/vendors/revised-artwork/${id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
 };
 
 // Strip Colors
@@ -106,6 +114,15 @@ export const buyerAPI = {
     getAccounts: () => api.get('/buyers/accounts'),
     getVendors: () => api.get('/buyers/vendors'),
     getVendorHistory: (vendorId) => api.get(`/buyers/vendor-history/${vendorId}`),
+};
+
+// Files
+export const filesAPI = {
+    upload: (formData) => api.post('/files/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    getAll: () => api.get('/files'),
+    delete: (id) => api.delete(`/files/${id}`),
 };
 
 export default api;

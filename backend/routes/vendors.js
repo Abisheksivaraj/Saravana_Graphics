@@ -149,17 +149,81 @@ router.get('/stats', auth, async (req, res) => {
 
 // @route   PATCH api/vendors/status/:id
 // @desc    Update order status
-// @access  Admin
+// @access  Admin/Vendor
 router.patch('/status/:id', auth, checkRole(['admin', 'vendor']), async (req, res) => {
     try {
-        const { status, remarks, productionDate, dispatchDate } = req.body;
+        const { status, remarks, productionDate, dispatchDate, deliveryRemarks } = req.body;
         const query = req.user.role === 'admin' ? { _id: req.params.id } : { _id: req.params.id, vendorId: req.user._id };
-        const update = { status, remarks };
+        
+        let finalStatus = status;
+        // Business logic: if moving to Delivered, also mark as Completed
+        if (status === 'Delivered') {
+            finalStatus = 'Completed';
+        }
+
+        const update = { status: finalStatus, remarks };
         if (productionDate !== undefined) update.productionDate = productionDate || null;
         if (dispatchDate !== undefined) update.dispatchDate = dispatchDate || null;
-        const order = await VendorOrder.findOneAndUpdate(query, update, { new: true });
+        if (deliveryRemarks !== undefined) update.deliveryRemarks = deliveryRemarks;
+
+        const order = await VendorOrder.findOne(query);
         if (!order) return res.status(404).json({ message: 'Order not found or unauthorized' });
+
+        order.status = finalStatus;
+        if (remarks !== undefined) order.remarks = remarks;
+        if (productionDate !== undefined) order.productionDate = productionDate || null;
+        if (dispatchDate !== undefined) order.dispatchDate = dispatchDate || null;
+        if (deliveryRemarks !== undefined) order.deliveryRemarks = deliveryRemarks;
+
+        if (status === 'Artwork Approved' || status === 'Artwork Rejected') {
+            order.reviewHistory.push({
+                status: status,
+                remarks: remarks || '',
+                reviewedAt: new Date(),
+                reviewedBy: req.user.name || (req.user.role === 'admin' ? 'Admin' : 'Vendor')
+            });
+        }
+
+        await order.save();
         res.json(order);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// @route   PATCH api/vendors/approve-performa/:id
+// @desc    Vendor approves the performa invoice
+// @access  Vendor
+router.patch('/approve-performa/:id', auth, checkRole(['vendor']), async (req, res) => {
+    try {
+        const order = await VendorOrder.findOneAndUpdate(
+            { _id: req.params.id, vendorId: req.user._id, status: 'Performa Invoice Uploaded' },
+            { status: 'Performa Invoice Approved' },
+            { new: true }
+        );
+        if (!order) return res.status(404).json({ message: 'Order not found or not in correct status' });
+        res.json({ message: 'Performa Invoice Approved', order });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// @route   POST api/vendors/delivery-proof/:id
+// @desc    Upload delivery proof
+// @access  Admin/Vendor
+router.post('/delivery-proof/:id', auth, checkRole(['admin', 'vendor']), upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+        const query = req.user.role === 'admin' ? { _id: req.params.id } : { _id: req.params.id, vendorId: req.user._id };
+        
+        const order = await VendorOrder.findOneAndUpdate(
+            query,
+            { deliveryProofUrl: req.file.path },
+            { new: true }
+        );
+        if (!order) return res.status(404).json({ message: 'Order not found' });
+        
+        res.json({ message: 'Delivery proof uploaded', order });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
@@ -172,12 +236,19 @@ router.post('/layout/:id', auth, checkRole(['admin']), upload.single('file'), as
     try {
         if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
         
-        const order = await VendorOrder.findByIdAndUpdate(
-            req.params.id,
-            { layoutFileUrl: req.file.path, status: 'Layout Uploaded' },
-            { new: true }
-        );
+        const order = await VendorOrder.findById(req.params.id);
         if (!order) return res.status(404).json({ message: 'Order not found' });
+
+        const newVersion = (order.layoutHistory?.length || 0) + 1;
+        order.layoutFileUrl = req.file.path;
+        order.status = 'Layout Uploaded';
+        order.layoutHistory.push({
+            version: newVersion,
+            fileUrl: req.file.path,
+            uploadedAt: new Date(),
+            uploadedBy: req.user.name || 'Admin'
+        });
+        await order.save();
         
         res.json({ message: 'Layout uploaded', order });
     } catch (error) {
@@ -187,17 +258,29 @@ router.post('/layout/:id', auth, checkRole(['admin']), upload.single('file'), as
 
 // @route   POST api/vendors/revised-artwork/:id
 // @desc    Upload revised artwork for an order
-// @access  Vendor
-router.post('/revised-artwork/:id', auth, checkRole(['vendor']), upload.single('file'), async (req, res) => {
+// @access  Admin/Vendor
+router.post('/revised-artwork/:id', auth, checkRole(['admin', 'vendor']), upload.single('file'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+
+        // Admin can access any order; vendor only their own
+        const query = req.user.role === 'admin'
+            ? { _id: req.params.id }
+            : { _id: req.params.id, vendorId: req.user._id };
         
-        const order = await VendorOrder.findOneAndUpdate(
-            { _id: req.params.id, vendorId: req.user._id },
-            { revisedArtworkUrl: req.file.path, status: 'Revised Artwork Uploaded' },
-            { new: true }
-        );
+        const order = await VendorOrder.findOne(query);
         if (!order) return res.status(404).json({ message: 'Order not found' });
+
+        const newVersion = (order.revisedArtworkHistory?.length || 0) + 1;
+        order.revisedArtworkUrl = req.file.path;
+        order.status = 'Revised Artwork Uploaded';
+        order.revisedArtworkHistory.push({
+            version: newVersion,
+            fileUrl: req.file.path,
+            uploadedAt: new Date(),
+            uploadedBy: req.user.name || (req.user.role === 'admin' ? 'Admin' : 'Vendor')
+        });
+        await order.save();
         
         res.json({ message: 'Revised artwork uploaded', order });
     } catch (error) {
@@ -451,6 +534,31 @@ router.post('/chat/:orderId', auth, async (req, res) => {
 
         await newMessage.save();
         res.status(201).json(newMessage);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// @route   DELETE api/vendors/order/:id
+// @desc    Delete an order
+// @access  Admin/Vendor
+router.delete('/order/:id', auth, checkRole(['admin', 'vendor']), async (req, res) => {
+    try {
+        const order = await VendorOrder.findById(req.params.id);
+        if (!order) return res.status(404).json({ message: 'Order not found' });
+
+        // Security check: Vendor can only delete their own order
+        if (req.user.role === 'vendor' && order.vendorId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Unauthorized' });
+        }
+
+        // Delete associated messages
+        await Message.deleteMany({ orderId: req.params.id });
+        
+        // Delete the order
+        await VendorOrder.findByIdAndDelete(req.params.id);
+
+        res.json({ message: 'Order deleted successfully' });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
     }

@@ -123,6 +123,59 @@
     cursor: pointer; width: 100%;
 }
 
+/* ── Tabs ────────────────────────────────────────────────────── */
+.ap-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 2px;
+}
+
+.ap-tab {
+    padding: 10px 20px;
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    font-weight: 700;
+    color: #64748b;
+    cursor: pointer;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.ap-tab.active {
+    color: #f97316;
+}
+
+.ap-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -3px;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: #f97316;
+    border-radius: 2px;
+}
+
+.ap-tab-count {
+    font-size: 11px;
+    background: #f1f5f9;
+    color: #64748b;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 800;
+}
+
+.ap-tab.active .ap-tab-count {
+    background: #fff7ed;
+    color: #f97316;
+}
+
 /* ── Table ───────────────────────────────────────────────────── */
 .ap-table-container {
     background: white;

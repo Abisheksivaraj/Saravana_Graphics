@@ -85,6 +85,13 @@ export default function Login() {
         }
     };
 
+    const handlePortalSwitch = (type) => {
+        setPortalType(type);
+        const newParams = new URLSearchParams(searchParams);
+        newParams.set('type', type);
+        navigate(`/login?${newParams.toString()}`, { replace: true });
+    };
+
     const currentConfig = portalConfig[portalType];
 
     return (
@@ -122,6 +129,27 @@ export default function Login() {
                 {/* Right Side: Form */}
                 <div className="auth-form-section">
                     <div className="auth-card-modern">
+                        <div className="portal-switcher">
+                            <button 
+                                className={`portal-btn ${portalType === 'admin' ? 'active' : ''}`}
+                                onClick={() => handlePortalSwitch('admin')}
+                            >
+                                <Shield size={16} /> Admin
+                            </button>
+                            <button 
+                                className={`portal-btn ${portalType === 'vendor' ? 'active' : ''}`}
+                                onClick={() => handlePortalSwitch('vendor')}
+                            >
+                                <Factory size={16} /> Vendor
+                            </button>
+                            <button 
+                                className={`portal-btn ${portalType === 'buyer' ? 'active' : ''}`}
+                                onClick={() => handlePortalSwitch('buyer')}
+                            >
+                                <ShoppingCart size={16} /> Buyer
+                            </button>
+                        </div>
+
                         <div className="auth-card-header">
                             <h2>{currentConfig.formTitle}</h2>
                             <p>{currentConfig.formSubtitle}</p>

@@ -17,6 +17,8 @@ import FolderIcon from '@mui/icons-material/Folder';
 import MessageIcon from '@mui/icons-material/Message';
 import CloseIcon from '@mui/icons-material/Close';
 import SendIcon from '@mui/icons-material/Send';
+import HistoryIcon from '@mui/icons-material/History';
+import FileHistory from '../../components/FileHistory';
 
 const STATS_CONFIG = [
     { key: 'Queued', label: 'Queued', icon: <AccessTimeIcon />, color: '#f59e0b', bg: '#fef3c7' },
@@ -43,6 +45,7 @@ export default function Dashboard() {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeChat, setActiveChat] = useState(null);
+    const [expandedRow, setExpandedRow] = useState(null);
 
     const fetchData = async () => {
         setLoading(true);
@@ -113,7 +116,7 @@ export default function Dashboard() {
             <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid #e2e8f0' }}>
                 <Table size="small">
                     <TableHead>
-                        <TableRow sx={{ bgcolor: '#7c3aed' }}>
+                        <TableRow sx={{ bgcolor: '#f97316' }}>
                             {['#', 'Order ID', 'File Name', 'Brand', 'Upload Date', 'Production', 'Status', 'Actions'].map(h => (
                                 <TableCell key={h} sx={{ color: '#fff', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5, py: 1.5 }}>
                                     {h}
@@ -138,32 +141,62 @@ export default function Dashboard() {
                             </TableRow>
                         ) : (
                             orders.slice(0, 15).map((order, i) => (
-                                <TableRow key={order._id} hover sx={{ '&:hover': { bgcolor: '#f8fafc' } }}>
-                                    <TableCell sx={{ fontWeight: 600, color: '#64748b' }}>{i + 1}</TableCell>
-                                    <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700, color: '#7c3aed', fontSize: '0.8rem' }}>{order.orderId}</TableCell>
-                                    <TableCell sx={{ fontSize: '0.85rem' }}>{order.fileName}</TableCell>
-                                    <TableCell sx={{ fontSize: '0.85rem', color: '#475569' }}>{order.brand}</TableCell>
-                                    <TableCell sx={{ fontSize: '0.8rem', color: '#64748b' }}>{formatDate(order.createdAt)}</TableCell>
-                                    <TableCell sx={{ fontSize: '0.8rem' }}>
-                                        {order.productionDate ? (
-                                            <Typography variant="caption" sx={{ fontWeight: 600, color: new Date() > new Date(order.productionDate) ? '#ef4444' : '#10b981' }}>
-                                                {formatDate(order.productionDate)}
-                                            </Typography>
-                                        ) : <Typography variant="caption" sx={{ color: '#cbd5e1' }}>—</Typography>}
-                                    </TableCell>
-                                    <TableCell>
-                                        <Chip label={order.status} color={statusColor(order.status)} size="small" variant="outlined" sx={{ fontWeight: 600, fontSize: '0.7rem' }} />
-                                    </TableCell>
-                                    <TableCell>
-                                        <Tooltip title="View Order Chat">
-                                            <IconButton onClick={() => setActiveChat(order)} size="small" sx={{ bgcolor: '#fff7ed', color: '#f97316', '&:hover': { bgcolor: '#ffedd5' } }}>
-                                                <Badge badgeContent={order.unreadCount} color="error" overlap="circular" sx={{ '& .MuiBadge-badge': { fontSize: 9, height: 16, minWidth: 16 } }}>
-                                                    <MessageIcon fontSize="small" />
-                                                </Badge>
-                                            </IconButton>
-                                        </Tooltip>
-                                    </TableCell>
-                                </TableRow>
+                                <React.Fragment key={order._id}>
+                                    <TableRow hover sx={{ '&:hover': { bgcolor: '#f8fafc' } }}>
+                                        <TableCell sx={{ fontWeight: 600, color: '#64748b' }}>{i + 1}</TableCell>
+                                        <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700, color: '#f97316', fontSize: '0.8rem' }}>{order.orderId}</TableCell>
+                                        <TableCell sx={{ fontSize: '0.85rem' }}>{order.fileName}</TableCell>
+                                        <TableCell sx={{ fontSize: '0.85rem', color: '#475569' }}>{order.brand}</TableCell>
+                                        <TableCell sx={{ fontSize: '0.8rem', color: '#64748b' }}>{formatDate(order.createdAt)}</TableCell>
+                                        <TableCell sx={{ fontSize: '0.8rem' }}>
+                                            {order.productionDate ? (
+                                                <Typography variant="caption" sx={{ fontWeight: 600, color: new Date() > new Date(order.productionDate) ? '#ef4444' : '#10b981' }}>
+                                                    {formatDate(order.productionDate)}
+                                                </Typography>
+                                            ) : <Typography variant="caption" sx={{ color: '#cbd5e1' }}>—</Typography>}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Chip label={order.status} color={statusColor(order.status)} size="small" variant="outlined" sx={{ fontWeight: 600, fontSize: '0.7rem' }} />
+                                        </TableCell>
+                                        <TableCell sx={{ display: 'flex', gap: 1 }}>
+                                            <Tooltip title="View Order Chat">
+                                                <IconButton onClick={() => setActiveChat(order)} size="small" sx={{ bgcolor: '#fff7ed', color: '#f97316', '&:hover': { bgcolor: '#ffedd5' } }}>
+                                                    <Badge badgeContent={order.unreadCount} color="error" overlap="circular" sx={{ '& .MuiBadge-badge': { fontSize: 9, height: 16, minWidth: 16 } }}>
+                                                        <MessageIcon fontSize="small" />
+                                                    </Badge>
+                                                </IconButton>
+                                            </Tooltip>
+                                            {((order.layoutHistory?.length > 0) || (order.revisedArtworkHistory?.length > 0) || (order.reviewHistory?.length > 0)) && (
+                                                <Tooltip title="File & Approval History">
+                                                    <IconButton 
+                                                        onClick={() => setExpandedRow(expandedRow === order._id ? null : order._id)} 
+                                                        size="small" 
+                                                        sx={{ 
+                                                            bgcolor: expandedRow === order._id ? '#eff6ff' : '#f8fafc', 
+                                                            color: expandedRow === order._id ? '#3b82f6' : '#64748b', 
+                                                            border: '1px solid #e2e8f0',
+                                                            '&:hover': { bgcolor: '#e0f2fe', color: '#0284c7' } 
+                                                        }}
+                                                    >
+                                                        <HistoryIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+                                            )}
+                                        </TableCell>
+                                    </TableRow>
+                                    {expandedRow === order._id && (
+                                        <TableRow>
+                                            <TableCell colSpan={8} sx={{ py: 2, px: 4, bgcolor: '#fafafa', borderBottom: '1px solid #f1f5f9' }}>
+                                                <FileHistory
+                                                    layoutHistory={order.layoutHistory || []}
+                                                    revisedArtworkHistory={order.revisedArtworkHistory || []}
+                                                    reviewHistory={order.reviewHistory || []}
+                                                    readOnly
+                                                />
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                </React.Fragment>
                             ))
                         )}
                     </TableBody>

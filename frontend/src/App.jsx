@@ -14,9 +14,11 @@ import DashboardVendor from './pages/vendor/Dashboard';
 import CreateOrder from './pages/vendor/CreateOrder';
 import ArtworkApproval from './pages/vendor/ArtworkApproval';
 import Payments from './pages/vendor/Payments';
+import Settings from './pages/vendor/Settings';
 import AdminVendorPortal from './pages/AdminVendorPortal';
 import AdminVendorManager from './pages/AdminVendorManager';
 import AdminBuyerManager from './pages/AdminBuyerManager';
+import AdminFilesManager from './pages/AdminFilesManager';
 
 import DashboardBuyer from './pages/buyer/Dashboard';
 import VendorHistory from './pages/buyer/VendorHistory';
@@ -71,7 +73,7 @@ export default function App() {
         <Route path="/editor" element={<ProtectedRoute allowedRoles={['admin', 'user']}><Editor /></ProtectedRoute>} />
         <Route path="/editor/:id" element={<ProtectedRoute allowedRoles={['admin', 'user']}><Editor /></ProtectedRoute>} />
         <Route path="/rfid-format" element={<ProtectedRoute allowedRoles={['admin', 'user']}><RFIDFormat /></ProtectedRoute>} />
-        <Route path="/layout" element={<ProtectedRoute allowedRoles={['admin', 'user']}><Layout /></ProtectedRoute>} />
+        <Route path="/layout" element={<ProtectedRoute allowedRoles={['admin', 'user', 'vendor']}><Layout /></ProtectedRoute>} />
 
         {/* Buyer Portal */}
         <Route path="/buyer/dashboard" element={<ProtectedRoute allowedRoles={['buyer']}><DashboardBuyer /></ProtectedRoute>} />
@@ -84,12 +86,14 @@ export default function App() {
           <Route path="create" element={<CreateOrder />} />
           <Route path="artwork" element={<ArtworkApproval />} />
           <Route path="payments" element={<Payments />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
         
         {/* Admin Specific */}
         <Route path="/admin/vendor-portal" element={<ProtectedRoute allowedRoles={['admin']}><AdminVendorPortal /></ProtectedRoute>} />
         <Route path="/admin/vendors" element={<ProtectedRoute allowedRoles={['admin']}><AdminVendorManager /></ProtectedRoute>} />
         <Route path="/admin/buyers" element={<ProtectedRoute allowedRoles={['admin']}><AdminBuyerManager /></ProtectedRoute>} />
+        <Route path="/admin/files" element={<ProtectedRoute allowedRoles={['admin']}><AdminFilesManager /></ProtectedRoute>} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

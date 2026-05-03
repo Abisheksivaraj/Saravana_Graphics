@@ -22,7 +22,7 @@ export default function ArtworkApproval() {
         setLoading(true);
         try {
             const res = await vendorAPI.getOrders();
-            setOrders(res.data.filter(o => o.status === 'Layout Uploaded'));
+            setOrders(res.data.filter(o => o.status === 'Layout Uploaded' || o.status === 'Revised Artwork Uploaded'));
         } catch (err) {
             toast.error('Failed to load orders');
         } finally {
@@ -93,13 +93,13 @@ export default function ArtworkApproval() {
                                         variant="outlined"
                                         fullWidth
                                         startIcon={<VisibilityIcon />}
-                                        onClick={() => window.open(`${BASE_URL}/${order.layoutFileUrl}`, '_blank')}
+                                        onClick={() => window.open(`${BASE_URL}/${order.status === 'Revised Artwork Uploaded' ? order.revisedArtworkUrl : order.layoutFileUrl}`, '_blank')}
                                         sx={{
                                             borderColor: '#7c3aed', color: '#7c3aed', fontWeight: 600,
                                             '&:hover': { bgcolor: '#f5f3ff', borderColor: '#6d28d9' },
                                         }}
                                     >
-                                        View Admin Layout
+                                        {order.status === 'Revised Artwork Uploaded' ? 'View Revised Artwork' : 'View Admin Layout'}
                                     </Button>
                                 </Box>
 

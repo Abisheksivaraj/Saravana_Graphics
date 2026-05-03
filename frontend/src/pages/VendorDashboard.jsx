@@ -96,6 +96,17 @@ export default function VendorDashboard() {
             case 'review': setReviewOrder(order); setReviewRemarks(order.remarks || ''); break;
             case 'revised': setRevisedOrder(order); break;
             case 'payment': setPaymentOrder(order); break;
+            case 'approve-performa': handleApprovePerforma(order); break;
+            case 'delete':
+                if (window.confirm('Are you sure you want to delete this order? This action cannot be undone.')) {
+                    vendorAPI.deleteOrder(order._id).then(() => {
+                        toast.success('Order deleted successfully');
+                        fetchData();
+                    }).catch(() => {
+                        toast.error('Failed to delete order');
+                    });
+                }
+                break;
             case 'delivered': 
                 if(confirm('Confirm delivery of this order?')) {
                     vendorAPI.updateStatus(order._id, { status: 'Delivered' }).then(() => {
@@ -105,6 +116,16 @@ export default function VendorDashboard() {
                 }
                 break;
             default: break;
+        }
+    };
+
+    const handleApprovePerforma = async (order) => {
+        try {
+            await vendorAPI.approvePerforma(order._id);
+            toast.success('Performa Invoice Approved');
+            fetchData();
+        } catch (err) {
+            toast.error('Failed to approve Performa Invoice');
         }
     };
 
@@ -240,15 +261,48 @@ export default function VendorDashboard() {
                     </div>
                 </div>
 
+                {/* Tabs */}
+                <div className="vp-tabs">
+                    <button 
+                        className={`vp-tab ${activeTab === 'active' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('active')}
+                    >
+                        Active Jobs
+                        <span className="vp-tab-count">
+                            {orders.filter(o => o.status !== 'Delivered' && o.status !== 'Completed').length}
+                        </span>
+                    </button>
+                    <button 
+                        className={`vp-tab ${activeTab === 'completed' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('completed')}
+                    >
+                        Completed
+                        <span className="vp-tab-count">
+                            {orders.filter(o => o.status === 'Delivered' || o.status === 'Completed').length}
+                        </span>
+                    </button>
+                </div>
+
                 {/* Workflow Cards */}
                 <div className="vp-orders-list">
-                    {orders.length === 0 ? (
+                    {loading ? (
                         <div className="vp-empty-state">
-                            <AlertCircle size={48} color="#94a3b8" />
-                            <p>No orders found. Upload an Excel file to get started.</p>
+                            <RefreshCcw size={48} className="spin" />
+                            <p>Loading your orders...</p>
+                        </div>
+                    ) : orders.filter(o => {
+                        const isCompleted = o.status === 'Delivered' || o.status === 'Completed';
+                        return activeTab === 'active' ? !isCompleted : isCompleted;
+                    }).length === 0 ? (
+                        <div className="vp-empty-state">
+                            <Upload size={48} />
+                            <p>No {activeTab} orders found.</p>
                         </div>
                     ) : (
-                        orders.map((order) => (
+                        orders.filter(o => {
+                            const isCompleted = o.status === 'Delivered' || o.status === 'Completed';
+                            return activeTab === 'active' ? !isCompleted : isCompleted;
+                        }).map((order) => (
                             <OrderWorkflow 
                                 key={order._id} 
                                 order={order} 
@@ -299,23 +353,37 @@ export default function VendorDashboard() {
                     </div>
                 )}
 
-                {/* Layout Review Modal */}
+                {/* Layout / Revised Artwork Review Modal */}
                 {reviewOrder && (
                     <div className="modal-overlay" onClick={() => setReviewOrder(null)}>
                         <div className="modal" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
                             <div className="modal-header">
-                                <h2 className="modal-title">Review Layout</h2>
+                                <h2 className="modal-title">
+                                    {reviewOrder.status === 'Revised Artwork Uploaded' ? 'Review Revised Artwork' : 'Review Layout'}
+                                </h2>
                                 <button className="btn btn-ghost btn-icon" onClick={() => setReviewOrder(null)}>✕</button>
                             </div>
                             <div className="modal-body space-y-4">
                                 <div className="p-4 bg-secondary rounded-lg flex items-center justify-between">
-                                    <span className="font-semibold text-sm">Download Admin Layout:</span>
-                                    {reviewOrder.layoutFileUrl ? (
-                                         <button className="btn btn-primary btn-sm" onClick={() => window.open(`${BASE_URL}/${reviewOrder.layoutFileUrl.replace(/\\/g, '/')}`, '_blank')}>
-                                            <FileText size={16} className="mr-2"/> View Layout
-                                         </button>
+                                    <span className="font-semibold text-sm">
+                                        {reviewOrder.status === 'Revised Artwork Uploaded' ? 'Download Revised Artwork:' : 'Download Admin Layout:'}
+                                    </span>
+                                    {reviewOrder.status === 'Revised Artwork Uploaded' ? (
+                                        reviewOrder.revisedArtworkUrl ? (
+                                            <button className="btn btn-primary btn-sm" onClick={() => window.open(`${BASE_URL}/${reviewOrder.revisedArtworkUrl.replace(/\\/g, '/')}`, '_blank')}>
+                                                <FileText size={16} className="mr-2"/> View Revised
+                                            </button>
+                                        ) : (
+                                            <span className="text-muted text-sm">No revised file found.</span>
+                                        )
                                     ) : (
-                                         <span className="text-muted text-sm">No layout file found.</span>
+                                        reviewOrder.layoutFileUrl ? (
+                                             <button className="btn btn-primary btn-sm" onClick={() => window.open(`${BASE_URL}/${reviewOrder.layoutFileUrl.replace(/\\/g, '/')}`, '_blank')}>
+                                                <FileText size={16} className="mr-2"/> View Layout
+                                             </button>
+                                        ) : (
+                                             <span className="text-muted text-sm">No layout file found.</span>
+                                        )
                                     )}
                                 </div>
                                 <div className="form-group mt-4">

@@ -1,0 +1,314 @@
+/* BuyerDashboard.css - Premium Dashboard Aesthetic */
+
+.bd-main {
+    flex: 1;
+    padding: 2rem 2.5rem;
+    overflow-y: auto;
+    background: #fafafa;
+}
+
+.bd-header {
+    margin-bottom: 2rem;
+}
+
+.bd-header h1 {
+    font-size: 32px;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 8px;
+    letter-spacing: -0.02em;
+}
+
+.bd-header p {
+    color: #64748b;
+    font-size: 15px;
+}
+
+/* Stats Section */
+.bd-stats {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 2.5rem;
+}
+
+.bd-stat-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    padding: 24px;
+    min-width: 200px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.bd-stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    border-color: var(--primary);
+}
+
+.bd-stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; width: 4px; height: 100%;
+    background: var(--primary);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.bd-stat-card:hover::before {
+    opacity: 1;
+}
+
+.bd-stat-value {
+    font-size: 36px;
+    font-weight: 900;
+    line-height: 1;
+    margin-bottom: 8px;
+    color: var(--primary);
+}
+
+.bd-stat-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+/* Grid Layout */
+.bd-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 24px;
+}
+
+/* Vendor Card */
+.bd-vendor-card {
+    background: white;
+    border: 1px solid #f1f5f9;
+    border-radius: 24px;
+    padding: 32px;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+}
+
+.bd-vendor-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08);
+    border-color: #ffedd5;
+}
+
+.bd-vendor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+}
+
+.bd-vendor-icon {
+    width: 56px;
+    height: 56px;
+    background: #fff7ed;
+    color: #f97316;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s;
+}
+
+.bd-vendor-card:hover .bd-vendor-icon {
+    background: #f97316;
+    color: white;
+    transform: scale(1.1) rotate(5deg);
+}
+
+.bd-vendor-status {
+    padding: 6px 12px;
+    border-radius: 9999px;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: #f0fdf4;
+    color: #166534;
+}
+
+.bd-vendor-name {
+    font-size: 24px;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 4px;
+}
+
+.bd-vendor-code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: #94a3b8;
+    letter-spacing: 0.1em;
+    margin-bottom: 24px;
+    display: block;
+}
+
+.bd-vendor-details {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 32px;
+}
+
+.bd-detail-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #475569;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.bd-detail-item svg {
+    color: #94a3b8;
+}
+
+/* Action Button */
+.bd-action-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    font-size: 14px;
+    padding: 16px;
+    border-radius: 16px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
+    margin-top: auto;
+}
+
+.bd-action-btn:hover {
+    background: var(--primary);
+    color: white;
+    box-shadow: 0 10px 20px -5px rgba(245, 124, 0, 0.4);
+}
+
+.bd-action-btn svg:last-child {
+    margin-left: auto;
+    transition: transform 0.3s;
+}
+
+.bd-action-btn:hover svg:last-child {
+    transform: translateX(4px);
+}
+
+/* Empty State */
+.bd-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 80px 40px;
+    background: white;
+    border-radius: 32px;
+    border: 2px dashed #e2e8f0;
+}
+
+.bd-empty-icon {
+    color: #cbd5e1;
+    margin-bottom: 20px;
+}
+
+.bd-empty h3 {
+    font-size: 20px;
+    color: #1e293b;
+    margin-bottom: 8px;
+}
+
+.bd-empty p {
+    color: #64748b;
+    max-width: 320px;
+    margin: 0 auto;
+}
+
+/* Table Section */
+.bd-table-container {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.bd-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.bd-table th {
+    background: #f8fafc;
+    padding: 18px 24px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 800;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.bd-table td {
+    padding: 20px 24px;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 14px;
+    color: #334155;
+    vertical-align: middle;
+}
+
+.bd-table tr:last-child td {
+    border-bottom: none;
+}
+
+.bd-table tr:hover td {
+    background: #fcfcfc;
+}
+
+/* Header with Back Button */
+.bd-header-flex {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.bd-back-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: white;
+    border: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.bd-back-btn:hover {
+    background: #f8fafc;
+    color: var(--primary);
+    border-color: var(--primary);
+    transform: translateX(-4px);
+}
+
+@media (max-width: 640px) {
+    .bd-main { padding: 1.5rem; }
+    .bd-stats { flex-direction: column; }
+    .bd-grid { grid-template-columns: 1fr; }
+    .bd-table-container { overflow-x: auto; }
+}

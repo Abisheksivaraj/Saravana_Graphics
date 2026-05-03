@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-    Cpu, Grid, LayoutTemplate, Layers, LogOut, ChevronLeft, Menu, Users, Upload
+    Cpu, Grid, LayoutTemplate, Layers, LogOut, ChevronLeft, Menu, Users, Upload, FileText
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useUIStore } from '../store/uiStore';
@@ -19,20 +19,23 @@ const Sidebar = () => {
         setSidebarCollapsed(true);
     }, [location.pathname]);
 
-    const navItems = [
-        { path: '/dashboard', icon: Grid, label: 'My Designs' },
-        { path: '/rfid-format', icon: Cpu, label: 'RFID Format' },
-        { path: '/layout', icon: Layers, label: 'Layout' },
-    ];
+    const navItems = [];
+
+    if (user?.role === 'admin' || user?.role === 'user') {
+        navItems.push({ path: '/dashboard', icon: Grid, label: 'My Designs' });
+        navItems.push({ path: '/rfid-format', icon: Cpu, label: 'RFID Format' });
+        navItems.push({ path: '/layout', icon: Layers, label: 'Layout' });
+    }
 
     if (user?.role === 'admin') {
         navItems.push({ path: '/admin/buyers', icon: Users, label: 'Buyer Management' });
         navItems.push({ path: '/admin/vendors', icon: Users, label: 'Manage Vendors' });
         navItems.push({ path: '/admin/vendor-portal', icon: Upload, label: 'Vendor Orders' });
+        navItems.push({ path: '/admin/files', icon: FileText, label: 'Files' });
     }
 
     if (user?.role === 'buyer') {
-        navItems.push({ path: '/buyer/dashboard', icon: Grid, label: 'Vendor Overview' });
+    navItems.push({ path: '/buyer/dashboard', icon: LayoutTemplate, label: 'Vendor Overview' });
     }
 
     const handleNavigation = (path) => {

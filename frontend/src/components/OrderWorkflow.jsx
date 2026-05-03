@@ -1,9 +1,10 @@
 import React from 'react';
 import { 
     FileSpreadsheet, FileSearch, CheckCircle2, FileText, 
-    CreditCard, Package, Truck, Calendar, MessageSquare, AlertCircle
+    CreditCard, Package, Truck, Calendar, MessageSquare, AlertCircle, Trash2
 } from 'lucide-react';
 import './OrderWorkflow.css';
+import FileHistory from './FileHistory';
 
 const STAGES = [
     { id: 'uploaded', label: 'Excel Uploaded', icon: FileSpreadsheet, color: '#6366f1' },
@@ -12,7 +13,7 @@ const STAGES = [
     { id: 'invoice', label: 'Performa Invoice', icon: FileText, color: '#f59e0b' },
     { id: 'payment', label: 'Payment Proof', icon: CreditCard, color: '#ec4899' },
     { id: 'production', label: 'In Production', icon: Package, color: '#8b5cf6' },
-    { id: 'delivery', label: 'Dispatched', icon: Truck, color: '#14b8a6' }
+    { id: 'delivery', label: 'Delivered', icon: Truck, color: '#14b8a6' }
 ];
 
 export default function OrderWorkflow({ currentStatus, order, onAction }) {
@@ -22,11 +23,11 @@ export default function OrderWorkflow({ currentStatus, order, onAction }) {
         if (s.includes('excel')) return 0;
         if (s.includes('layout')) return 1;
         if (s.includes('artwork approved')) return 2;
-        if (s.includes('artwork rejected')) return 1; // Back to layout review
+        if (s.includes('artwork rejected') || s.includes('revised artwork uploaded')) return 1;
         if (s.includes('performa')) return 3;
         if (s.includes('payment')) return 4;
         if (s.includes('production')) return 5;
-        if (s.includes('despatch') || s.includes('dispatch') || s.includes('delivered')) return 6;
+        if (s.includes('delivered') || s.includes('completed')) return 6;
         return 0;
     };
 
@@ -79,10 +80,14 @@ export default function OrderWorkflow({ currentStatus, order, onAction }) {
                     <button className="ow-btn chat" onClick={() => onAction('chat')}>
                         <MessageSquare size={16} /> Chat
                     </button>
+
+                    <button className="ow-btn delete" onClick={() => onAction('delete')} style={{ color: '#ef4444' }}>
+                        <Trash2 size={16} /> Delete
+                    </button>
                     
-                    {currentStatus === 'Layout Uploaded' && (
+                    {(currentStatus === 'Layout Uploaded' || currentStatus === 'Revised Artwork Uploaded') && (
                         <button className="ow-btn primary" onClick={() => onAction('review')}>
-                            Review Layout
+                            {currentStatus === 'Revised Artwork Uploaded' ? 'Review Revised Artwork' : 'Review Layout'}
                         </button>
                     )}
 
@@ -99,24 +104,40 @@ export default function OrderWorkflow({ currentStatus, order, onAction }) {
                     )}
 
                     {currentStatus === 'Performa Invoice Uploaded' && (
+                        <button className="ow-btn success" onClick={() => onAction('approve-performa')}>
+                            Approve Performa Invoice
+                        </button>
+                    )}
+
+                    {currentStatus === 'Performa Invoice Approved' && (
                         <button className="ow-btn primary" onClick={() => onAction('payment')}>
                             Upload Payment Proof
                         </button>
                     )}
 
                     {currentStatus === 'Production' && (
-                        <div className="ow-pending-msg">
-                            <Package size={14} /> Goods under production
-                        </div>
-                    )}
-
-                    {(currentStatus === 'Despatch' || currentStatus === 'Dispatch') && (
                         <button className="ow-btn success" onClick={() => onAction('delivered')}>
                             Confirm Delivery
                         </button>
                     )}
+
+                    {currentStatus === 'Completed' && (
+                        <div className="ow-pending-msg text-emerald-600">
+                            <CheckCircle2 size={14} /> Order Completed & Delivered
+                        </div>
+                    )}
                 </div>
             </div>
+
+            {((order.layoutHistory?.length > 0) || (order.revisedArtworkHistory?.length > 0) || (order.reviewHistory?.length > 0)) && (
+                <div style={{ marginTop: '16px' }}>
+                    <FileHistory
+                        layoutHistory={order.layoutHistory || []}
+                        revisedArtworkHistory={order.revisedArtworkHistory || []}
+                        reviewHistory={order.reviewHistory || []}
+                    />
+                </div>
+            )}
         </div>
     );
 }
