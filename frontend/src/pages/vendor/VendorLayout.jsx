@@ -14,6 +14,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import MenuIcon from '@mui/icons-material/Menu';
 import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
+import logo from '../../assets/logo.png';
 
 const DRAWER_WIDTH = 260;
 const COLLAPSED_WIDTH = 80;
@@ -103,7 +104,7 @@ export default function VendorLayout() {
                     }}>
                         {isSidebarOpen && (
                             <Box sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => navigate('/vendor-portal/dashboard')}>
-                                <img src="/logo.png" alt="Saravana Graphics" style={{ height: 40, objectFit: 'contain' }} />
+                                <img src={logo} alt="Saravana Graphics" style={{ height: 40, objectFit: 'contain' }} />
                             </Box>
                         )}
                         <IconButton

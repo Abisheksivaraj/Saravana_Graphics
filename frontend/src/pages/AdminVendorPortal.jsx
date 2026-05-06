@@ -658,7 +658,13 @@ export default function AdminVendorPortal() {
                                         </td>
                                         <td className="ap-file-cell">
                                             <FileText size={15} />
-                                            <span title={o.fileName}>{o.fileName?.length > 22 ? o.fileName.slice(0, 22) + '…' : o.fileName}</span>
+                                            {o.filePath ? (
+                                                <a href={`${BASE_URL}/${o.filePath.replace(/\\/g, '/')}`} target="_blank" rel="noreferrer" className="ap-file-link" title={o.fileName}>
+                                                    {o.fileName?.length > 22 ? o.fileName.slice(0, 22) + '…' : o.fileName}
+                                                </a>
+                                            ) : (
+                                                <span title={o.fileName}>{o.fileName?.length > 22 ? o.fileName.slice(0, 22) + '…' : o.fileName}</span>
+                                            )}
                                         </td>
                                         <td className="ap-td-brand">{o.brand || '—'}</td>
                                         <td>
