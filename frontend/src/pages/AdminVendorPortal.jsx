@@ -16,7 +16,7 @@ import './AdminVendorPortal.css';
 
 const STATUS_OPTIONS = [
     'Excel Uploaded', 'Layout Uploaded', 'Artwork Rejected', 'Revised Artwork Uploaded',
-    'Artwork Approved', 'Performa Invoice Uploaded', 'Performa Invoice Upload',
+    'Artwork Approved', 'Performa Invoice Uploaded', 'Performa Invoice Approved',
     'Payment Proof Uploaded', 'Production', 'Delivered', 'Completed'
 ];
 
@@ -61,6 +61,7 @@ function getStatusBadgeClass(status) {
     if (s.includes('production')) return 'badge-production';
     if (s.includes('despatch')) return 'badge-despatch';
     if (s.includes('payment')) return 'badge-payment';
+    if (s.includes('performa invoice approved')) return 'badge-approved';
     if (s.includes('performa') || s.includes('invoice')) return 'badge-invoice';
     if (s.includes('layout')) return 'badge-layout';
     return 'badge-default';

@@ -1,44 +1,32 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { vendorAPI } from '../../api';
 import toast from 'react-hot-toast';
 import {
     Box, Typography, Paper, Grid, Table, TableBody, TableCell, TableContainer,
-    TableHead, TableRow, Chip, IconButton, Skeleton, Tooltip, Badge
+    TableHead, TableRow, Chip, IconButton, Skeleton, Tooltip, Badge,
+    Pagination, CircularProgress, Divider, Button
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import ImageSearchIcon from '@mui/icons-material/ImageSearch';
-import CancelIcon from '@mui/icons-material/Cancel';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
-import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing';
-import LocalShippingIcon from '@mui/icons-material/LocalShipping';
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
-import FolderIcon from '@mui/icons-material/Folder';
 import MessageIcon from '@mui/icons-material/Message';
-import CloseIcon from '@mui/icons-material/Close';
-import SendIcon from '@mui/icons-material/Send';
 import HistoryIcon from '@mui/icons-material/History';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import SendIcon from '@mui/icons-material/Send';
+import CloseIcon from '@mui/icons-material/Close';
+import DeleteIcon from '@mui/icons-material/Delete';
 import FileHistory from '../../components/FileHistory';
+import OrderTrackingModal from '../../components/OrderTrackingModal';
 
-const STATS_CONFIG = [
-    { key: 'Queued', label: 'Queued', icon: <AccessTimeIcon />, color: '#f59e0b', bg: '#fef3c7' },
-    { key: 'Layout Uploaded', label: 'Layout Ready', icon: <ImageSearchIcon />, color: '#3b82f6', bg: '#dbeafe' },
-    { key: 'Artwork Rejected', label: 'Rejected', icon: <CancelIcon />, color: '#ef4444', bg: '#fee2e2' },
-    { key: 'Artwork Approved', label: 'Approved', icon: <CheckCircleOutlineIcon />, color: '#8b5cf6', bg: '#ede9fe' },
-    { key: 'Production', label: 'Production', icon: <PrecisionManufacturingIcon />, color: '#06b6d4', bg: '#cffafe' },
-    { key: 'Despatch', label: 'Despatch', icon: <LocalShippingIcon />, color: '#10b981', bg: '#d1fae5' },
-    { key: 'Payment Follow-up', label: 'Payment', icon: <AccountBalanceWalletIcon />, color: '#22c55e', bg: '#dcfce7' },
-    { key: 'TotalFile', label: 'Total', icon: <FolderIcon />, color: '#64748b', bg: '#f1f5f9' }
+// --- CONFIG ---
+const STATS_MAP = [
+    { key: 'Queued', label: 'Queued', color: '#f59e0b' },
+    { key: 'Artwork Rejected', label: 'Reject', color: '#ef4444' },
+    { key: 'Layout Uploaded', label: 'Verification', color: '#3b82f6' },
+    { key: 'Artwork Approved', label: 'Artwork Approval', color: '#8b5cf6' },
+    { key: 'Production', label: 'Production', color: '#06b6d4' },
+    { key: 'Despatch', label: 'Despatch', color: '#10b981' },
+    { key: 'Performa Invoice Approved', label: 'APPROVED', color: '#22c55e' },
+    { key: 'TotalFile', label: 'TotalFile', color: '#64748b' }
 ];
-
-const statusColor = (status) => {
-    const map = {
-        'Queued': 'warning', 'Excel Uploaded': 'warning', 'Layout Uploaded': 'info',
-        'Artwork Rejected': 'error', 'Artwork Approved': 'secondary',
-        'Production': 'primary', 'Despatch': 'success', 'Payment Follow-up': 'success'
-    };
-    return map[status] || 'default';
-};
 
 export default function Dashboard() {
     const [stats, setStats] = useState({});
@@ -46,6 +34,7 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true);
     const [activeChat, setActiveChat] = useState(null);
     const [expandedRow, setExpandedRow] = useState(null);
+    const [trackingOrder, setTrackingOrder] = useState(null);
 
     const fetchData = async () => {
         setLoading(true);
@@ -65,183 +54,186 @@ export default function Dashboard() {
 
     useEffect(() => { fetchData(); }, []);
 
-    const formatDate = (date) => new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const handleDelete = async (id) => {
+        if (!window.confirm('Are you sure you want to delete this order?')) return;
+        try {
+            await vendorAPI.deleteOrder(id);
+            toast.success('Order deleted successfully');
+            fetchData();
+        } catch (err) {
+            toast.error('Failed to delete order');
+        }
+    };
+
+    const formatDate = (date) => {
+        if (!date) return '-';
+        return new Date(date).toLocaleDateString('en-GB'); // dd/mm/yyyy
+    };
+
+    // --- Doughnut Chart Logic ---
+    const totalCount = stats.TotalFile || 0;
+    const completedCount = stats['Performa Invoice Approved'] || 0;
+    const percentage = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 
     return (
-        <Box>
-            {/* Header */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-                <Box>
-                    <Typography variant="h5" sx={{ fontWeight: 800, color: '#0f172a' }}>Dashboard</Typography>
-                    <Typography variant="body2" sx={{ color: '#64748b', mt: 0.5 }}>Overview of your order activity</Typography>
+        <Box sx={{ p: 1 }}>
+            {/* Horizontal Stats Bar */}
+            <Paper elevation={0} sx={{ 
+                p: 2, mb: 4, borderRadius: '16px', border: '1px solid #f1f5f9',
+                display: 'flex', alignItems: 'center', bgcolor: '#fff',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
+            }}>
+                {/* Circular Chart */}
+                <Box sx={{ position: 'relative', width: 60, height: 60, mr: 4, ml: 2, flexShrink: 0 }}>
+                    <svg width="60" height="60" viewBox="0 0 60 60">
+                        <circle cx="30" cy="30" r="25" fill="none" stroke="#f1f5f9" strokeWidth="8" />
+                        <circle cx="30" cy="30" r="25" fill="none" stroke="#22c55e" strokeWidth="8" 
+                            strokeDasharray={`${(percentage * 157) / 100} 157`}
+                            strokeDashoffset="0"
+                            transform="rotate(-90 30 30)"
+                        />
+                        <circle cx="30" cy="30" r="25" fill="none" stroke="#ef4444" strokeWidth="8" 
+                            strokeDasharray={`${(10 * 157) / 100} 157`} 
+                            strokeDashoffset={-120} // Just for visual flair like the image
+                            transform="rotate(-90 30 30)"
+                        />
+                    </svg>
                 </Box>
-                <Tooltip title="Refresh">
-                    <IconButton onClick={fetchData} sx={{ bgcolor: '#f1f5f9', '&:hover': { bgcolor: '#e2e8f0' } }}>
-                        <RefreshIcon sx={{ animation: loading ? 'spin 1s linear infinite' : 'none', '@keyframes spin': { '0%': { transform: 'rotate(0deg)' }, '100%': { transform: 'rotate(360deg)' } } }} />
-                    </IconButton>
-                </Tooltip>
-            </Box>
 
-            {/* Stats Cards */}
-            <Grid container spacing={2} sx={{ mb: 4 }}>
-                {STATS_CONFIG.map(config => (
-                    <Grid size={{ xs: 6, sm: 3, md: 1.5 }} key={config.key}>
-                        <Paper
-                            elevation={0}
-                            sx={{
-                                p: 2, textAlign: 'center', border: '1px solid #f1f5f9',
-                                transition: 'all 0.2s', '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' },
-                            }}
-                        >
-                            <Box sx={{ width: 36, height: 36, borderRadius: '10px', bgcolor: config.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 1, color: config.color }}>
-                                {React.cloneElement(config.icon, { sx: { fontSize: 20 } })}
-                            </Box>
-                            {loading ? (
-                                <Skeleton width={30} sx={{ mx: 'auto' }} />
-                            ) : (
-                                <Typography variant="h5" sx={{ fontWeight: 800, color: config.color, lineHeight: 1 }}>
-                                    {stats[config.key] || 0}
+                {/* Stats Items */}
+                <Box sx={{ display: 'flex', flex: 1, justifyContent: 'space-around', alignItems: 'center' }}>
+                    {STATS_MAP.map((item, idx) => (
+                        <React.Fragment key={item.key}>
+                            <Box sx={{ textAlign: 'center', flex: 1 }}>
+                                <Typography variant="h6" sx={{ fontWeight: 800, color: item.color, mb: 0.5 }}>
+                                    {stats[item.key] || 0}
                                 </Typography>
+                                <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase' }}>
+                                    {item.label}
+                                </Typography>
+                            </Box>
+                            {idx < STATS_MAP.length - 1 && (
+                                <Divider orientation="vertical" flexItem sx={{ mx: 1, borderColor: '#f1f5f9' }} />
                             )}
-                            <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                                {config.label}
-                            </Typography>
-                        </Paper>
-                    </Grid>
-                ))}
-            </Grid>
+                        </React.Fragment>
+                    ))}
+                </Box>
+            </Paper>
 
-            {/* Orders Table */}
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#0f172a' }}>Recent Orders</Typography>
-            <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid #e2e8f0' }}>
-                <Table size="small">
+            {/* Table */}
+            <TableContainer component={Paper} elevation={0} sx={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                <Table>
                     <TableHead>
                         <TableRow sx={{ bgcolor: '#f97316' }}>
-                            {['#', 'Order ID', 'File Name', 'Brand', 'Upload Date', 'Production', 'Status', 'Actions'].map(h => (
-                                <TableCell key={h} sx={{ color: '#fff', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5, py: 1.5 }}>
-                                    {h}
-                                </TableCell>
+                            {['SrNo', 'Vendor Code', 'FileName', 'Brand', 'Uploaded_By', 'Upload_On', 'Status', 'Remarks', 'Actions'].map(h => (
+                                <TableCell key={h} sx={{ color: '#fff', fontWeight: 800, fontSize: '0.8rem', py: 2 }}>{h}</TableCell>
                             ))}
                         </TableRow>
                     </TableHead>
                     <TableBody>
                         {loading ? (
-                            Array.from({ length: 4 }).map((_, i) => (
-                                <TableRow key={i}>
-                                    {Array.from({ length: 7 }).map((_, j) => (
-                                        <TableCell key={j}><Skeleton /></TableCell>
-                                    ))}
-                                </TableRow>
+                            Array.from({ length: 5 }).map((_, i) => (
+                                <TableRow key={i}><TableCell colSpan={9}><Skeleton height={40} /></TableCell></TableRow>
                             ))
                         ) : orders.length === 0 ? (
-                            <TableRow>
-                                <TableCell colSpan={7} align="center" sx={{ py: 6, color: '#94a3b8' }}>
-                                    No orders found.
-                                </TableCell>
-                            </TableRow>
-                        ) : (
-                            orders.slice(0, 15).map((order, i) => (
-                                <React.Fragment key={order._id}>
-                                    <TableRow hover sx={{ '&:hover': { bgcolor: '#f8fafc' } }}>
-                                        <TableCell sx={{ fontWeight: 600, color: '#64748b' }}>{i + 1}</TableCell>
-                                        <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700, color: '#f97316', fontSize: '0.8rem' }}>{order.orderId}</TableCell>
-                                        <TableCell sx={{ fontSize: '0.85rem' }}>{order.fileName}</TableCell>
-                                        <TableCell sx={{ fontSize: '0.85rem', color: '#475569' }}>{order.brand}</TableCell>
-                                        <TableCell sx={{ fontSize: '0.8rem', color: '#64748b' }}>{formatDate(order.createdAt)}</TableCell>
-                                        <TableCell sx={{ fontSize: '0.8rem' }}>
-                                            {order.productionDate ? (
-                                                <Typography variant="caption" sx={{ fontWeight: 600, color: new Date() > new Date(order.productionDate) ? '#ef4444' : '#10b981' }}>
-                                                    {formatDate(order.productionDate)}
-                                                </Typography>
-                                            ) : <Typography variant="caption" sx={{ color: '#cbd5e1' }}>—</Typography>}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Chip label={order.status} color={statusColor(order.status)} size="small" variant="outlined" sx={{ fontWeight: 600, fontSize: '0.7rem' }} />
-                                        </TableCell>
-                                        <TableCell sx={{ display: 'flex', gap: 1 }}>
-                                            <Tooltip title="View Order Chat">
-                                                <IconButton onClick={() => setActiveChat(order)} size="small" sx={{ bgcolor: '#fff7ed', color: '#f97316', '&:hover': { bgcolor: '#ffedd5' } }}>
-                                                    <Badge badgeContent={order.unreadCount} color="error" overlap="circular" sx={{ '& .MuiBadge-badge': { fontSize: 9, height: 16, minWidth: 16 } }}>
-                                                        <MessageIcon fontSize="small" />
-                                                    </Badge>
-                                                </IconButton>
-                                            </Tooltip>
-                                            {((order.layoutHistory?.length > 0) || (order.revisedArtworkHistory?.length > 0) || (order.reviewHistory?.length > 0)) && (
-                                                <Tooltip title="File & Approval History">
-                                                    <IconButton 
-                                                        onClick={() => setExpandedRow(expandedRow === order._id ? null : order._id)} 
-                                                        size="small" 
-                                                        sx={{ 
-                                                            bgcolor: expandedRow === order._id ? '#eff6ff' : '#f8fafc', 
-                                                            color: expandedRow === order._id ? '#3b82f6' : '#64748b', 
-                                                            border: '1px solid #e2e8f0',
-                                                            '&:hover': { bgcolor: '#e0f2fe', color: '#0284c7' } 
-                                                        }}
-                                                    >
-                                                        <HistoryIcon fontSize="small" />
-                                                    </IconButton>
-                                                </Tooltip>
-                                            )}
+                            <TableRow><TableCell colSpan={9} align="center" sx={{ py: 4 }}>No orders found</TableCell></TableRow>
+                        ) : orders.map((o, i) => (
+                            <React.Fragment key={o._id}>
+                                <TableRow hover sx={{ '&:hover': { bgcolor: '#f8fafc' } }}>
+                                    <TableCell sx={{ color: '#64748b', fontSize: '0.85rem' }}>{i + 1}</TableCell>
+                                    <TableCell 
+                                        onClick={() => setTrackingOrder(o)}
+                                        sx={{ 
+                                            fontFamily: 'monospace', color: '#475569', fontSize: '0.85rem', cursor: 'pointer', 
+                                            '&:hover': { color: '#f97316', textDecoration: 'underline' } 
+                                        }}
+                                    >
+                                        {o.vendorCode || o.barcodeFileId || o.orderId}
+                                    </TableCell>
+                                    <TableCell sx={{ fontSize: '0.85rem', fontWeight: 500 }}>{o.fileName}</TableCell>
+                                    <TableCell sx={{ fontSize: '0.85rem', color: '#475569', textTransform: 'uppercase' }}>{o.brand || 'General'}</TableCell>
+                                    <TableCell sx={{ fontSize: '0.85rem' }}>{o.uploadedBy?.name || 'Vipin'}</TableCell>
+                                    <TableCell sx={{ fontSize: '0.85rem', color: '#64748b' }}>{formatDate(o.createdAt)}</TableCell>
+                                    <TableCell>
+                                        <Box sx={{ 
+                                            display: 'inline-block', px: 2, py: 0.5, borderRadius: '20px', 
+                                            bgcolor: o.status === 'Despatch' ? '#22c55e' : '#f1f5f9',
+                                            color: o.status === 'Despatch' ? '#fff' : '#64748b',
+                                            fontSize: '0.75rem', fontWeight: 800
+                                        }}>
+                                            {o.status}
+                                        </Box>
+                                    </TableCell>
+                                    <TableCell sx={{ fontSize: '0.85rem', color: '#94a3b8' }}>{o.remarks || '-'}</TableCell>
+                                    <TableCell sx={{ display: 'flex', gap: 1 }}>
+                                        <IconButton onClick={() => setActiveChat(o)} size="small" sx={{ color: '#f97316' }}>
+                                            <Badge badgeContent={o.unreadCount} color="error"><MessageIcon fontSize="small" /></Badge>
+                                        </IconButton>
+                                        {((o.layoutHistory?.length > 0) || (o.revisedArtworkHistory?.length > 0)) && (
+                                            <IconButton onClick={() => setExpandedRow(expandedRow === o._id ? null : o._id)} size="small">
+                                                <HistoryIcon fontSize="small" />
+                                            </IconButton>
+                                        )}
+                                        <IconButton onClick={() => handleDelete(o._id)} size="small" sx={{ color: '#ef4444' }}>
+                                            <DeleteIcon fontSize="small" />
+                                        </IconButton>
+                                    </TableCell>
+                                </TableRow>
+                                {expandedRow === o._id && (
+                                    <TableRow>
+                                        <TableCell colSpan={9} sx={{ p: 2, bgcolor: '#fafafa' }}>
+                                            <FileHistory
+                                                layoutHistory={o.layoutHistory || []}
+                                                revisedArtworkHistory={o.revisedArtworkHistory || []}
+                                                reviewHistory={o.reviewHistory || []}
+                                                readOnly
+                                            />
                                         </TableCell>
                                     </TableRow>
-                                    {expandedRow === order._id && (
-                                        <TableRow>
-                                            <TableCell colSpan={8} sx={{ py: 2, px: 4, bgcolor: '#fafafa', borderBottom: '1px solid #f1f5f9' }}>
-                                                <FileHistory
-                                                    layoutHistory={order.layoutHistory || []}
-                                                    revisedArtworkHistory={order.revisedArtworkHistory || []}
-                                                    reviewHistory={order.reviewHistory || []}
-                                                    readOnly
-                                                />
-                                            </TableCell>
-                                        </TableRow>
-                                    )}
-                                </React.Fragment>
-                            ))
-                        )}
+                                )}
+                            </React.Fragment>
+                        ))}
                     </TableBody>
                 </Table>
+                <Box sx={{ p: 2, display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #f1f5f9' }}>
+                    <Pagination count={Math.ceil(orders.length / 10)} size="small" />
+                </Box>
             </TableContainer>
 
-            {/* Vendor Chat Modal */}
+            {/* Tracking Modal */}
+            {trackingOrder && <OrderTrackingModal order={trackingOrder} onClose={() => setTrackingOrder(null)} />}
+            
+            {/* Chat Modal (Existing logic) */}
             {activeChat && <VendorChat order={activeChat} onClose={() => setActiveChat(null)} />}
         </Box>
     );
 }
 
-// ─── Vendor Chat Panel ────────────────────────────────────────────────────────
+// --- Reuse VendorChat from previous implementation ---
 function VendorChat({ order, onClose }) {
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
     const [input, setInput] = useState('');
     const [sending, setSending] = useState(false);
-    const scrollRef = React.useRef();
+    const scrollRef = useRef();
 
     const fetchMessages = async (showLoading = false) => {
         if (showLoading) setLoading(true);
         try {
             const res = await vendorAPI.getMessages(order._id);
             setMessages(res.data);
-        } catch (err) {
-            console.error('Failed to load messages', err);
-        } finally {
-            if (showLoading) setLoading(false);
-        }
+        } catch (err) { console.error(err); } finally { if (showLoading) setLoading(false); }
     };
 
     useEffect(() => {
         fetchMessages(true);
-        // Mark as read when vendor opens
         vendorAPI.markAsRead(order._id);
-        
         const interval = setInterval(() => fetchMessages(), 5000);
         return () => clearInterval(interval);
     }, [order._id]);
 
     useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
+        if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }, [messages]);
 
     const handleSend = async () => {
@@ -251,114 +243,25 @@ function VendorChat({ order, onClose }) {
             const res = await vendorAPI.sendMessage(order._id, input);
             setMessages(prev => [...prev, res.data]);
             setInput('');
-        } catch (err) {
-            toast.error('Failed to send message');
-        } finally {
-            setSending(false);
-        }
+        } catch (err) { toast.error('Failed to send'); } finally { setSending(false); }
     };
 
-    const formatTime = (d) => new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const formatDate = (d) => new Date(d).toLocaleDateString([], { day: '2-digit', month: 'short' });
-
     return (
-        <Box sx={{
-            position: 'fixed', inset: 0, bgcolor: 'rgba(15,23,42,0.4)', backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, p: 3
-        }} onClick={onClose}>
-            <Paper elevation={24} sx={{
-                width: 400, height: 600, borderRadius: 4, display: 'flex', flexDirection: 'column',
-                overflow: 'hidden', animation: 'chatSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-                '@keyframes chatSlideUp': { from: { transform: 'translateY(40px)', opacity: 0 }, to: { transform: 'translateY(0)', opacity: 1 } }
-            }} onClick={e => e.stopPropagation()}>
-                
-                <Box sx={{ p: 2, bgcolor: '#0f172a', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                        <Box sx={{ display: 'flex' }}>
-                            <Box sx={{ width: 28, height: 28, borderRadius: '50%', bgcolor: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #0f172a', zIndex: 2 }}>
-                                <Typography variant="caption" sx={{ fontWeight: 'bold' }}>V</Typography>
-                            </Box>
-                            <Box sx={{ width: 28, height: 28, borderRadius: '50%', bgcolor: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #0f172a', ml: '-8px', zIndex: 1 }}>
-                                <Typography variant="caption" sx={{ fontWeight: 'bold' }}>A</Typography>
+        <Box sx={{ position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300 }} onClick={onClose}>
+            <Paper sx={{ width: 400, height: 500, display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+                <Box sx={{ p: 2, bgcolor: '#0f172a', color: 'white' }}>Chat #{order.orderId}</Box>
+                <Box ref={scrollRef} sx={{ flex: 1, p: 2, overflowY: 'auto', bgcolor: '#f8fafc' }}>
+                    {messages.map(m => (
+                        <Box key={m._id} sx={{ mb: 1.5, textAlign: m.role === 'vendor' ? 'right' : 'left' }}>
+                            <Box sx={{ display: 'inline-block', p: 1, px: 2, borderRadius: 2, bgcolor: m.role === 'vendor' ? '#f97316' : '#fff', color: m.role === 'vendor' ? '#fff' : '#000', border: '1px solid #e2e8f0' }}>
+                                {m.text}
                             </Box>
                         </Box>
-                        <Box>
-                            <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>Order Chat</Typography>
-                            <Typography variant="caption" sx={{ color: '#94a3b8' }}>#{order.orderId}</Typography>
-                        </Box>
-                    </Box>
-                    <IconButton size="small" onClick={onClose} sx={{ color: '#94a3b8', '&:hover': { color: 'white', bgcolor: 'rgba(255,255,255,0.1)' } }}>
-                        <CloseIcon fontSize="small" />
-                    </IconButton>
+                    ))}
                 </Box>
-
-                <Box ref={scrollRef} sx={{ flex: 1, p: 2, bgcolor: '#f8fafc', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                    <Box sx={{ fontSize: 12, textAlign: 'center', color: '#64748b', bgcolor: '#f1f5f9', p: 1, borderRadius: 2, mb: 1 }}>
-                        Private channel with <strong>Admin</strong>.
-                    </Box>
-
-                    {loading ? (
-                        <Box sx={{ textAlign: 'center', p: 4, color: '#94a3b8' }}>Loading conversation...</Box>
-                    ) : messages.length === 0 ? (
-                        <Box sx={{ textAlign: 'center', p: 4, color: '#94a3b8', fontStyle: 'italic' }}>No messages yet.</Box>
-                    ) : (() => {
-                        let lastDate = '';
-                        return messages.map(msg => {
-                            const msgDate = formatDate(msg.createdAt);
-                            const showDate = msgDate !== lastDate;
-                            lastDate = msgDate;
-                            const isMe = msg.role === 'vendor';
-
-                            return (
-                                <React.Fragment key={msg._id}>
-                                    {showDate && <Box sx={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', py: 0.5 }}>{msgDate}</Box>}
-                                    <Box sx={{ display: 'flex', width: '100%', mb: 0.5, justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
-                                        <Box sx={{ maxWidth: '85%', display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start' }}>
-                                            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 0.5, flexDirection: isMe ? 'row-reverse' : 'row' }}>
-                                                <Typography variant="caption" sx={{ fontWeight: 700, color: '#475569', fontSize: 11 }}>{isMe ? 'You' : 'Admin'}</Typography>
-                                                <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: 10 }}>{formatTime(msg.createdAt)}</Typography>
-                                            </Box>
-                                            <Box sx={{
-                                                p: 1.5, fontSize: 13, lineHeight: 1.4, borderRadius: 3,
-                                                bgcolor: isMe ? '#f97316' : 'white',
-                                                color: isMe ? 'white' : '#0f172a',
-                                                border: isMe ? 'none' : '1px solid #e2e8f0',
-                                                borderBottomRightRadius: isMe ? 4 : 12,
-                                                borderBottomLeftRadius: isMe ? 12 : 4,
-                                                position: 'relative'
-                                            }}>
-                                                {msg.text}
-                                                {isMe && msg.isRead && (
-                                                    <Typography variant="caption" sx={{ 
-                                                        position: 'absolute', bottom: -18, right: 0, 
-                                                        fontSize: 9, fontWeight: 700, color: '#10b981',
-                                                        textTransform: 'uppercase'
-                                                    }}>
-                                                        ✓ Read
-                                                    </Typography>
-                                                )}
-                                            </Box>
-                                        </Box>
-                                    </Box>
-                                </React.Fragment>
-                            );
-                        });
-                    })()}
-                </Box>
-
-                <Box sx={{ p: 1.5, bgcolor: 'white', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <input
-                        type="text"
-                        placeholder="Type a reply..."
-                        value={input}
-                        onChange={e => setInput(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleSend()}
-                        disabled={sending}
-                        style={{ flex: 1, border: 'none', outline: 'none', background: '#f1f5f9', padding: '10px 14px', borderRadius: 20, fontSize: 13 }}
-                    />
-                    <IconButton onClick={handleSend} disabled={!input.trim() || sending} sx={{ bgcolor: '#f97316', color: 'white', width: 36, height: 36, '&:hover': { bgcolor: '#ea580c' }, '&.Mui-disabled': { bgcolor: '#fdba74', color: 'white' } }}>
-                        <SendIcon sx={{ fontSize: 18 }} />
-                    </IconButton>
+                <Box sx={{ p: 1, display: 'flex', gap: 1 }}>
+                    <input style={{ flex: 1, padding: 8 }} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()} />
+                    <button onClick={handleSend} disabled={sending}>Send</button>
                 </Box>
             </Paper>
         </Box>

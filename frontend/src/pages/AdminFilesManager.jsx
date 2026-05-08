@@ -1,18 +1,432 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, Trash2, File as FileIcon, Search, Eye, X, Tag, Upload, CheckCircle, AlertTriangle, Loader } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import JsBarcode from 'jsbarcode';
+import QRCode from 'qrcode';
+import { Download, Trash2, File as FileIcon, Search, Eye, X, Tag, Upload, CheckCircle, AlertTriangle, Loader, FolderOpen, ArrowLeft, Folder, Home, ChevronRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { filesAPI, BASE_URL } from '../api';
+import { filesAPI, designsAPI, BASE_URL } from '../api';
 import Sidebar from '../components/Sidebar';
 import { useUIStore } from '../store/uiStore';
 import toast from 'react-hot-toast';
+import './AdminFilesManager.css';
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 const CHUNK_SIZE = 200; // labels per PDF file — tune up/down based on perf
 const PAGE_W_PT = 595.28; // A4 landscape width in points (210mm)
 const PAGE_H_PT = 419.53; // A4 landscape height in points (148mm)
+const PX_TO_MM = 0.264583;
 
 // ─── Yield helper — lets browser breathe between chunks ───────────────────────
 const yieldFrame = () => new Promise(r => setTimeout(r, 0));
+
+
+// ─── Font & Image Caches ──────────────────────────────────────────────────────
+const _fontCache = {};
+const rupeeImageCache = {};
+
+const getLabelType = (design) => {
+    const title = (design?.title || '').toLowerCase();
+    if (title.includes('azortee')) return 'azortee';
+    if (title.includes('livsmart')) return 'livsmart';
+    if (title.includes('reliance')) return 'reliance';
+    return 'generic';
+};
+
+const loadCustomFonts = async (pdf) => {
+    const fontFiles = [
+        { name: 'Arial', style: 'normal', file: '/fonts/Arial.ttf' },
+        { name: 'Arial', style: 'bold', file: '/fonts/Arial-Bold.ttf' },
+        { name: 'Arial', style: 'italic', file: '/fonts/Arial-Italic.ttf' },
+        { name: 'Arial', style: 'bolditalic', file: '/fonts/Arial-Bold-Italic.ttf' },
+        { name: 'Calibri', style: 'normal', file: '/fonts/Calibri.ttf' },
+        { name: 'Calibri', style: 'bold', file: '/fonts/Calibri-Bold.ttf' },
+        { name: 'OCR-BT', style: 'normal', file: '/fonts/OCRB.ttf' },
+        { name: 'RupeeForbidan', style: 'normal', file: '/fonts/RupeeForbidan.ttf' },
+    ];
+
+    for (const font of fontFiles) {
+        try {
+            const fileName = font.file.split('/').pop();
+            if (!_fontCache[fileName]) {
+                const response = await fetch(font.file);
+                if (!response.ok) { console.warn(`Font fetch failed: ${font.file}`); continue; }
+                const contentType = response.headers.get('content-type') || '';
+                if (contentType.includes('text/html') || contentType.includes('text/plain')) { continue; }
+                const buffer = await response.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+                _fontCache[fileName] = btoa(binary);
+            }
+            if (_fontCache[fileName]) {
+                pdf.addFileToVFS(fileName, _fontCache[fileName]);
+                pdf.addFont(fileName, font.name, font.style);
+            }
+        } catch (e) { console.warn(`Font registration failed: ${font.name}`, e); }
+    }
+};
+
+const getRupeeImage = (fontSizePt, color = '#000000') => {
+    const cacheKey = `${fontSizePt}_${color}`;
+    if (rupeeImageCache[cacheKey]) return rupeeImageCache[cacheKey];
+    const scale = 4;
+    const sizePx = Math.round(fontSizePt * 3.7795 * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = sizePx; canvas.height = sizePx;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, sizePx, sizePx);
+    ctx.fillStyle = color;
+    ctx.font = `${sizePx * 0.95}px "Rupee Forbidan", Arial, sans-serif`;
+    ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+    ctx.fillText('₹', sizePx / 2, sizePx / 2);
+    rupeeImageCache[cacheKey] = canvas;
+    return canvas;
+};
+
+const resolvePdfFont = (fontFamily = '') => {
+    const ff = fontFamily.toLowerCase();
+    if (ff.includes('calibri')) return 'Calibri';
+    if (ff.includes('ocr')) return 'OCR-BT';
+    if (ff.includes('rupee') || ff.includes('forbidan')) return 'RupeeForbidan';
+    if (ff.includes('times')) return 'times';
+    if (ff.includes('courier')) return 'courier';
+    return 'Arial';
+};
+
+const formatPrice = (raw) => {
+    if (/^\d+(\.\d+)?$/.test(String(raw).trim())) return parseFloat(raw).toFixed(2);
+    return String(raw).trim();
+};
+
+const formatNetQty = (val) => {
+    const s = String(val || '').trim();
+    if (!s) return s;
+    if (/TOP/i.test(s) && /BOTTOM/i.test(s)) return s.replace(/\s{1,}(BOTTOM)/i, '\n$1');
+    return s;
+};
+
+const isPriceColumn = (colName) => {
+    const lower = (colName || '').toLowerCase();
+    return lower.includes('mrp') || lower.includes('price');
+};
+
+const drawRupeeText = (pdf, rawText, x, y, scaleX = 1) => {
+    if (!rawText) return;
+    const text = String(rawText);
+    if (!text.includes('₹')) { pdf.text(text, x, y, {}); return; }
+    const fs = pdf.getFontSize();
+    const fsMM = fs * 0.352778;
+    const PX_TO_MM = 0.264583;
+    const imgH = fsMM * 1.10, imgW = fsMM * 0.95 * scaleX, imgY = y - fsMM * 1.01;
+    const tc = pdf.getTextColor();
+    const colorHex = typeof tc === 'string' && tc.startsWith('#') ? tc : '#000000';
+    const rupeeImg = getRupeeImage(fs, colorHex);
+    const parts = text.split('₹');
+    let curX = x;
+    parts.forEach((part, i) => {
+        if (part.length > 0) { pdf.text(part, curX, y, {}); curX += pdf.getTextWidth(part) * scaleX; }
+        if (i < parts.length - 1) {
+            try { pdf.addImage(rupeeImg, 'PNG', curX, imgY, imgW, imgH); } catch (e) { }
+            curX += imgW + 3 * PX_TO_MM;
+        }
+    });
+};
+
+const resolveDynamicText = (templateText, data) => {
+    let t = templateText || '';
+    let hadPh = false;
+
+    if (data.__epc) {
+        const old = t;
+        t = t.replaceAll('{{EPC}}', String(data.__epc).trim());
+        t = t.replaceAll('{{EPC_CODE}}', String(data.__epc).trim());
+        if (t !== old) hadPh = true;
+    }
+
+    if (data.__labelIndex !== undefined) {
+        const seqStr = String(data.__labelIndex).padStart(5, '0');
+        const old = t;
+        t = t.replaceAll('{{SEQ}}', seqStr);
+        if (t !== old) hadPh = true;
+
+        if (t === old && /SG\s*\d+/i.test(t)) {
+            t = t.replace(/(SG\s*)(\d+)/i, (match, prefix, num) => {
+                hadPh = true;
+                return prefix + String(data.__labelIndex).padStart(num.length, '0');
+            });
+        }
+    }
+
+    Object.keys(data).forEach(col => {
+        if (col.startsWith('__')) return;
+        const ph = `{{${col}}}`;
+        if (t.includes(ph)) {
+            hadPh = true;
+            const raw = String(data[col] ?? '').replace(/^[₹\s]+/, '').trim();
+            t = t.replaceAll(ph, isPriceColumn(col) ? formatPrice(raw) : raw);
+        }
+    });
+
+    while (/₹\s*₹/.test(t)) t = t.replace(/₹\s*₹/g, '₹');
+
+    return { text: formatNetQty(t), hadPh };
+};
+
+function resolveQRValue(el, data, mapping, forcedMode = null) {
+    const elName = (el.fieldName || el.name || el.text || el.qrValue || '').toLowerCase();
+    const mp = mapping[el.id];
+
+    if (mp === '__empty') return ' ';
+    if (data.__qr && String(data.__qr).trim()) return String(data.__qr).trim();
+    if (data.__epc && String(data.__epc).trim()) return String(data.__epc).trim();
+    if ('__ean' in data) return '';
+    if (mp === '__epc') return data.__epc || '';
+    if (mp && data[mp] !== undefined) return String(data[mp]).trim();
+    return '';
+}
+
+const resolveTextValue = (el, data, mapping) => {
+    const mapped = mapping[el.id];
+    const isPlaceholder = el.type === 'placeholder' || (el.text && el.text.includes('{{'));
+    const isBarcodeQR = el.type === 'barcode' || el.type === 'qrcode';
+    const isRect = el.type === 'rect';
+
+    if (mapped && data[mapped] !== undefined && (isPlaceholder || isBarcodeQR || isRect)) {
+        const raw = String(data[mapped] ?? '').replace(/^[₹\s]+/, '').trim();
+        return formatNetQty(isPriceColumn(mapped) ? formatPrice(raw) : raw);
+    }
+
+    const { text, hadPh } = resolveDynamicText(el.text, data);
+
+    if (!hadPh && el.fieldName && (isBarcodeQR || isRect || el.type === 'placeholder')) {
+        const ac = Object.keys(data).find(col => col.toLowerCase() === el.fieldName.toLowerCase());
+        if (ac && data[ac] !== undefined) return String(data[ac] ?? '').replace(/^[₹\s]+/, '').trim();
+    }
+
+    return text;
+};
+
+const renderQRAtPos = async (pdf, qv, qx, qy, qsz, fill = '#000000') => {
+    try {
+        const dataUrl = await QRCode.toDataURL(qv, {
+            margin: 1, errorCorrectionLevel: 'M', width: 512,
+            color: { dark: fill || '#000000', light: '#ffffff' },
+        });
+        pdf.addImage(dataUrl.split(',')[1], 'PNG', qx, qy, qsz, qsz);
+    } catch (e) { console.warn('QR render failed:', e); }
+};
+
+const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduction = false) => {
+    try {
+        const fmt = (format || 'CODE128').toUpperCase();
+        if (fmt === 'QRCODE') {
+            const qsz = Math.min(w, h);
+            await renderQRAtPos(pdf, value, x + (w - qsz) / 2, y + (h - qsz) / 2, qsz, fill);
+            return;
+        }
+        const isEAN13 = fmt === 'EAN13';
+        if (isEAN13) {
+            const L = { 0: '0001101', 1: '0011001', 2: '0010011', 3: '0111101', 4: '0100011', 5: '0110001', 6: '0101111', 7: '0111011', 8: '0110111', 9: '0001011' };
+            const G = { 0: '0100111', 1: '0110011', 2: '0011011', 3: '0100001', 4: '0011101', 5: '0111001', 6: '0000101', 7: '0010001', 8: '0001001', 9: '0010111' };
+            const R = { 0: '1110010', 1: '1100110', 2: '1101100', 3: '1000010', 4: '1011100', 5: '1001110', 6: '1010000', 7: '1000100', 8: '1001000', 9: '1110100' };
+            const PARITY = { 0: 'LLLLLL', 1: 'LLGLGG', 2: 'LLGGLG', 3: 'LLGGGL', 4: 'LGLLGG', 5: 'LGGLLG', 6: 'LGGGLL', 7: 'LGLGLG', 8: 'LGLGGL', 9: 'LGGLGL' };
+            const s = String(value).replace(/\D/g, '').padEnd(13, '0').substring(0, 13);
+            const d = s.split('').map(Number);
+            const parity = PARITY[d[0]] || 'LLLLLL';
+            let bits = '101';
+            for (let i = 0; i < 6; i++) bits += parity[i] === 'G' ? G[d[i + 1]] : L[d[i + 1]];
+            bits += '01010';
+            for (let i = 0; i < 6; i++) bits += R[d[i + 7]];
+            bits += '101';
+            const fsPt = isProduction ? 9 : 6, fsMM = fsPt * 0.352778;
+            const barZoneH = h - fsMM - 0.1, guardH = barZoneH + 1.2;
+            const unitW = w / 109, bsX = x + unitW * 7;
+            const isG = i => i < 3 || (i >= 45 && i < 50) || i >= 92;
+            pdf.setFillColor(fill || '#000000');
+            let cx = bsX;
+            for (let i = 0; i < 95;) {
+                if (bits[i] === '1') {
+                    let sp = 1;
+                    while (i + sp < 95 && bits[i + sp] === '1' && isG(i + sp) === isG(i)) sp++;
+                    pdf.rect(cx, y, unitW * sp, isG(i) ? guardH : barZoneH, 'F');
+                    cx += unitW * sp; i += sp;
+                } else { cx += unitW; i++; }
+            }
+            try { pdf.setFont('OCR-BT', 'normal'); } catch (e) { pdf.setFont('courier', 'normal'); }
+            pdf.setFontSize(fsPt);
+            const ty = y + barZoneH + fsMM * 1.0 - 2 * PX_TO_MM;
+            pdf.text(s[0], x + unitW * 2.5, ty, { align: 'center' });
+            for (let i = 0; i < 6; i++) pdf.text(s[i + 1], bsX + unitW * (3 + i * 7 + 3.5), ty, { align: 'center' });
+            for (let i = 0; i < 6; i++) pdf.text(s[i + 7], bsX + unitW * (50 + i * 7 + 3.5), ty, { align: 'center' });
+        } else {
+            const bd = {};
+            JsBarcode(bd, String(value || '123456789'), { format: fmt.replace(/\s/g, ''), margin: 0 });
+            const encs = bd.encodings || [];
+            let total = 0;
+            encs.forEach(e => { total += e.data.length; });
+            const unitW = w / total, fsPt = 6, fsMM = fsPt * 0.352778, barH = h - fsMM - 0.5;
+            pdf.setFillColor(fill || '#000000');
+            let cx = x;
+            encs.forEach(enc => {
+                for (let i = 0; i < enc.data.length;) {
+                    if (enc.data[i] === '1') {
+                        let sp = 1;
+                        while (i + sp < enc.data.length && enc.data[i + sp] === '1') sp++;
+                        pdf.rect(cx, y, unitW * sp, barH, 'F'); cx += unitW * sp; i += sp;
+                    } else { cx += unitW; i++; }
+                }
+            });
+            try { pdf.setFont('OCR-BT', 'normal'); } catch (e) { pdf.setFont('courier', 'normal'); }
+            const scaledFsPt = fsPt * (w / 44);
+            pdf.setFontSize(scaledFsPt);
+            pdf.text(String(value), x + w / 2, y + barH + 0.5 + (scaledFsPt * 0.352778) * 0.8, { align: 'center' });
+        }
+    } catch (e) { console.warn('Barcode PDF err:', e); }
+};
+
+const drawVectorLabel = async (pdf, design, data, mapping, mmX, mmY, mmW, mmH, isBranding = false, isProduction = false, modes = {}) => {
+    await loadCustomFonts(pdf);
+    const elements = design?.elements || [];
+    const labelType = getLabelType(design);
+    const unit = design?.canvasUnit || 'px';
+    const rawW = design?.canvasWidth || design?.width || 166;
+    const rawH = design?.canvasHeight || design?.height || 387;
+    const dWmm = unit === 'mm' ? rawW : rawW * PX_TO_MM;
+    const dHmm = unit === 'mm' ? rawH : rawH * PX_TO_MM;
+    const cs = Math.min(mmW / dWmm, mmH / dHmm);
+    const offX = mmX + (mmW - dWmm * cs) / 2, offY = mmY + (mmH - dHmm * cs) / 2;
+    const canvasRadius = design?.canvasRadius || 10;
+    const tagR = isProduction ? 0 : Math.min(4, canvasRadius * PX_TO_MM * cs);
+
+    pdf.setFillColor('#ffffff');
+    tagR > 0 ? pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'F') : pdf.rect(mmX, mmY, mmW, mmH, 'F');
+
+    if (isBranding) {
+        pdf.setFillColor('#000000');
+        pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'F');
+        pdf.setDrawColor('#ffffff');
+        pdf.setLineWidth(0.4);
+        pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'D');
+        // No branding logo for now in this context
+        return;
+    }
+
+    pdf.saveGraphicsState();
+    pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, null);
+    pdf.internal.write('W n');
+
+    const sizeCol = Object.keys(data).find(k => k.toLowerCase() === 'size' || k.toLowerCase().includes('size'));
+    const sizeVal = String(data[sizeCol] || '').trim().toUpperCase();
+
+    const azorteeVisibleCircles = new Set();
+    if (labelType === 'azortee' && sizeVal) {
+        const circleTextMap = buildAzorteeCircleMap(elements, data);
+        circleTextMap.forEach((pairedText, circleId) => { if (pairedText === sizeVal) azorteeVisibleCircles.add(circleId); });
+    }
+
+    const sorted = [...elements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+
+    for (const el of sorted) {
+        if (el.visible === false) continue;
+        pdf.saveGraphicsState();
+        const elSX = el.scaleX || 1, elSY = el.scaleY || 1;
+        const unitScale = unit === 'mm' ? 1 : PX_TO_MM;
+        let ex = offX + (el.x || 0) * unitScale * cs;
+        let ey = offY + (el.y || 0) * unitScale * cs;
+        const ew = (el.width || 0) * unitScale * cs * elSX;
+        const eh = (el.height || 0) * unitScale * cs * elSY;
+
+        const forcedMode = modes[el.id];
+
+        if (el.type === 'qrcode' || forcedMode === 'qrcode') {
+            let qv = resolveQRValue(el, data, mapping, forcedMode);
+            if (qv && String(qv).trim()) {
+                const qsz = Math.min(ew, eh);
+                const qx = ex + (ew - qsz) / 2, qy = ey + (eh - qsz) / 2;
+                await renderQRAtPos(pdf, String(qv).trim(), qx, qy, qsz);
+            }
+            pdf.restoreGraphicsState(); continue;
+        }
+
+        if (el.type === 'barcode' || forcedMode === 'ean13' || forcedMode === 'barcode') {
+            let bv = data.__ean || el.barcodeValue || '123456789';
+            const mp = mapping[el.id];
+            if (mp && data[mp] !== undefined) bv = String(data[mp]);
+            const format = forcedMode === 'ean13' ? 'EAN13' : (el.barcodeFormat || 'CODE128').toUpperCase();
+            let bw = ew, bh = eh, bx = ex, by = ey;
+            if (isProduction && format === 'EAN13') {
+                bw = 26.2; bh = 10.4; bx = ex + (ew - bw) / 2; by = ey + (eh - bh) / 2;
+            }
+            await drawVectorBarcode(pdf, bv, bx, by, bw, bh, format, el.fill, isProduction);
+            pdf.restoreGraphicsState(); continue;
+        }
+
+        if (el.type === 'text' || el.type === 'placeholder') {
+            let val = resolveTextValue(el, data, mapping);
+            if (!val || val === 'Text') { pdf.restoreGraphicsState(); continue; }
+            const fs = Math.max(2, (el.fontSize || 12) * 0.75 * elSY * cs);
+            pdf.setFontSize(fs);
+            pdf.setFont(resolvePdfFont(el.fontFamily), el.fontStyle || 'normal');
+            pdf.setTextColor(el.fill || '#000000');
+            drawRupeeText(pdf, val, ex, ey + (fs * 0.352778) * 0.85);
+            pdf.restoreGraphicsState(); continue;
+        }
+
+        if (el.type === 'rect') {
+            pdf.setFillColor(el.fill || '#000000');
+            pdf.rect(ex, ey, ew, eh, 'F');
+            pdf.restoreGraphicsState(); continue;
+        }
+
+        if (el.type === 'circle') {
+            const rx = (el.radius || 10) * unitScale * cs * elSX;
+            const ry = (el.radius || 10) * unitScale * cs * elSY;
+            if (labelType === 'azortee') {
+                if (azorteeVisibleCircles.has(el.id)) {
+                    pdf.setDrawColor(el.stroke || el.fill || '#000000');
+                    pdf.setLineWidth(0.2);
+                    pdf.ellipse(ex, ey, rx, ry, 'D');
+                }
+            } else {
+                pdf.setFillColor(el.fill || '#000000');
+                pdf.ellipse(ex, ey, rx, ry, 'F');
+            }
+            pdf.restoreGraphicsState(); continue;
+        }
+
+        pdf.restoreGraphicsState();
+    }
+    pdf.restoreGraphicsState();
+};
+
+const buildAzorteeCircleMap = (elements, data) => {
+    const sizeTextEls = elements.filter(textEl => {
+        if (textEl.type !== 'text' && textEl.type !== 'placeholder') return false;
+        const t = (textEl.text || '').trim();
+        if (t.includes('{{')) return false;
+        return t.length > 0 && t.length <= 6;
+    });
+    const circleTextMap = new Map();
+    elements.forEach(circleEl => {
+        const elName = (circleEl.name || '').toLowerCase();
+        const isSizeCircle = circleEl.type === 'circle' &&
+            (elName.includes('sizeindicator') || elName.includes('sizecircle') || elName.includes('circle'));
+        if (!isSizeCircle) return;
+        const cCX = circleEl.x || 0, cCY = circleEl.y || 0;
+        let bestText = null, bestDist = Infinity;
+        sizeTextEls.forEach(textEl => {
+            const dx = cCX - (textEl.x || 0), dy = cCY - (textEl.y || 0);
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < bestDist) { bestDist = dist; bestText = textEl; }
+        });
+        if (bestText && bestDist < 120) {
+            let tv = bestText.text || '';
+            Object.keys(data).forEach(col => { tv = tv.replaceAll(`{{${col}}}`, String(data[col] ?? '').trim()); });
+            circleTextMap.set(circleEl.id, tv.trim().toUpperCase());
+        }
+    });
+    return circleTextMap;
+};
 
 // ─── SGTIN-96 Encoding Logic ──────────────────────────────────────────────────
 const PARTITIONS = {
@@ -151,236 +565,62 @@ async function drawBarcode(page, text, x, y, width, height, rgb, font) {
 }
 
 // ─── Main Label Builder ────────────────────────────────────────────────────────
-async function buildChunk(rows, onSubProgress) {
-    const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
-    const pdfDoc = await PDFDocument.create();
-
-    const MM_TO_PT = 2.83465;
-
-    // ─── Load Fonts ─────────────────────────────────────
-    let fontBold, fontReg, fontOCR, fontRupee, fontCalibri;
-    try {
-        const [ocrBuf, arialBuf, arialBoldBuf, rupeeBuf, calibriBuf] = await Promise.all([
-            fetch('/fonts/OCRB.ttf').then(r => r.arrayBuffer()),
-            fetch('/fonts/Arial.ttf').then(r => r.arrayBuffer()),
-            fetch('/fonts/Arial-Bold.ttf').then(r => r.arrayBuffer()),
-            fetch('/fonts/RupeeForbidan.ttf').then(r => r.arrayBuffer()),
-            fetch('/fonts/Calibri-Bold.ttf').then(r => r.arrayBuffer())
-        ]);
-
-        fontOCR = await pdfDoc.embedFont(ocrBuf);
-        fontReg = await pdfDoc.embedFont(arialBuf);
-        fontBold = await pdfDoc.embedFont(arialBoldBuf);
-        fontRupee = await pdfDoc.embedFont(rupeeBuf);
-        fontCalibri = await pdfDoc.embedFont(calibriBuf);
-
-    } catch {
-        fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-        fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        fontOCR = await pdfDoc.embedFont(StandardFonts.CourierBold);
-        fontCalibri = fontBold;
-        fontRupee = null;
-    }
-
-    // ─── Label Size ─────────────────────────────────────
-    const tW = 124.72;
-    const tH = 290.55;
-
-    // ─── Barcode Size (Exact) ───────────────────────────
-    const bcW = 26.2 * MM_TO_PT;
-    const bcH = 10.4 * MM_TO_PT;
-
-    // ─── QR / RFID Size (7mm) ───────────────────────────
-    const iconSize = 7 * MM_TO_PT;
-
-    // ─── Line thickness (0.35mm ≈ 1pt) ──────────────────
-    const lineT = 1;
-
+async function buildChunk(rows, design, onSubProgress) {
+    if (!design) throw new Error('No design template selected');
+    
+    const unit = design.canvasUnit || 'px';
+    const rawW = design.canvasWidth || design.width || 166;
+    const rawH = design.canvasHeight || design.height || 387;
+    const lW = unit === 'mm' ? rawW : rawW * PX_TO_MM;
+    const lH = unit === 'mm' ? rawH : rawH * PX_TO_MM;
+    const ori = lW > lH ? 'landscape' : 'portrait';
+    
+    const pdf = new jsPDF({ orientation: ori, unit: 'mm', format: [lW, lH] });
+    
+    const manualMapping = {}; 
+    design.elements?.forEach(el => {
+        if (el.fieldName) manualMapping[el.id] = el.fieldName;
+    });
     for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        const page = pdfDoc.addPage([tW, tH]);
-
-        // ────────────────────────────────────────────────
-        // MRP HEADER (Arial Bold 6.8)
-        // ────────────────────────────────────────────────
-        const mh = "MRP (Incl. of all taxes)";
-        const mhS = 6.8;
-
-        page.drawText(mh, {
-            x: (tW - fontBold.widthOfTextAtSize(mh, mhS)) / 2,
-            y: tH - 25,
-            size: mhS,
-            font: fontBold
-        });
-
-        // ────────────────────────────────────────────────
-        // PRICE (₹ + VALUE)
-        // ────────────────────────────────────────────────
-        const price = String(row.mrp || "00.00").replace(/[₹Rs.]/gi, '').trim();
-
-        const rS = 15.758;
-        const pS = 17.9;
-
-        const rW = rS * 0.7;
-        const pW = fontCalibri.widthOfTextAtSize(price, pS);
-
-        const startX = (tW - (rW + 4 + pW)) / 2;
-
-        drawRupee(page, startX, tH - 44, rS, rgb, fontRupee);
-
-        page.drawText(price, {
-            x: startX + rW + 4,
-            y: tH - 46,
-            size: pS,
-            font: fontCalibri
-        });
-
-        // ❌ REMOVED TOP BLUE LINE (as requested)
-
-        // ────────────────────────────────────────────────
-        // SIZE
-        // ────────────────────────────────────────────────
-        page.drawText(`Size : ${row.size || ''}`, {
-            x: 10,
-            y: tH - 65,
-            size: 9.9,
-            font: fontReg
-        });
-
-        page.drawText(row.sizeNum || '', {
-            x: tW - 20,
-            y: tH - 65,
-            size: 9.9,
-            font: fontBold
-        });
-
-        // Divider
-        page.drawLine({
-            start: { x: 5, y: tH - 72 },
-            end: { x: tW - 5, y: tH - 72 },
-            thickness: lineT,
-            color: rgb(0, 0, 0)
-        });
-
-        // ────────────────────────────────────────────────
-        // PRODUCT DETAILS (Arial 5.5)
-        // ────────────────────────────────────────────────
-        const dS = 5.5;
-
-        const details = [
-            [`${row.brand}`, `ART : ${row.art}`],
-            [`${row.color}`, `MFD ON : ${row.mfd}`],
-            [`${row.style}`, `NET QTY : ${row.netQty}`],
-        ];
-
-        let y = tH - 82;
-
-        details.forEach(([l, r]) => {
-            page.drawText(l, { x: 10, y, size: dS, font: fontReg });
-            page.drawText(r, { x: tW / 2, y, size: dS, font: fontReg });
-            y -= 8;
-        });
-
-        // ────────────────────────────────────────────────
-        // BARCODE
-        // ────────────────────────────────────────────────
-        await drawBarcode(page, row.barcode, (tW - bcW) / 2, tH - 140, bcW, bcH, rgb, fontOCR);
-
-        // ────────────────────────────────────────────────
-        // ADDRESS (Arial 6pt)
-        // ────────────────────────────────────────────────
-        const aS = 6;
-
-        const address = [
-            "RELIANCE RETAIL LIMITED",
-            "SHED NO.77/80, INDIAN CORPORATION",
-            "GODOWN, MANKOLI NAKA,",
-            "VILLAGE: DAPODE, TALUKA: BHIWANDI,",
-            "DIST: THANE, MAHARASHTRA, PIN: 421302"
-        ];
-
-        let ay = tH - 160;
-
-        address.forEach(line => {
-            page.drawText(line, {
-                x: (tW - fontReg.widthOfTextAtSize(line, aS)) / 2,
-                y: ay,
-                size: aS,
-                font: fontReg
-            });
-            ay -= 7;
-        });
-
-        // Divider
-        page.drawLine({
-            start: { x: 5, y: ay },
-            end: { x: tW - 5, y: ay },
-            thickness: lineT,
-            color: rgb(0, 0, 0)
-        });
-
-        // ────────────────────────────────────────────────
-        // CONTACT (Arial 6pt)
-        // ────────────────────────────────────────────────
-        const contact = [
-            "FOR COMPLAINTS/FEEDBACK, PLS WRITE TO OUR",
-            "CUSTOMER CARE EXECUTIVE AT THE ABOVE ADDRESS OR",
-            "customerservice@ril.com or",
-            "CALL 1800 891 0001 / 1800 102 7382"
-        ];
-
-        ay -= 8;
-
-        contact.forEach(line => {
-            page.drawText(line, {
-                x: (tW - fontReg.widthOfTextAtSize(line, aS)) / 2,
-                y: ay,
-                size: aS,
-                font: fontReg
-            });
-            ay -= 6;
-        });
-
-        // ────────────────────────────────────────────────
-        // FOOTER (RFID + QR + SARAVANA)
-        // ────────────────────────────────────────────────
-        const fy = 10;
-
-        // SARAVANA (Near RFID)
-        page.drawText("SARAVANA", {
-            x: 10,
-            y: fy + 4,
-            size: 4.5,
-            font: fontBold
-        });
-
-        // RFID (7mm)
-        page.drawRectangle({
-            x: 35,
-            y: fy,
-            width: iconSize,
-            height: iconSize,
-            borderWidth: 0.5,
-            borderColor: rgb(0, 0, 0)
-        });
-
-        page.drawText("RFID", {
-            x: 35 + 4,
-            y: fy + 4,
-            size: 5,
-            font: fontBold
-        });
-
-        // QR (7mm)
-        await drawQR(page, row.qrCode || row.barcode, tW - iconSize - 10, fy, iconSize, rgb);
-
-        if (i % 50 === 0) {
+        if (i > 0) pdf.addPage([lW, lH], ori);
+        await drawVectorLabel(pdf, design, rows[i], manualMapping, 0, 0, lW, lH, false, true);
+        if (i % 10 === 0) {
             onSubProgress && onSubProgress(i / rows.length);
-            await new Promise(r => setTimeout(r, 0));
+            await yieldFrame();
         }
     }
+    return pdf.output('arraybuffer');
+}
 
-    return pdfDoc.save();
+async function generateAllLabels(rows, design, onProgress, onDone) {
+    if (!design) throw new Error('No design template selected');
+    const total = rows.length;
+    let combinedBytes = null;
+    const CHUNK_SIZE = 50; // Smaller chunk size for jsPDF to prevent memory pressure
+
+    for (let i = 0; i < total; i += CHUNK_SIZE) {
+        const chunk = rows.slice(i, i + CHUNK_SIZE);
+        const pdfBytes = await buildChunk(chunk, design, (pct) => {
+            const overallPct = Math.round(((i + (pct * chunk.length)) / total) * 100);
+            onProgress(overallPct);
+        });
+
+        if (i === 0) {
+            combinedBytes = pdfBytes;
+        } else {
+            const { PDFDocument } = await import('pdf-lib');
+            const mainDoc = await PDFDocument.load(combinedBytes);
+            const chunkDoc = await PDFDocument.load(pdfBytes);
+            const copiedPages = await mainDoc.copyPages(chunkDoc, chunkDoc.getPageIndices());
+            copiedPages.forEach((page) => mainDoc.addPage(page));
+            combinedBytes = await mainDoc.save();
+        }
+        
+        onProgress(Math.round(((i + chunk.length) / total) * 100));
+        await yieldFrame();
+    }
+
+    onDone(combinedBytes, `Labels_${new Date().getTime()}.pdf`);
 }
 
 function parseLabelFile(file) {
@@ -493,12 +733,11 @@ function parseEPCFile(file) {
     });
 }
 
-// ─── Generate Modal Component ─────────────────────────────────────────────────
-
-function GenerateModal({ file, onClose }) {
+function GenerateModal({ file, onClose, designs }) {
     const [step, setStep] = useState(1); // 1 = upload, 2 = summary, 3 = generating, 4 = done
     const [labelFile, setLabelFile] = useState(null);
     const [epcFile, setEpcFile] = useState(null);
+    const [selectedDesignId, setSelectedDesignId] = useState('');
     const [summary, setSummary] = useState(null);
     const [error, setError] = useState('');
     const [progress, setProgress] = useState(0);
@@ -529,6 +768,16 @@ function GenerateModal({ file, onClose }) {
     };
 
     const handleGenerate = async () => {
+        if (!selectedDesignId) {
+            setError('Please select a design template.');
+            return;
+        }
+        const design = designs.find(d => (d._id || d.id) === selectedDesignId);
+        if (!design) {
+            setError('Invalid design selected.');
+            return;
+        }
+
         setStep(3);
         try {
             const { labelRows, epcMap } = summary;
@@ -537,7 +786,6 @@ function GenerateModal({ file, onClose }) {
 
             for (const row of labelRows) {
                 if (epcMap) {
-                    // Use normalised barcode key for lookup
                     const epcs = epcMap[row.barcode] || epcMap[normBC(row.barcode)];
                     if (!epcs) continue;
                     for (let i = 0; i < row.qty; i++) {
@@ -545,7 +793,6 @@ function GenerateModal({ file, onClose }) {
                         outputRows.push({ ...row, epc: epcEntry.epc, qrCode: epcEntry.qr });
                     }
                 } else {
-                    // Auto-generate EPCs if no mapping file provided
                     for (let i = 0; i < row.qty; i++) {
                         const epc = encodeSGTIN96(row.barcode, serialCounter);
                         outputRows.push({ ...row, epc, qrCode: epc });
@@ -556,7 +803,8 @@ function GenerateModal({ file, onClose }) {
 
             await generateAllLabels(
                 outputRows,
-                (pct) => setProgress(pct),
+                design,
+                (p) => setProgress(p),
                 (pdfBytes, filename) => {
                     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
                     const url = URL.createObjectURL(blob);
@@ -678,7 +926,23 @@ function GenerateModal({ file, onClose }) {
                         <>
                             <div style={{ marginBottom: 14 }}>
                                 <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
-                                    A — Label generation file
+                                    A — Select Design Template
+                                </div>
+                                <select 
+                                    value={selectedDesignId}
+                                    onChange={(e) => setSelectedDesignId(e.target.value)}
+                                    style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, background: 'white' }}
+                                >
+                                    <option value="">— Choose Design —</option>
+                                    {designs.map(d => (
+                                        <option key={d._id || d.id} value={d._id || d.id}>{d.title}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div style={{ marginBottom: 14 }}>
+                                <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
+                                    B — Label generation file
                                 </div>
                                 <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>
                                     Required columns: <code style={{ background: '#f1f5f9', padding: '1px 6px', borderRadius: 4, color: '#0284c7' }}>EAN</code> + <code style={{ background: '#f1f5f9', padding: '1px 6px', borderRadius: 4, color: '#0284c7' }}>Final qty</code>
@@ -688,7 +952,7 @@ function GenerateModal({ file, onClose }) {
 
                             <div style={{ marginBottom: 14 }}>
                                 <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
-                                    B — EPC–QR mapping file (Optional)
+                                    C — EPC–QR mapping file (Optional)
                                 </div>
                                 <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>
                                     If skipped, unique EPCs will be <strong>automatically integrated</strong>.
@@ -823,8 +1087,22 @@ export default function AdminFilesManager() {
     const [searchTerm, setSearchTerm] = useState('');
     const [previewFile, setPreviewFile] = useState(null);
     const [generateTarget, setGenerateTarget] = useState(null); // file object to generate labels for
+    const [currentFolder, setCurrentFolder] = useState(null); // null = root
+    const [designs, setDesigns] = useState([]);
 
-    useEffect(() => { fetchFiles(); }, []);
+    useEffect(() => { 
+        fetchFiles(); 
+        fetchDesigns();
+    }, []);
+
+    const fetchDesigns = async () => {
+        try {
+            const res = await designsAPI.getAll();
+            setDesigns(res.data?.designs || []);
+        } catch (err) {
+            console.error(err);
+        }
+    };
 
     const fetchFiles = async () => {
         try {
@@ -850,10 +1128,45 @@ export default function AdminFilesManager() {
         }
     };
 
+    const handleDeleteFolder = async (folderName) => {
+        if (!window.confirm(`Are you sure you want to delete the folder "${folderName}" and ALL files inside it?`)) return;
+        try {
+            const folderFiles = files.filter(f => f.folder === folderName);
+            // Delete files one by one (or implement backend folder delete)
+            toast.loading('Deleting folder content...', { id: 'del_folder' });
+            for (const f of folderFiles) {
+                await filesAPI.delete(f._id);
+            }
+            setFiles(files.filter(f => f.folder !== folderName));
+            toast.success('Folder deleted', { id: 'del_folder' });
+            if (currentFolder === folderName) setCurrentFolder(null);
+        } catch (err) {
+            console.error(err);
+            toast.error('Failed to delete folder', { id: 'del_folder' });
+        }
+    };
+
     const filteredFiles = files.filter(f =>
         f.originalName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         f.filename?.toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    // Grouping logic
+    const allFolders = Array.from(new Set(files.map(f => f.folder).filter(Boolean)));
+    
+    // In search mode, show flat list. Otherwise show folder view.
+    const isSearching = searchTerm.trim().length > 0;
+    
+    let displayItems = [];
+    if (isSearching) {
+        displayItems = filteredFiles.map(f => ({ ...f, isFolder: false }));
+    } else if (currentFolder === null) {
+        // Root view: show files with NO folder (folders are rendered separately via allFolders)
+        displayItems = files.filter(f => !f.folder).map(f => ({ ...f, isFolder: false }));
+    } else {
+        // Subfolder view: show files in current folder
+        displayItems = files.filter(f => f.folder === currentFolder).map(f => ({ ...f, isFolder: false }));
+    }
 
     return (
         <div className={`layout-page ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
@@ -862,8 +1175,9 @@ export default function AdminFilesManager() {
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                     <div>
-                        <h1 style={{ fontSize: 24, fontWeight: 'bold', color: 'var(--text-primary)' }}>Saved proof sheets</h1>
-                        <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Select a proof sheet to generate single tag labels</p>
+                        <h1 style={{ fontSize: 24, fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                            {currentFolder ? currentFolder : 'My Folders'}
+                        </h1>
                     </div>
                 </div>
 
@@ -884,85 +1198,141 @@ export default function AdminFilesManager() {
                     {loading ? (
                         <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Loading...</div>
                     ) : (
-                        <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 14 }}>
-                                <thead>
-                                    <tr style={{ borderBottom: '2px solid var(--border-light)', color: 'var(--text-muted)' }}>
-                                        <th style={{ padding: 12, fontWeight: 600 }}>File name</th>
-                                        <th style={{ padding: 12, fontWeight: 600 }}>Date saved</th>
-                                        <th style={{ padding: 12, fontWeight: 600 }}>Uploaded by</th>
-                                        <th style={{ padding: 12, fontWeight: 600, textAlign: 'right' }}>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredFiles.map(file => (
-                                        <tr key={file._id} style={{ borderBottom: '1px solid var(--border-light)', transition: 'background 0.2s' }}>
-                                            <td style={{ padding: 12 }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                    <div style={{ width: 36, height: 36, background: '#e0f2fe', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0284c7' }}>
-                                                        <FileIcon size={18} />
+                        <>
+                            {/* Breadcrumb Navigation */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#64748b', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 20 }}>
+                                <Home size={12} className="cursor-pointer" onClick={() => setCurrentFolder(null)} />
+                                <ChevronRight size={10} />
+                                <span 
+                                    className={!currentFolder ? 'font-bold' : 'cursor-pointer'} 
+                                    style={{ color: !currentFolder ? '#7c3aed' : 'inherit' }}
+                                    onClick={() => setCurrentFolder(null)}
+                                >
+                                    All Folders
+                                </span>
+                                {currentFolder && (
+                                    <>
+                                        <ChevronRight size={10} />
+                                        <span style={{ color: '#7c3aed' }}>{currentFolder}</span>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Folders Grid (Only in Root or Search) */}
+                            {!currentFolder && !isSearching && allFolders.length > 0 && (
+                                <div style={{ marginBottom: 32 }}>
+                                    <h3 style={{ fontSize: 12, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>Folders</h3>
+                                    <div className="folder-grid">
+                                        {allFolders.map(name => {
+                                            const folderFiles = files.filter(f => f.folder === name);
+                                            return (
+                                                <div key={name} className="folder-card" onClick={() => setCurrentFolder(name)}>
+                                                    <div className="folder-icon-wrapper">
+                                                        <Folder size={40} className="folder-icon" />
+                                                        <div className="folder-actions" onClick={e => e.stopPropagation()}>
+                                                            <button 
+                                                                className="btn btn-ghost btn-icon btn-xs" 
+                                                                style={{ padding: 4, background: 'rgba(239, 68, 68, 0.1)', borderRadius: 6 }}
+                                                                onClick={() => handleDeleteFolder(name)}
+                                                            >
+                                                                <Trash2 size={12} color="#ef4444" />
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                    <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                                                        {file.originalName || file.filename}
+                                                    <div className="folder-info">
+                                                        <div className="folder-name">{name}</div>
+                                                        <div className="folder-count">{folderFiles.length} proof sheets</div>
                                                     </div>
                                                 </div>
-                                            </td>
-                                            <td style={{ padding: 12, color: 'var(--text-muted)' }}>
-                                                {new Date(file.createdAt).toLocaleString()}
-                                            </td>
-                                            <td style={{ padding: 12, color: 'var(--text-muted)' }}>
-                                                {file.uploadedBy?.name || 'Admin'}
-                                            </td>
-                                            <td style={{ padding: 12, textAlign: 'right' }}>
-                                                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                                                    {/* Generate Single Tag Label — PRIMARY new action */}
-                                                    <button
-                                                        onClick={() => setGenerateTarget(file)}
-                                                        className="btn btn-ghost btn-sm"
-                                                        title="Generate single tag label"
-                                                        style={{
-                                                            display: 'inline-flex', alignItems: 'center', gap: 5,
-                                                            color: '#7c3aed', background: '#ede9fe',
-                                                            padding: '6px 12px', borderRadius: 7,
-                                                            fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
-                                                        }}
-                                                    >
-                                                        <Tag size={13} /> Generate labels
-                                                    </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
 
-                                                    {/* View inline */}
-                                                    <button
-                                                        onClick={() => setPreviewFile(file.url)}
-                                                        className="btn btn-ghost btn-sm btn-icon"
-                                                        title="View inline"
-                                                        style={{ color: '#10b981', background: '#d1fae5' }}
-                                                    >
-                                                        <Eye size={16} />
-                                                    </button>
+                            {/* Files List */}
+                            <div style={{ marginTop: currentFolder ? 0 : 12 }}>
+                                <h3 style={{ fontSize: 12, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>
+                                    {currentFolder ? 'Files' : isSearching ? 'Search Results' : 'Recent Files'}
+                                </h3>
+                                <div style={{ overflowX: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 14 }}>
+                                        <thead>
+                                            <tr style={{ borderBottom: '2px solid var(--border-light)', color: 'var(--text-muted)' }}>
+                                                <th style={{ padding: 12, fontWeight: 600 }}>File name</th>
+                                                <th style={{ padding: 12, fontWeight: 600 }}>Date saved</th>
+                                                <th style={{ padding: 12, fontWeight: 600 }}>Uploaded by</th>
+                                                <th style={{ padding: 12, fontWeight: 600, textAlign: 'right' }}>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {displayItems.filter(i => !i.isFolder).map(file => (
+                                                <tr key={file._id} style={{ borderBottom: '1px solid var(--border-light)', transition: 'background 0.2s' }}>
+                                                    <td style={{ padding: 12 }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                            <div style={{ width: 36, height: 36, background: '#e0f2fe', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0284c7' }}>
+                                                                <FileIcon size={18} />
+                                                            </div>
+                                                            <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                                                                {file.originalName || file.filename}
+                                                                {file.folder && isSearching && (
+                                                                    <span style={{ marginLeft: 8, fontSize: 10, background: '#f1f5f9', padding: '2px 6px', borderRadius: 4, color: '#64748b' }}>in {file.folder}</span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: 12, color: 'var(--text-muted)' }}>
+                                                        {new Date(file.createdAt).toLocaleString()}
+                                                    </td>
+                                                    <td style={{ padding: 12, color: 'var(--text-muted)' }}>
+                                                        {file.uploadedBy?.name || 'Admin'}
+                                                    </td>
+                                                    <td style={{ padding: 12, textAlign: 'right' }}>
+                                                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                                            <button
+                                                                onClick={() => setGenerateTarget(file)}
+                                                                className="btn btn-ghost btn-sm"
+                                                                title="Generate single tag label"
+                                                                style={{
+                                                                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                                                                    color: '#7c3aed', background: '#ede9fe',
+                                                                    padding: '6px 12px', borderRadius: 7,
+                                                                    fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
+                                                                }}
+                                                            >
+                                                                <Tag size={13} /> Generate labels
+                                                            </button>
 
-                                                    {/* Download */}
-                                                    <a
-                                                        href={`${BASE_URL}${file.url}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="btn btn-ghost btn-sm btn-icon"
-                                                        title="Download"
-                                                        style={{ color: '#0284c7', background: '#e0f2fe' }}
-                                                    >
-                                                        <Download size={16} />
-                                                    </a>
+                                                            <button
+                                                                onClick={() => setPreviewFile(file.url)}
+                                                                className="btn btn-ghost btn-sm btn-icon"
+                                                                title="View inline"
+                                                                style={{ color: '#10b981', background: '#d1fae5', border: 'none', padding: '6px 10px', borderRadius: 7, cursor: 'pointer' }}
+                                                            >
+                                                                <Eye size={16} />
+                                                            </button>
 
-                                                    {/* Delete */}
-                                                    <button
-                                                        onClick={() => handleDelete(file._id)}
-                                                        className="btn btn-ghost btn-sm btn-icon"
-                                                        title="Delete"
-                                                        style={{ color: '#ef4444', background: '#fee2e2' }}
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </div>
-                                            </td>
+                                                            <a
+                                                                href={`${BASE_URL}${file.url}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="btn btn-ghost btn-sm btn-icon"
+                                                                title="Download"
+                                                                style={{ color: '#0284c7', background: '#e0f2fe', border: 'none', padding: '6px 10px', borderRadius: 7, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                                                            >
+                                                                <Download size={16} />
+                                                            </a>
+
+                                                            <button
+                                                                onClick={() => handleDelete(file._id)}
+                                                                className="btn btn-ghost btn-sm btn-icon"
+                                                                title="Delete"
+                                                                style={{ color: '#ef4444', background: '#fee2e2', border: 'none', padding: '6px 10px', borderRadius: 7, cursor: 'pointer' }}
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
                                         </tr>
                                     ))}
                                     {filteredFiles.length === 0 && (
@@ -974,8 +1344,10 @@ export default function AdminFilesManager() {
                                     )}
                                 </tbody>
                             </table>
+                            </div>
                         </div>
-                    )}
+                    </>
+                )}
                 </div>
             </main>
 
@@ -1003,6 +1375,7 @@ export default function AdminFilesManager() {
                         <GenerateModal
                             file={generateTarget}
                             onClose={() => setGenerateTarget(null)}
+                            designs={designs}
                         />
                     </div>
                 </div>

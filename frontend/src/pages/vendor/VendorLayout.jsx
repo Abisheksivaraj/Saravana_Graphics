@@ -173,11 +173,49 @@ export default function VendorLayout() {
                 <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                     {/* Top Navbar for Profile & Logout */}
                     <AppBar position="static" elevation={0} sx={{ bgcolor: '#ffffff', borderBottom: '1px solid #e2e8f0', color: '#1e293b' }}>
-                        <Toolbar sx={{ justifyContent: 'flex-end', px: { xs: 2, md: 4 }, minHeight: '64px !important' }}>
+                        <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 2, md: 4 }, minHeight: '64px !important' }}>
+                            {/* Vendor Branding - Left Side */}
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                {user?.avatar ? (
+                                    <Box sx={{ 
+                                        height: 45, 
+                                        px: 2, 
+                                        py: 0.5, 
+                                        bgcolor: '#f8fafc', 
+                                        borderRadius: '12px', 
+                                        border: '1px solid #e2e8f0',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                    }}>
+                                        <img 
+                                            src={`http://localhost:5000/${user.avatar}`} 
+                                            alt="Vendor Logo" 
+                                            style={{ height: '100%', maxWidth: 120, objectFit: 'contain' }} 
+                                        />
+                                    </Box>
+                                ) : (
+                                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#f97316' }}>
+                                        {user?.vendorName || 'Vendor Portal'}
+                                    </Typography>
+                                )}
+                            </Box>
+
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                                    <Avatar sx={{ width: 36, height: 36, bgcolor: '#f1f5f9', color: '#f97316', fontSize: 14, fontWeight: 700, border: '2px solid #fdba74' }}>
-                                        {user?.name?.charAt(0)?.toUpperCase() || 'V'}
+                                    <Avatar 
+                                        src={user?.avatar ? `http://localhost:5000/${user.avatar}` : undefined}
+                                        sx={{ 
+                                            width: 36, 
+                                            height: 36, 
+                                            bgcolor: '#f1f5f9', 
+                                            color: '#f97316', 
+                                            fontSize: 14, 
+                                            fontWeight: 700, 
+                                            border: '2px solid #fdba74' 
+                                        }}
+                                    >
+                                        {!user?.avatar && (user?.name?.charAt(0)?.toUpperCase() || 'V')}
                                     </Avatar>
                                     <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
                                         <Typography variant="body2" sx={{ fontWeight: 600, color: '#0f172a', lineHeight: 1.2 }}>

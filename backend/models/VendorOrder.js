@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const vendorOrderSchema = new mongoose.Schema({
     orderId: { type: String, required: true, unique: true },
     vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', required: true },
+    vendorCode: { type: String, trim: true },
     barcodeFileId: { type: String, trim: true },
     fileName: { type: String, required: true },
     filePath: { type: String, required: true },
@@ -18,7 +19,9 @@ const vendorOrderSchema = new mongoose.Schema({
             'Performa Invoice Uploaded', 
             'Performa Invoice Approved',
             'Payment Proof Uploaded', 
+            'Payment Follow-up',
             'Production', 
+            'Despatch', 
             'Delivered',
             'Completed'
         ],
@@ -48,8 +51,12 @@ const vendorOrderSchema = new mongoose.Schema({
         reviewedBy: { type: String }
     }],
     performaInvoiceUrl: { type: String },
+    performaInvoiceDate: { type: Date },
+    performaInvoiceApprovedDate: { type: Date },
+    paymentSubmittedDate: { type: Date },
     deliveryProofUrl: { type: String },
     deliveryRemarks: { type: String },
+    deliveryDate: { type: Date },
     productionDate: { type: Date },
     dispatchDate: { type: Date },
     paymentDetails: {

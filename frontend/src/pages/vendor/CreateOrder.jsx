@@ -1,30 +1,64 @@
-import React, { useState } from 'react';
-import { vendorAPI } from '../../api';
+import React, { useState, useEffect } from 'react';
+import { vendorAPI, authAPI } from '../../api';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import {
-    Box, Typography, Paper, Button, CircularProgress, Alert, TextField, Slide, Fade, Divider
+    Box, Typography, Paper, Button, CircularProgress, Alert, TextField, 
+    MenuItem, Select, FormControl, InputLabel, Fade, Divider
 } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import SendIcon from '@mui/icons-material/Send';
 import MessageIcon from '@mui/icons-material/Message';
+import BusinessIcon from '@mui/icons-material/Business';
 
 export default function CreateOrder() {
     const [file, setFile] = useState(null);
     const [message, setMessage] = useState('');
     const [uploading, setUploading] = useState(false);
     const [dragOver, setDragOver] = useState(false);
+    const [entities, setEntities] = useState([]);
+    const [selectedEntity, setSelectedEntity] = useState('');
+    const [loadingProfile, setLoadingProfile] = useState(true);
     const navigate = useNavigate();
+
+    useEffect(() => {
+        const fetchProfile = async () => {
+            try {
+                const res = await authAPI.getMe();
+                const userEntities = res.data.entities || [];
+                // If legacy user, create a dummy entity list from top level fields
+                if (userEntities.length === 0 && res.data.vendorCode) {
+                    userEntities.push({
+                        vendorCode: res.data.vendorCode,
+                        vendorName: res.data.vendorName || res.data.name,
+                        vendorBrand: 'General',
+                        vendorGstin: res.data.vendorGstin
+                    });
+                }
+                setEntities(userEntities);
+                if (userEntities.length > 0) setSelectedEntity(userEntities[0].vendorCode);
+            } catch (err) {
+                toast.error('Failed to load profile');
+            } finally {
+                setLoadingProfile(false);
+            }
+        };
+        fetchProfile();
+    }, []);
 
     const handleUpload = async (e) => {
         e.preventDefault();
         if (!file) { toast.error('Please select a file first'); return; }
+        if (!selectedEntity) { toast.error('Please select a Vendor Entity'); return; }
+
+        const entity = entities.find(e => e.vendorCode === selectedEntity);
 
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('brand', 'General');
+        formData.append('vendorCode', entity.vendorCode);
+        formData.append('brand', entity.vendorBrand || 'General');
         formData.append('barcodeFileId', '');
         if (message.trim()) {
             formData.append('initialMessage', message.trim());
@@ -51,16 +85,22 @@ export default function CreateOrder() {
         if (droppedFile) setFile(droppedFile);
     };
 
+    if (loadingProfile) return (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}>
+            <CircularProgress />
+        </Box>
+    );
+
     return (
         <Box sx={{ 
-            maxWidth: file ? 1000 : 640, 
+            maxWidth: file ? 1000 : 700, 
             mx: 'auto', 
             mt: 4,
             transition: 'max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1)' 
         }}>
-            <Typography variant="h5" sx={{ fontWeight: 800, color: '#0f172a', mb: 0.5 }}>Create New Order</Typography>
+            <Typography variant="h5" sx={{ fontWeight: 900, color: '#0f172a', mb: 0.5 }}>Create New Order</Typography>
             <Typography variant="body2" sx={{ color: '#64748b', mb: 4 }}>
-                Upload your Excel order template to begin the design workflow.
+                Select your business unit and upload your Excel template.
             </Typography>
 
             <form onSubmit={handleUpload}>
@@ -70,18 +110,47 @@ export default function CreateOrder() {
                     flexDirection: { xs: 'column', md: file ? 'row' : 'column' },
                     alignItems: 'stretch'
                 }}>
-                    {/* Left Side: Upload Box */}
-                    <Paper elevation={0} sx={{ p: 4, border: '1px solid #e2e8f0', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    {/* Left Side: Entity Selection & Upload */}
+                    <Paper elevation={0} sx={{ p: 4, border: '1px solid #e2e8f0', borderRadius: '16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        
+                        {/* Entity Selector */}
+                        <Box sx={{ p: 2.5, bgcolor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                            <FormControl fullWidth>
+                                <InputLabel sx={{ fontWeight: 700, color: '#f97316' }}>Select Business Unit (Vendor Code)</InputLabel>
+                                <Select
+                                    value={selectedEntity}
+                                    onChange={(e) => setSelectedEntity(e.target.value)}
+                                    label="Select Business Unit (Vendor Code)"
+                                    sx={{ 
+                                        borderRadius: '8px', bgcolor: 'white',
+                                        '& .MuiSelect-select': { py: 1.5, fontWeight: 700 }
+                                    }}
+                                >
+                                    {entities.map(ent => (
+                                        <MenuItem key={ent.vendorCode} value={ent.vendorCode}>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                                                <BusinessIcon sx={{ color: '#64748b', fontSize: 20 }} />
+                                                <Box>
+                                                    <Typography sx={{ fontWeight: 800, fontSize: '0.9rem' }}>{ent.vendorCode}</Typography>
+                                                    <Typography sx={{ fontSize: '0.75rem', color: '#64748b' }}>{ent.vendorName} {ent.vendorBrand ? `· ${ent.vendorBrand}` : ''}</Typography>
+                                                </Box>
+                                            </Box>
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        </Box>
+
                         <Box
                             onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                             onDragLeave={() => setDragOver(false)}
                             onDrop={handleDrop}
                             sx={{
-                                border: `2px dashed ${file ? '#22c55e' : dragOver ? '#7c3aed' : '#cbd5e1'}`,
-                                borderRadius: 3,
+                                border: `2px dashed ${file ? '#22c55e' : dragOver ? '#f97316' : '#cbd5e1'}`,
+                                borderRadius: 4,
                                 p: 6,
                                 textAlign: 'center',
-                                bgcolor: file ? '#f0fdf4' : dragOver ? '#f5f3ff' : '#fafafa',
+                                bgcolor: file ? '#f0fdf4' : dragOver ? '#fff7ed' : '#fafafa',
                                 transition: 'all 0.25s ease',
                                 cursor: 'pointer',
                                 position: 'relative',
@@ -90,7 +159,7 @@ export default function CreateOrder() {
                                 flexDirection: 'column',
                                 justifyContent: 'center',
                                 alignItems: 'center',
-                                '&:hover': { borderColor: '#7c3aed', bgcolor: '#f5f3ff' },
+                                '&:hover': { borderColor: '#f97316', bgcolor: '#fff7ed' },
                             }}
                         >
                             <input
@@ -102,13 +171,13 @@ export default function CreateOrder() {
                             {file ? (
                                 <>
                                     <CheckCircleIcon sx={{ fontSize: 48, color: '#22c55e', mb: 1 }} />
-                                    <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#166534' }}>{file.name}</Typography>
+                                    <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#166534' }}>{file.name}</Typography>
                                     <Typography variant="caption" sx={{ color: '#64748b' }}>{(file.size / 1024).toFixed(1)} KB — Ready to upload</Typography>
                                 </>
                             ) : (
                                 <>
-                                    <CloudUploadIcon sx={{ fontSize: 48, color: dragOver ? '#7c3aed' : '#94a3b8', mb: 1.5, transition: 'color 0.2s' }} />
-                                    <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#334155' }}>
+                                    <CloudUploadIcon sx={{ fontSize: 48, color: dragOver ? '#f97316' : '#94a3b8', mb: 1.5, transition: 'color 0.2s' }} />
+                                    <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#334155' }}>
                                         Click or drag file to upload
                                     </Typography>
                                     <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mt: 0.5 }}>
@@ -118,13 +187,6 @@ export default function CreateOrder() {
                             )}
                         </Box>
 
-                        {file && (
-                            <Alert severity="info" icon={<InsertDriveFileIcon />} sx={{ mt: 3, borderRadius: 2 }}>
-                                Selected: <strong>{file.name}</strong>
-                            </Alert>
-                        )}
-                        
-                        {/* Only show button here if NO file selected (centered layout) */}
                         {!file && (
                             <Button
                                 type="submit"
@@ -133,9 +195,9 @@ export default function CreateOrder() {
                                 disabled={!file || uploading}
                                 startIcon={uploading ? <CircularProgress size={20} color="inherit" /> : <InsertDriveFileIcon />}
                                 sx={{
-                                    mt: 3, py: 1.5, fontSize: '1rem', fontWeight: 700,
-                                    bgcolor: '#7c3aed', '&:hover': { bgcolor: '#6d28d9' },
-                                    boxShadow: '0 4px 14px rgba(124,58,237,0.3)',
+                                    py: 1.5, fontSize: '1rem', fontWeight: 800, borderRadius: '12px',
+                                    bgcolor: '#0f172a', '&:hover': { bgcolor: '#1e293b' },
+                                    boxShadow: '0 4px 14px rgba(15,23,42,0.3)',
                                 }}
                             >
                                 {uploading ? 'Uploading...' : 'Create Order'}
@@ -147,18 +209,13 @@ export default function CreateOrder() {
                     {file && (
                         <Fade in={!!file} timeout={400}>
                             <Paper elevation={0} sx={{ 
-                                p: 0, 
-                                border: '1px solid #e2e8f0', 
-                                flex: 1,
-                                display: 'flex',
-                                flexDirection: 'column',
-                                overflow: 'hidden',
-                                bgcolor: '#ffffff'
+                                p: 0, border: '1px solid #e2e8f0', borderRadius: '16px', flex: 1,
+                                display: 'flex', flexDirection: 'column', overflow: 'hidden', bgcolor: '#ffffff'
                             }}>
-                                <Box sx={{ p: 2, bgcolor: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                                    <MessageIcon sx={{ color: '#7c3aed' }} />
+                                <Box sx={{ p: 2.5, bgcolor: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                                    <MessageIcon sx={{ color: '#f97316' }} />
                                     <Box>
-                                        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#0f172a' }}>Order Instructions</Typography>
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#0f172a' }}>Order Instructions</Typography>
                                         <Typography variant="caption" sx={{ color: '#64748b' }}>Send a message to the Admin</Typography>
                                     </Box>
                                 </Box>
@@ -169,7 +226,7 @@ export default function CreateOrder() {
                                     </Typography>
                                 </Box>
 
-                                <Box sx={{ p: 2, borderTop: '1px solid #e2e8f0', bgcolor: '#ffffff' }}>
+                                <Box sx={{ p: 2.5, borderTop: '1px solid #e2e8f0', bgcolor: '#ffffff' }}>
                                     <TextField
                                         fullWidth
                                         multiline
@@ -178,10 +235,7 @@ export default function CreateOrder() {
                                         variant="outlined"
                                         value={message}
                                         onChange={(e) => setMessage(e.target.value)}
-                                        sx={{ 
-                                            mb: 2,
-                                            '& .MuiOutlinedInput-root': { borderRadius: 2 }
-                                        }}
+                                        sx={{ mb: 2, '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
                                     />
                                     <Button
                                         type="submit"
@@ -190,7 +244,7 @@ export default function CreateOrder() {
                                         disabled={uploading}
                                         endIcon={uploading ? <CircularProgress size={20} color="inherit" /> : <SendIcon />}
                                         sx={{
-                                            py: 1.5, fontSize: '0.95rem', fontWeight: 700,
+                                            py: 1.5, fontSize: '0.95rem', fontWeight: 800, borderRadius: '12px',
                                             bgcolor: '#10b981', '&:hover': { bgcolor: '#059669' },
                                             boxShadow: '0 4px 14px rgba(16,185,129,0.3)',
                                         }}

@@ -35,6 +35,10 @@ export const authAPI = {
     login: (data) => api.post('/auth/login', data),
     getMe: () => api.get('/auth/me'),
     updateProfile: (data) => api.put('/auth/profile', data),
+    forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
+    verifyOtp: (email, otp) => api.post('/auth/verify-otp', { email, otp }),
+    resetPassword: (email, otp, newPassword) => api.post('/auth/reset-password', { email, otp, newPassword }),
+    updateCredentials: (data) => api.post('/auth/update-credentials', data),
 };
 
 // Designs
@@ -89,13 +93,12 @@ export const vendorAPI = {
     getActiveChats: () => api.get('/vendors/active-chats'),
     markAsRead: (orderId) => api.patch(`/vendors/chat/${orderId}/read`),
     approvePerforma: (id) => api.patch(`/vendors/approve-performa/${id}`),
+    rejectPerforma: (id, data) => api.patch(`/vendors/reject-performa/${id}`, data),
     uploadDeliveryProof: (id, formData) => api.post(`/vendors/delivery-proof/${id}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     }),
     deleteOrder: (id) => api.delete(`/vendors/order/${id}`),
-    uploadRevisedArtwork: (id, formData) => api.post(`/vendors/revised-artwork/${id}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-    }),
+    deleteAccount: (id) => api.delete(`/vendors/account/${id}`),
 };
 
 // Strip Colors

@@ -72,4 +72,37 @@ const sendAccountCreationEmail = async (toEmail, role, identifierCode, username,
     }
 };
 
-module.exports = sendAccountCreationEmail;
+const sendOtpEmail = async (toEmail, otp) => {
+    try {
+        const fromEmail = process.env.EMAIL_FROM || '"Saravana Graphics Supporting Team" <support@saravanagraphics.com>';
+        
+        const htmlContent = `
+        <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; padding: 20px;">
+            <h2 style="color: #0b6bc7;">Verification Code</h2>
+            <p>You have requested to reset your password. Use the following OTP to proceed:</p>
+            <div style="background: #f1f5f9; padding: 20px; text-align: center; border-radius: 12px; margin: 20px 0;">
+                <span style="font-size: 32px; font-weight: 900; letter-spacing: 8px; color: #0f172a;">${otp}</span>
+            </div>
+            <p>This code will expire in 10 minutes.</p>
+            <p>If you did not request this, please ignore this email.</p>
+            <hr style="border-top: 1px solid #ccc; margin-top: 20px;" />
+            <p style="font-size: 12px; color: #777;">Saravana Graphics Supporting Team</p>
+        </div>
+        `;
+
+        const mailOptions = {
+            from: fromEmail,
+            to: toEmail,
+            subject: `Verification Code - ${otp}`,
+            html: htmlContent
+        };
+
+        await transporter.sendMail(mailOptions);
+        return true;
+    } catch (error) {
+        console.error('Error sending OTP:', error);
+        return false;
+    }
+};
+
+module.exports = { sendAccountCreationEmail, sendOtpEmail };

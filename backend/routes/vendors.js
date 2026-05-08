@@ -9,7 +9,6 @@ const VendorOrder = require('../models/VendorOrder');
 const User = require('../models/User');
 const Vendor = require('../models/Vendor');
 const Message = require('../models/Message');
-const sendAccountCreationEmail = require('../utils/sendEmail');
 
 // Multer storage config
 const storage = multer.diskStorage({
@@ -56,9 +55,10 @@ router.post('/upload', auth, checkRole(['vendor', 'admin']), upload.single('file
         const newOrder = new VendorOrder({
             orderId,
             vendorId: req.user._id,
+            vendorCode: req.body.vendorCode || '',
             barcodeFileId: req.body.barcodeFileId || '',
             fileName: req.file.originalname,
-            filePath: req.file.path,
+            filePath: req.file.path.replace(/\\/g, '/'),
             brand: req.body.brand || 'General',
             uploadedBy: req.user._id,
             uploaderModel: req.user.role === 'admin' ? 'User' : 'Vendor',
@@ -127,18 +127,26 @@ router.get('/stats', auth, async (req, res) => {
         const query = req.user.role === 'admin' ? {} : { vendorId: req.user._id };
         const orders = await VendorOrder.find(query);
         const stats = {
-            Queued: 0,
-            Reject: 0,
-            Verification: 0,
-            'Artwork Approval': 0,
-            Production: 0,
-            Despatch: 0,
-            APPROVED: 0,
-            TotalFile: orders.length
+            'Queued': 0,
+            'Excel Uploaded': 0,
+            'Layout Uploaded': 0,
+            'Artwork Rejected': 0,
+            'Revised Artwork Uploaded': 0,
+            'Artwork Approved': 0,
+            'Performa Invoice Uploaded': 0,
+            'Performa Invoice Approved': 0,
+            'Production': 0,
+            'Despatch': 0,
+            'Delivered': 0,
+            'TotalFile': orders.length
         };
 
         orders.forEach(order => {
-            if (stats[order.status] !== undefined) stats[order.status]++;
+            if (stats[order.status] !== undefined) {
+                stats[order.status]++;
+            } else if (order.status === 'Completed') {
+                stats['Delivered']++;
+            }
         });
 
         res.json(stats);
@@ -159,12 +167,8 @@ router.patch('/status/:id', auth, checkRole(['admin', 'vendor']), async (req, re
         // Business logic: if moving to Delivered, also mark as Completed
         if (status === 'Delivered') {
             finalStatus = 'Completed';
+            update.deliveryDate = new Date();
         }
-
-        const update = { status: finalStatus, remarks };
-        if (productionDate !== undefined) update.productionDate = productionDate || null;
-        if (dispatchDate !== undefined) update.dispatchDate = dispatchDate || null;
-        if (deliveryRemarks !== undefined) update.deliveryRemarks = deliveryRemarks;
 
         const order = await VendorOrder.findOne(query);
         if (!order) return res.status(404).json({ message: 'Order not found or unauthorized' });
@@ -198,11 +202,29 @@ router.patch('/approve-performa/:id', auth, checkRole(['vendor']), async (req, r
     try {
         const order = await VendorOrder.findOneAndUpdate(
             { _id: req.params.id, vendorId: req.user._id, status: 'Performa Invoice Uploaded' },
-            { status: 'Performa Invoice Approved' },
+            { status: 'Performa Invoice Approved', performaInvoiceApprovedDate: new Date() },
             { new: true }
         );
         if (!order) return res.status(404).json({ message: 'Order not found or not in correct status' });
         res.json({ message: 'Performa Invoice Approved', order });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// @route   PATCH api/vendors/reject-performa/:id
+// @desc    Vendor rejects the performa invoice
+// @access  Vendor
+router.patch('/reject-performa/:id', auth, checkRole(['vendor']), async (req, res) => {
+    try {
+        const { remarks } = req.body;
+        const order = await VendorOrder.findOneAndUpdate(
+            { _id: req.params.id, vendorId: req.user._id, status: 'Performa Invoice Uploaded' },
+            { status: 'Artwork Approved', remarks: remarks || 'Performa Invoice Rejected by Vendor' },
+            { new: true }
+        );
+        if (!order) return res.status(404).json({ message: 'Order not found or not in correct status' });
+        res.json({ message: 'Performa Invoice Rejected', order });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
@@ -240,11 +262,12 @@ router.post('/layout/:id', auth, checkRole(['admin']), upload.single('file'), as
         if (!order) return res.status(404).json({ message: 'Order not found' });
 
         const newVersion = (order.layoutHistory?.length || 0) + 1;
-        order.layoutFileUrl = req.file.path;
+        const filePath = req.file.path.replace(/\\/g, '/');
+        order.layoutFileUrl = filePath;
         order.status = 'Layout Uploaded';
         order.layoutHistory.push({
             version: newVersion,
-            fileUrl: req.file.path,
+            fileUrl: filePath,
             uploadedAt: new Date(),
             uploadedBy: req.user.name || 'Admin'
         });
@@ -272,11 +295,12 @@ router.post('/revised-artwork/:id', auth, checkRole(['admin', 'vendor']), upload
         if (!order) return res.status(404).json({ message: 'Order not found' });
 
         const newVersion = (order.revisedArtworkHistory?.length || 0) + 1;
-        order.revisedArtworkUrl = req.file.path;
+        const filePath = req.file.path.replace(/\\/g, '/');
+        order.revisedArtworkUrl = filePath;
         order.status = 'Revised Artwork Uploaded';
         order.revisedArtworkHistory.push({
             version: newVersion,
-            fileUrl: req.file.path,
+            fileUrl: filePath,
             uploadedAt: new Date(),
             uploadedBy: req.user.name || (req.user.role === 'admin' ? 'Admin' : 'Vendor')
         });
@@ -295,9 +319,14 @@ router.post('/performa-invoice/:id', auth, checkRole(['admin']), upload.single('
     try {
         if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
         
+        const filePath = req.file.path.replace(/\\/g, '/');
         const order = await VendorOrder.findByIdAndUpdate(
             req.params.id,
-            { performaInvoiceUrl: req.file.path, status: 'Performa Invoice Uploaded' },
+            { 
+                performaInvoiceUrl: filePath, 
+                status: 'Performa Invoice Uploaded',
+                performaInvoiceDate: new Date()
+            },
             { new: true }
         );
         if (!order) return res.status(404).json({ message: 'Order not found' });
@@ -331,28 +360,58 @@ router.patch('/dates/:id', auth, checkRole(['vendor']), async (req, res) => {
     }
 });
 
-// @route   POST api/vendors/account
+const crypto = require('crypto');
+const { sendAccountCreationEmail } = require('../utils/sendEmail');
+
+ // @route   POST api/vendors/account
 // @desc    Create a new Vendor account
 // @access  Admin
-router.post('/account', auth, checkRole(['admin']), async (req, res) => {
+router.post('/account', auth, checkRole(['admin']), upload.single('avatar'), async (req, res) => {
     try {
-         const { name, email, username, password, vendorCode, vendorGstin, vendorName } = req.body;
+         const { name, email, adminCode, vendorCode, vendorGstin, vendorName, vendorBrand, autoGenerate } = req.body;
          
-         const existingUser = await User.findOne({ $or: [{ email }, { username }] });
-         const existingVendor = await Vendor.findOne({ $or: [{ email }, { username }, { vendorCode }] });
+         let entities = req.body.entities;
+         if (typeof entities === 'string') {
+             try { entities = JSON.parse(entities); } catch(e) { entities = []; }
+         }
+
+         const existingUser = await User.findOne({ $or: [{ email: email.toLowerCase() }] });
+         const existingVendor = await Vendor.findOne({ $or: [{ email: email.toLowerCase() }] });
          
          if(existingUser || existingVendor) 
-             return res.status(400).json({ message: 'Vendor with this email, username, or vendorCode already exists' });
+             return res.status(400).json({ message: 'Vendor with this email already exists' });
          
+         let finalUsername = req.body.username;
+         let finalPassword = req.body.password;
+
+         if (autoGenerate === 'true' || autoGenerate === true) {
+             const base = name.toLowerCase().replace(/\s+/g, '');
+             finalUsername = `${base}${Math.floor(1000 + Math.random() * 9000)}`;
+             finalPassword = crypto.randomBytes(6).toString('hex');
+         }
+
+         const avatarPath = req.file ? req.file.path.replace(/\\/g, '/') : '';
+
          const vendor = new Vendor({
-             name, email, username, password, vendorCode, vendorGstin, vendorName
+             name, 
+             email: email.toLowerCase(), 
+             username: finalUsername.toLowerCase(), 
+             password: finalPassword,
+             avatar: avatarPath,
+             adminCode,
+             vendorCode, 
+             vendorGstin, 
+             vendorName,
+             vendorBrand,
+             entities,
+             isFirstLogin: true
          });
          await vendor.save();
          
          // Send email notification
-         await sendAccountCreationEmail(email, 'vendor', vendorCode, username, password);
+         await sendAccountCreationEmail(email, 'vendor', vendorCode || (entities?.[0]?.vendorCode), finalUsername, finalPassword);
          
-         res.status(201).json({ message: 'Vendor added', user: vendor });
+         res.status(201).json({ message: 'Vendor added and credentials emailed' });
     } catch (error) {
          res.status(500).json({ message: 'Server error', error: error.message });
     }
@@ -414,6 +473,7 @@ router.post('/payment/:id', auth, checkRole(['vendor']), upload.fields([
         }
 
         order.paymentDetails = paymentDetails;
+        order.paymentSubmittedDate = new Date();
         order.status = 'Payment Follow-up'; // Or remain Despatch depending on semantics
         await order.save();
 
@@ -559,6 +619,18 @@ router.delete('/order/:id', auth, checkRole(['admin', 'vendor']), async (req, re
         await VendorOrder.findByIdAndDelete(req.params.id);
 
         res.json({ message: 'Order deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// @route   DELETE api/vendors/account/:id
+// @desc    Delete a vendor account
+// @access  Admin
+router.delete('/account/:id', auth, checkRole(['admin']), async (req, res) => {
+    try {
+        await Vendor.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Vendor account deleted successfully' });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
     }

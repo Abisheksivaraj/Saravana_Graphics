@@ -9,6 +9,10 @@ const savedFileSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  folder: {
+    type: String,
+    default: null,
+  },
   url: {
     type: String,
     required: true,

@@ -12,13 +12,26 @@ if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// Set up storage engine
+// Set up storage engine — supports dynamic subfolders
 const storage = multer.diskStorage({
     destination: function(req, file, cb) {
-        cb(null, uploadDir);
+        // If a 'folder' field is provided, create a subfolder
+        const folderName = req.body.folder || '';
+        let destDir = uploadDir;
+        if (folderName) {
+            // Sanitize folder name to prevent path traversal
+            const safeName = folderName.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim();
+            if (safeName) {
+                destDir = path.join(uploadDir, safeName);
+                if (!fs.existsSync(destDir)) {
+                    fs.mkdirSync(destDir, { recursive: true });
+                }
+            }
+        }
+        cb(null, destDir);
     },
     filename: function(req, file, cb) {
-        cb(null, 'proofsheet-' + Date.now() + path.extname(file.originalname));
+        cb(null, file.originalname || ('proofsheet-' + Date.now() + path.extname(file.originalname)));
     }
 });
 
@@ -36,10 +49,17 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
             return res.status(400).json({ message: 'No file uploaded' });
         }
 
+        const folderName = req.body.folder || '';
+        const safeFolderName = folderName.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim();
+        const urlPath = safeFolderName 
+            ? `/uploads/files/${safeFolderName}/${req.file.filename}`
+            : `/uploads/files/${req.file.filename}`;
+
         const newFile = new SavedFile({
             filename: req.file.filename,
             originalName: req.file.originalname,
-            url: `/uploads/files/${req.file.filename}`,
+            folder: safeFolderName || null,
+            url: urlPath,
             uploadedBy: req.user.id
         });
 
@@ -81,7 +101,8 @@ router.delete('/:id', auth, async (req, res) => {
             return res.status(404).json({ message: 'File not found' });
         }
 
-        const filePath = path.join(__dirname, '../uploads/files', fileDoc.filename);
+        const subDir = fileDoc.folder ? path.join(__dirname, '../uploads/files', fileDoc.folder) : path.join(__dirname, '../uploads/files');
+        const filePath = path.join(subDir, fileDoc.filename);
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
         }

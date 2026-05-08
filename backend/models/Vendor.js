@@ -9,9 +9,21 @@ const vendorSchema = new mongoose.Schema({
     avatar: { type: String, default: '' },
     role: { type: String, default: 'vendor' },
     status: { type: String, enum: ['active', 'pending', 'suspended'], default: 'active' },
+    adminCode: { type: String, sparse: true, trim: true },
     vendorCode: { type: String, unique: true, sparse: true },
     vendorGstin: { type: String },
-    vendorName: { type: String }
+    vendorName: { type: String },
+    vendorBrand: { type: String },
+    isFirstLogin: { type: Boolean, default: true },
+    otp: { type: String },
+    otpExpires: { type: Date },
+    entities: [{
+        vendorCode: { type: String, trim: true },
+        vendorName: { type: String, trim: true },
+        brandName: { type: String, trim: true },
+        vendorGstin: { type: String, trim: true },
+        vendorBrand: { type: String, trim: true }
+    }]
 }, { timestamps: true });
 
 vendorSchema.pre('save', async function (next) {
