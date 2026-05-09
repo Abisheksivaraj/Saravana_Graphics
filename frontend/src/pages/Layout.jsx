@@ -4,7 +4,8 @@ import {
     Layers, FileSpreadsheet, Download, ArrowLeft,
     Search, ZoomIn, ZoomOut, Palette, X, Wand2,
     Save, FolderOpen, FileText, Trash2, Cpu,
-    Link2, AlertCircle, CheckCircle2
+    Link2, AlertCircle, CheckCircle2,
+    Check
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Stage, Layer, Group, Rect, Text, Image as KImage, Line, Circle, Ellipse } from 'react-konva';
@@ -35,7 +36,9 @@ const loadCustomFonts = async (pdf) => {
         { name: 'Arial', style: 'bolditalic', file: '/fonts/Arial-Bold-Italic.ttf' },
         { name: 'Calibri', style: 'normal', file: '/fonts/Calibri.ttf' },
         { name: 'Calibri', style: 'bold', file: '/fonts/Calibri-Bold.ttf' },
+        { name: 'JetBrainsMono', style: 'normal', file: '/fonts/JetBrainsMono.ttf' },
         { name: 'OCR-BT', style: 'normal', file: '/fonts/OCRB.ttf' },
+        { name: 'OCR-B', style: 'normal', file: '/fonts/OCRB.ttf' },
         { name: 'RupeeForbidan', style: 'normal', file: '/fonts/RupeeForbidan.ttf' },
     ];
     for (const font of fontFiles) {
@@ -63,7 +66,7 @@ const loadCustomFonts = async (pdf) => {
 const resolvePdfFont = (fontFamily = '') => {
     const ff = fontFamily.toLowerCase();
     if (ff.includes('calibri')) return 'Calibri';
-    if (ff.includes('ocr')) return 'OCR-BT';
+    if (ff.includes('ocr')) return 'OCR-B';
     if (ff.includes('rupee') || ff.includes('forbidan')) return 'RupeeForbidan';
     if (ff.includes('times')) return 'times';
     if (ff.includes('courier')) return 'courier';
@@ -93,6 +96,8 @@ const formatNetQty = (val) => {
 };
 
 // ─── Rupee Symbol Rendering ───────────────────────────────────────────────────
+// ─── Rupee Symbol Rendering ───────────────────────────────────────────────────
+// FIXED: Unified rupee rendering - no label-type-specific offsets
 const rupeeImgCache = {};
 const getRupeeImage = (fontSizePt, color = '#000000') => {
     const key = `${fontSizePt}_${color}`;
@@ -111,34 +116,41 @@ const getRupeeImage = (fontSizePt, color = '#000000') => {
     return canvas;
 };
 
-const drawRupeeText = (pdf, rawText, x, y, scaleX = 1) => {
+
+// NEW — replace with this:
+const drawRupeeText = (pdf, rawText, x, y, scaleX = 1, fs = 12.758, fsMM = 12.758 * 0.352778) => {
     if (!rawText) return;
     const text = String(rawText);
     if (!text.includes('₹')) { pdf.text(text, x, y); return; }
-    const fs = pdf.getFontSize();
-    const fsMM = fs * 0.352778;
-    const imgH = fsMM * 1.10, imgW = fsMM * 0.95 * scaleX, imgY = y - fsMM * 1.01;
+
     const tc = pdf.getTextColor();
     const colorHex = typeof tc === 'string' && tc.startsWith('#') ? tc : '#000000';
     const rupeeImg = getRupeeImage(fs, colorHex);
+
+    const refCharW = pdf.getTextWidth('1');
+    const imgH = fsMM * 1.1;
+    const imgW = refCharW * 1.35 * (scaleX || 1);
+    const imgY = y - fsMM * 0.95;
+
     const parts = text.split('₹');
     let curX = x;
+
     parts.forEach((part, i) => {
-        if (part) { pdf.text(part, curX, y); curX += pdf.getTextWidth(part) * scaleX; }
+        if (part) {
+            pdf.text(part, curX, y);
+            curX += pdf.getTextWidth(part);
+        }
         if (i < parts.length - 1) {
+            // Render ONLY the rupee image, no ₹ character text
             try { pdf.addImage(rupeeImg, 'PNG', curX, imgY, imgW, imgH); } catch { }
-            curX += imgW + 3 * PX_TO_MM;
+            curX += imgW; // no extra gap — image width is already sized to one character
         }
     });
 };
 
-// ─── EPC / RFID Utilities ─────────────────────────────────────────────────────
 const normBarcode = (val) => String(val || '').replace(/\D/g, '');
 
-/**
- * Build a map: { barcode/EAN => [{ epc, qr }, ...] }
- * Each barcode key can have multiple EPC entries (one per label copy).
- */
+
 const buildEpcMap = (rfidRows, customQrCol = null) => {
     const map = {};
     if (!rfidRows?.length) return map;
@@ -146,7 +158,6 @@ const buildEpcMap = (rfidRows, customQrCol = null) => {
     rfidRows.forEach(row => {
         const keys = Object.keys(row);
 
-        // Find EPC column
         const epcKey = keys.find(k =>
             k.toLowerCase().replace(/[\s_-]/g, '') === 'epc' ||
             k.toLowerCase().includes('epc')
@@ -154,12 +165,10 @@ const buildEpcMap = (rfidRows, customQrCol = null) => {
         const epc = epcKey ? String(row[epcKey] || '').trim() : '';
         if (!epc) return;
 
-        // QR value: custom column OR fall back to EPC itself
         const qr = (customQrCol && row[customQrCol] !== undefined)
             ? String(row[customQrCol]).trim()
             : epc;
 
-        // Find barcode/EAN column(s)
         const barcodeKeys = keys.filter(k => {
             const l = k.toLowerCase().replace(/[\s_-]/g, '');
             return l === 'barcode' || l === 'ean' || l === 'ean13' ||
@@ -172,14 +181,50 @@ const buildEpcMap = (rfidRows, customQrCol = null) => {
             if (!map[val]) map[val] = [];
             map[val].push({ epc, qr });
 
-            // Also store normalised key (digits only) for fuzzy lookup
+            // ALWAYS store the digits-only normalized version too
             const norm = normBarcode(val);
-            if (norm && norm !== val && !map[norm]) map[norm] = map[val];
+            if (norm && norm !== val) {
+                if (!map[norm]) map[norm] = map[val]; // alias
+            }
         });
     });
 
     return map;
 };
+
+// ─── SGTIN-96 Encoding Logic (Auto-generation fallback) ──────────────────────
+const PARTITIONS = {
+    '0': { bits_m: 40, bits_n: 4 }, '1': { bits_m: 37, bits_n: 7 },
+    '2': { bits_m: 34, bits_n: 10 }, '3': { bits_m: 30, bits_n: 14 },
+    '4': { bits_m: 27, bits_n: 17 }, '5': { bits_m: 24, bits_n: 20 },
+    '6': { bits_m: 20, bits_n: 24 },
+};
+
+function encodeSGTIN96(barcode, serial, filter = 1, partition = 5) {
+    try {
+        const header = 0x30;
+        const part = PARTITIONS[String(partition)] || PARTITIONS['5'];
+        const gtin14 = String(barcode).padStart(14, '0');
+        const indicator = gtin14[0];
+        const companyPrefix = gtin14.substring(1, 8);
+        const itemRef = indicator + gtin14.substring(8, 13);
+
+        let epcBinary = header.toString(2).padStart(8, '0');
+        epcBinary += (parseInt(filter) & 0x07).toString(2).padStart(3, '0');
+        epcBinary += (parseInt(partition) & 0x07).toString(2).padStart(3, '0');
+        epcBinary += BigInt(companyPrefix).toString(2).padStart(part.bits_m, '0');
+        epcBinary += BigInt(itemRef).toString(2).padStart(part.bits_n, '0');
+        epcBinary += BigInt(serial).toString(2).padStart(38, '0');
+
+        let epcHex = '';
+        for (let i = 0; i < epcBinary.length; i += 4) {
+            epcHex += parseInt(epcBinary.substring(i, i + 4), 2).toString(16).toUpperCase();
+        }
+        return epcHex;
+    } catch (e) { return 'ERROR'; }
+}
+
+const INITIAL_SERIAL = 274655906933n;
 
 /**
  * Expand label rows: each row with qty N becomes N separate rows,
@@ -188,6 +233,7 @@ const buildEpcMap = (rfidRows, customQrCol = null) => {
 const expandLabelRows = (labelData, epcMap) => {
     const expanded = [];
     const consumedIdx = {};
+    let serialCounter = INITIAL_SERIAL;
 
     labelData.forEach((row, rowIndex) => {
         // Blank row pass-through
@@ -196,11 +242,11 @@ const expandLabelRows = (labelData, epcMap) => {
             return;
         }
 
-        const eanKey = Object.keys(row).find(k => {
+        const keys = Object.keys(row);
+        const eanKey = keys.find(k => {
             const l = k.toLowerCase().replace(/[\s_-]/g, '');
-            return l === 'ean' || l === 'ean13' || l === 'barcode' ||
-                l.includes('ean') || l.includes('barcode') || l.includes('gtin');
-        });
+            return l === 'ean' || l === 'ean13' || l === 'barcode' || l === 'gtin';
+        }) || keys.find(k => k.toLowerCase() === 'epc');
 
         const qtyKey = Object.keys(row).find(k => {
             const l = k.toLowerCase().replace(/\s/g, '');
@@ -211,27 +257,60 @@ const expandLabelRows = (labelData, epcMap) => {
         const qty = qtyKey ? parseInt(row[qtyKey], 10) : 1;
         const safeQty = isNaN(qty) || qty < 1 ? 1 : qty;
 
-        // Look up available EPCs for this barcode
+        // Does the source row already have an explicit EPC column?
+        const explicitEpcCol = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '') === 'epc');
+        const explicitEpc = explicitEpcCol ? String(row[explicitEpcCol] || '').trim() : '';
+
+        // Lookup: try exact → normalized → prefix/suffix trim → fuzzy digit match
         let epcs = epcMap[ean] || [];
         if (!epcs.length && ean) {
             const norm = normBarcode(ean);
             epcs = epcMap[norm] || [];
             if (!epcs.length) {
-                const matchKey = Object.keys(epcMap).find(k => normBarcode(k) === norm);
+                // Try every key in the map — find first whose digits match
+                const matchKey = Object.keys(epcMap).find(k =>
+                    normBarcode(k) === norm
+                );
                 if (matchKey) epcs = epcMap[matchKey];
             }
+        }
+
+        // Debug: log the lookup result for the first row to diagnose mismatches
+        if (rowIndex === 0) {
+            console.log('[EPC Lookup]', {
+                ean, norm: normBarcode(ean),
+                found: epcs.length, mapKeys: Object.keys(epcMap).slice(0, 5)
+            });
         }
 
         if (!(ean in consumedIdx)) consumedIdx[ean] = 0;
 
         for (let i = 0; i < safeQty; i++) {
-            const entry = epcs[consumedIdx[ean]] || { epc: '', qr: '' };
+            let entry = epcs[consumedIdx[ean]];
+
+            // If no RFID mapping, check for explicit EPC in the data row
+            let isAuto = false;
+            if (!entry || !entry.epc) {
+                if (explicitEpc) {
+                    entry = { epc: explicitEpc, qr: explicitEpc };
+                    isAuto = false; // It's real data from the Excel
+                } else {
+                    const autoEpc = encodeSGTIN96(ean || '0000000000000', serialCounter);
+                    entry = { epc: autoEpc, qr: autoEpc };
+                    serialCounter -= 1n;
+                    isAuto = true; // It's auto-generated
+                }
+            } else {
+                isAuto = false; // It's from the RFID map
+            }
+
             consumedIdx[ean]++;
             expanded.push({
                 ...row,
                 __epc: entry.epc,
                 __qr: entry.qr || entry.epc,
                 __ean: ean,
+                __isAutoEpc: isAuto,
                 __labelIndex: i + 1,
                 __totalForEan: safeQty,
                 __originalRowIndex: rowIndex,
@@ -290,28 +369,103 @@ const resolveDynamicText = (templateText, data) => {
 const resolveQRValue = (el, data, mapping) => {
     const mp = mapping[el.id];
     if (mp === '__empty') return '';
-    if (data.__qr && String(data.__qr).trim()) return String(data.__qr).trim();
-    if (data.__epc && String(data.__epc).trim()) return String(data.__epc).trim();
-    if (mp === '__epc') return data.__epc || '';
-    // Static template value (non-EPC designs)
-    const direct = el.qrValue || el.value || el.data || '';
-    if (direct && !direct.includes('{{')) return String(direct).trim();
-    return '';
+
+    // Check ALL string properties of the element for keywords
+    const allProps = Object.keys(el)
+        .filter(k => typeof el[k] === 'string')
+        .map(k => el[k].toUpperCase())
+        .join(' ');
+
+    const isExplicitEpc = allProps.includes('EPC') || allProps.includes('RFID');
+    const isExplicitEan = (allProps.includes('EAN') || allProps.includes('OLD') || allProps.includes('BARCODE')) && !isExplicitEpc;
+
+    // 1. Explicit EAN QR Code (Always shows Barcode)
+    if (isExplicitEan) {
+        return String(data.__ean || '').trim();
+    }
+
+    // 2. Explicit EPC QR Code (Always shows RFID EPC)
+    if (isExplicitEpc) {
+        // If we have matched RFID data, use it
+        if (data.__isAutoEpc === false && data.__qr && String(data.__qr).trim())
+            return String(data.__qr).trim();
+
+        // If it's a dedicated EPC QR, we should NOT show EAN if no match is found
+        // Return real EPC or empty string
+        return data.__isAutoEpc ? '' : String(data.__qr || '').trim();
+    }
+
+    // 3. Dual-mode / Standard QR Code (Existing Logic)
+    // RFID file was uploaded and this row has a real matched EPC — always top priority
+    if (data.__isAutoEpc === false && data.__qr && String(data.__qr).trim())
+        return String(data.__qr).trim();
+
+    // Explicit column mapping (not the __epc sentinel)
+    if (mp && mp !== '__epc' && data[mp] !== undefined)
+        return String(data[mp]).trim();
+
+    // Look for a real EPC column in the Excel row itself
+    if (mp === '__epc' || !mp) {
+        const epcCol = Object.keys(data).find(k =>
+            k.toLowerCase().replace(/[\s_-]/g, '') === 'epc'
+        );
+        if (epcCol && String(data[epcCol] ?? '').trim())
+            return String(data[epcCol]).trim();
+    }
+
+    // No RFID matched — fall back to EAN so QR is never blank
+    if (data.__ean && String(data.__ean).trim())
+        return String(data.__ean).trim();
+
+    return String(data.__qr || '').trim();
 };
 
-// ─── Barcode Value Resolution ─────────────────────────────────────────────────
-/**
- * Barcode elements always show EAN/barcode data (never EPC).
- */
+const buildAzorteeCircleMap = (elements, data) => {
+    const sizeTextEls = elements.filter(textEl => {
+        if (textEl.type !== 'text' && textEl.type !== 'placeholder') return false;
+        const t = (textEl.text || '').trim();
+        if (t.includes('{{')) return false;
+        return t.length > 0 && t.length <= 6;
+    });
+    const circleTextMap = new Map();
+    elements.forEach(circleEl => {
+        const elName = (circleEl.name || '').toLowerCase();
+        const isSizeCircle = circleEl.type === 'circle' &&
+            (elName.includes('sizeindicator') || elName.includes('sizecircle') || elName.includes('circle'));
+        if (!isSizeCircle) return;
+        const cCX = circleEl.x || 0, cCY = circleEl.y || 0;
+        let bestText = null, bestDist = Infinity;
+        sizeTextEls.forEach(textEl => {
+            const dx = cCX - (textEl.x || 0), dy = cCY - (textEl.y || 0);
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < bestDist) { bestDist = dist; bestText = textEl; }
+        });
+        if (bestText && bestDist < 120) {
+            let tv = bestText.text || '';
+            Object.keys(data).forEach(col => { tv = tv.replaceAll(`{{${col}}}`, String(data[col] ?? '').trim()); });
+            circleTextMap.set(circleEl.id, tv.trim().toUpperCase());
+        }
+    });
+    return circleTextMap;
+};
 const resolveBarcodeValue = (el, data, mapping) => {
     const mp = mapping[el.id];
+
+    // If it's a QR-format barcode, use QR resolution logic
+    const fmt = (el.barcodeFormat || '').toUpperCase();
+    if (fmt === 'QRCODE' || fmt === 'EPC') {
+        return resolveQRValue(el, data, mapping);
+    }
+
     if (mp && mp !== '__epc' && data[mp] !== undefined)
         return String(data[mp] ?? '').replace(/^[₹\s]+/, '').trim();
     if (mp === '__ean' || data.__ean) return data.__ean || '';
     // Auto-detect EAN column
-    const eanCol = Object.keys(data).find(k =>
-        k.toLowerCase().includes('ean') || k.toLowerCase().includes('barcode')
-    );
+    const keys = Object.keys(data);
+    const eanCol = keys.find(k => {
+        const l = k.toLowerCase().replace(/[\s_-]/g, '');
+        return l === 'ean' || l === 'ean13' || l === 'barcode' || l === 'gtin';
+    }) || keys.find(k => k.toLowerCase() === 'epc');
     if (eanCol && data[eanCol] !== undefined)
         return String(data[eanCol] ?? '').replace(/^[₹\s]+/, '').trim();
     if (data.__ean) return data.__ean;
@@ -384,39 +538,85 @@ const getLabelType = (design) => {
 const LayoutLabel = ({
     elements = [], data = {}, mapping = {}, width, height,
     designW, designH, isBranding = false, logoImg = null,
-    labelType = 'normal',
+    labelType = 'normal', modes = {},
 }) => {
     const mergedElements = useMemo(() => {
-        if (isBranding) return [
-            { type: 'rect', x: 0, y: 0, width, height, fill: '#ffffff' },
-            logoImg ? { type: 'image', x: 0, y: 0, width, height, image: logoImg } : null,
-        ].filter(Boolean);
-
-        const sizeCol = Object.keys(data).find(k =>
-            k.toLowerCase() === 'size' || k.toLowerCase().includes('size')
-        );
+        const sizeCol = Object.keys(data).find(k => k.toLowerCase() === 'size' || k.toLowerCase().includes('size'));
         const sizeVal = sizeCol ? String(data[sizeCol] || '').trim().toUpperCase() : '';
 
-        return elements.map(el => {
-            const resolved = resolveElement(el, data, mapping);
+        if (isBranding) {
+            return [
+                { type: 'rect', x: 0, y: 0, width, height, fill: '#ffffff' },
+                logoImg ? { type: 'image', x: 0, y: 0, width, height, image: logoImg, zIndex: 10 } : null,
+            ].filter(Boolean);
+        }
 
-            // Size highlight for normal / livsmart
-            if ((el.type === 'text' || el.type === 'placeholder') && sizeVal) {
-                const cleanV = (resolved.text || '').trim().toUpperCase();
-                if (cleanV === sizeVal && cleanV.length < 6) {
-                    if (labelType === 'livsmart') return { ...resolved, fill: '#ffffff', _sizeHighlight: true };
-                    return { ...resolved, fill: '#000000', _sizeHighlight: true };
+        if (labelType === 'azortee') {
+            const circleTextMap = buildAzorteeCircleMap(elements, data);
+            return elements.map(el => {
+                const elName = (el.name || '').toLowerCase();
+                const isSizeCircle = el.type === 'circle' &&
+                    (elName.includes('sizeindicator') || elName.includes('sizecircle') || elName.includes('circle'));
+                if (isSizeCircle) {
+                    const pairedText = circleTextMap.get(el.id) || '';
+                    return { ...el, visible: !!(sizeVal && pairedText === sizeVal) };
+                }
+                return resolveElement(el, data, mapping, modes);
+            });
+        }
+
+        if (labelType === 'livsmart') {
+            const result = [];
+            elements.forEach(el => {
+                const resolved = resolveElement(el, data, mapping, modes);
+                if ((el.type === 'text' || el.type === 'placeholder') && sizeVal && !el.text?.includes('{{')) {
+                    const cleanText = (el.text || '').trim().toUpperCase();
+                    if (cleanText === sizeVal && cleanText.length < 8) {
+                        const padding = 1.5, fsPx = el.fontSize || 12;
+                        const charW = fsPx * 0.6, textW = cleanText.length * charW;
+                        const rectW = (el.width && el.width > 10 ? el.width : textW) + padding * 2;
+                        const rectH = fsPx * 1.4;
+                        result.push({
+                            id: `__livsmart_rect_${el.id}`, type: 'rect',
+                            x: (el.x || 0) - padding, y: (el.y || 0) - padding,
+                            width: rectW, height: rectH, fill: '#000000',
+                            zIndex: (el.zIndex || 0) - 0.5, visible: true,
+                        });
+                        result.push({ ...resolved, fill: '#ffffff', isHighlightedSize: true });
+                        return;
+                    }
+                }
+                result.push(resolved);
+            });
+            return result;
+        }
+
+        return elements.map(el => {
+            let newEl = resolveElement(el, data, mapping, modes);
+            const elName = (el.name || '').toLowerCase();
+            if (el.type === 'circle' && (elName.includes('sizeindicator') || elName.includes('sizecircle'))) {
+                newEl.visible = false;
+            }
+            if (el.type === 'text' || el.type === 'placeholder') {
+                const cleanV = (newEl.text || '').trim().toUpperCase();
+                if (sizeVal && cleanV === sizeVal && cleanV.length < 6) {
+                    newEl.fill = '#000000'; newEl.isHighlightedSize = true;
                 }
             }
-
-            return resolved;
+            if (el.type === 'rect') {
+                const isSizeBox = elements.some(other => {
+                    if (other.type !== 'text' && other.type !== 'placeholder') return false;
+                    const ot = (other.text || '').trim().toUpperCase();
+                    if (!sizeVal || ot !== sizeVal || ot.length >= 6) return false;
+                    return Math.abs((other.x || 0) - (el.x || 0)) <= 8 && Math.abs((other.y || 0) - (el.y || 0)) <= 8;
+                });
+                if (isSizeBox) newEl.fill = '#000000';
+            }
+            return newEl;
         });
-    }, [elements, data, mapping, isBranding, logoImg, width, height, labelType]);
+    }, [elements, data, mapping, modes, isBranding, logoImg, width, height, labelType]);
 
-    const sorted = useMemo(() =>
-        [...mergedElements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0)),
-        [mergedElements]);
-
+    const sorted = useMemo(() => [...mergedElements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0)), [mergedElements]);
     const dW = designW || 166, dH = designH || 387;
     const s = Math.min(width / dW, height / dH);
     const ox = (width - dW * s) / 2, oy = (height - dH * s) / 2;
@@ -428,107 +628,126 @@ const LayoutLabel = ({
                 {sorted.map((el, i) => {
                     const key = el.id || `el-${i}`;
                     const common = {
-                        x: el.x || 0, y: el.y || 0,
-                        rotation: el.rotation || 0,
+                        x: el.x || 0, y: el.y || 0, rotation: el.rotation || 0,
                         scaleX: el.scaleX || 1, scaleY: el.scaleY || 1,
                         opacity: el.opacity !== undefined ? el.opacity : 1,
                         visible: el.visible !== false,
                     };
-
                     switch (el.type) {
                         case 'text':
                         case 'placeholder': {
                             const txt = el.text || '';
-                            const fs = el.fontSize || 12;
-                            const col = el.fill || '#000000';
-                            const wrapWidth = el.wrap === 'none' ? undefined : el.width || 200;
-
+                            const fs = el.fontSize || 12, ff = el.fontFamily || 'Arial', col = el.fill || '#000000';
+                            const isItalic = el.fontStyle === 'italic', weight = el.fontWeight || 'normal';
+                            const textAlign = el.textAlign || 'left';
+                            const wrapWidth = el.wrap === 'none' || (el.width || 200) < 20 ? undefined : el.width || 200;
+                            // Inside LayoutLabel, replace the ₹ text rendering block:
                             if (!txt.includes('₹')) {
                                 return (
                                     <Group key={key} {...common}>
-                                        <Text
-                                            text={txt} fontSize={fs} fontFamily={el.fontFamily || 'Arial'}
-                                            fontStyle={`${el.fontStyle === 'italic' ? 'italic' : 'normal'} ${el.fontWeight || 'normal'}`}
-                                            align={el.textAlign || 'left'} fill={col}
-                                            width={wrapWidth} wrap={wrapWidth ? 'word' : 'none'}
+                                        <Text text={txt} fontSize={fs} fontFamily={ff}
+                                            fontStyle={`${isItalic ? 'italic' : 'normal'} ${weight}`}
+                                            align={textAlign} fill={col} width={wrapWidth}
+                                            wrap={wrapWidth ? 'word' : 'none'}
                                             letterSpacing={el.letterSpacing || 0}
                                             lineHeight={el.lineHeight || 1.2}
-                                            textDecoration={el.underline ? 'underline' : 'none'}
-                                        />
+                                            textDecoration={el.underline ? 'underline' : 'none'} />
                                     </Group>
                                 );
                             }
 
-                            // Rupee symbol inline rendering
                             const parts = txt.split('₹');
                             return (
                                 <Group key={key} {...common}>
                                     {(() => {
-                                        let curX = 0;
+                                        let currentX = 0;
                                         const items = [];
                                         const rupeeImg = getRupeeImage(fs, col);
-                                        const rH = fs * 0.85, rW = fs * 0.72, rY = fs * 0.05;
-                                        parts.forEach((p, idx) => {
-                                            if (p) {
+                                        const rH = fs * 0.85;
+                                        const rW = fs * 0.65;
+                                        const rY = fs * 0.02;
+                                        // Approximate px width per character for this font/size
+                                        const charPxW = fs * 0.55;
+
+                                        parts.forEach((part, i) => {
+                                            if (part) {
                                                 items.push(
-                                                    <Text key={`p-${idx}`} x={curX} y={0} text={p} fontSize={fs}
-                                                        fontFamily={el.fontFamily || 'Arial'} fill={col}
-                                                        letterSpacing={el.letterSpacing || 0} />
+                                                    <Text
+                                                        key={`t-${i}`}
+                                                        x={currentX}
+                                                        y={0}
+                                                        text={part}
+                                                        fontSize={fs}
+                                                        fontFamily={ff}
+                                                        fontStyle={`${isItalic ? 'italic' : 'normal'} ${weight}`}
+                                                        fill={col}
+                                                        wrap="none"
+                                                        letterSpacing={el.letterSpacing || 0}
+                                                    />
                                                 );
-                                                const cv = document.createElement('canvas');
-                                                cv.getContext('2d').font = `${fs}px ${el.fontFamily || 'Arial'}`;
-                                                curX += cv.getContext('2d').measureText(p).width + (el.letterSpacing || 0);
+                                                currentX += part.length * charPxW;
                                             }
-                                            if (idx < parts.length - 1) {
-                                                items.push(<KImage key={`r-${idx}`} x={curX} y={rY} image={rupeeImg} width={rW} height={rH} />);
-                                                curX += rW + 3;
+                                            if (i < parts.length - 1) {
+                                                items.push(
+                                                    <KImage key={`r-${i}`} x={currentX} y={rY} image={rupeeImg} width={rW} height={rH} />
+                                                );
+                                                currentX += rW + 1;
                                             }
                                         });
+
+                                        if (textAlign === 'center' && wrapWidth) return <Group x={(wrapWidth - currentX) / 2}>{items}</Group>;
+                                        if (textAlign === 'right' && wrapWidth) return <Group x={wrapWidth - currentX}>{items}</Group>;
                                         return items;
                                     })()}
                                 </Group>
                             );
                         }
-
                         case 'rect':
-                            return <Rect key={key} {...common} width={el.width || 0} height={el.height || 0}
-                                fill={el.fill || 'transparent'} cornerRadius={el.cornerRadius || 0}
-                                stroke={el.stroke || 'transparent'} strokeWidth={el.strokeWidth || 0} />;
-
+                            return <Rect key={key} {...common} width={el.width || 0} height={el.height || 0} fill={el.fill || 'transparent'} cornerRadius={el.cornerRadius || 0} stroke={el.stroke || 'transparent'} strokeWidth={el.strokeWidth || 0} />;
                         case 'line':
-                            return <Line key={key} {...common} points={el.points || [0, 0, 100, 0]}
-                                stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth || 1} />;
-
+                            return <Line key={key} {...common} points={el.points || [0, 0, 100, 0]} stroke={el.stroke || '#000000'} strokeWidth={el.strokeWidth || 1} />;
                         case 'circle':
-                            return <Circle key={key} {...common} radius={el.radius || 10}
-                                fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
-
+                            return <Circle key={key} {...common} radius={el.radius || 10} fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
                         case 'ellipse':
-                            return <Ellipse key={key} {...common} radiusX={el.radiusX || 10} radiusY={el.radiusY || 10}
-                                fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
-
+                            return <Ellipse key={key} {...common} radiusX={el.radiusX || 10} radiusY={el.radiusY || 10} fill={el.fill} stroke={el.stroke} strokeWidth={el.strokeWidth || 0} />;
                         case 'barcode':
                             return <BarcodeElement key={key} {...common} el={el} onSelect={() => { }} />;
-
                         case 'qrcode': {
-                            const qv = el.qrValue;
-                            if (!qv) {
-                                const bW = el.width || 40, bH = el.height || 40;
+                            const resolvedQR = el.qrValue;
+                            if (!resolvedQR) {
+                                const boxW = el.width || 40, boxH = el.height || 40;
                                 return (
                                     <Group key={key} {...common}>
-                                        <Rect width={bW} height={bH} fill="#f8f8f8" stroke="#d1d5db" strokeWidth={1} dash={[3, 2]} cornerRadius={2} />
-                                        <Text text="EPC" fontSize={Math.max(7, bW * 0.18)} fontFamily="Arial" fill="#9ca3af" width={bW} align="center" y={bH * 0.28} />
-                                        <Text text="PENDING" fontSize={Math.max(5, bW * 0.13)} fontFamily="Arial" fill="#9ca3af" width={bW} align="center" y={bH * 0.55} />
+                                        <Rect width={boxW} height={boxH} fill="#f8f8f8" stroke="#d1d5db" strokeWidth={1} dash={[3, 2]} cornerRadius={2} />
+                                        <Text
+                                            text="EPC"
+                                            fontSize={Math.max(7, boxW * 0.18)}
+                                            fontFamily="Arial"
+                                            fill="#9ca3af"
+                                            width={boxW}
+                                            align="center"
+                                            y={boxH * 0.28}
+                                        />
+                                        <Text
+                                            text="PENDING"
+                                            fontSize={Math.max(5, boxW * 0.13)}
+                                            fontFamily="Arial"
+                                            fill="#9ca3af"
+                                            width={boxW}
+                                            align="center"
+                                            y={boxH * 0.55}
+                                        />
                                     </Group>
                                 );
                             }
-                            return <QRElement key={key} {...common} el={{ ...el, qrValue: qv }} onSelect={() => { }} />;
-                        }
 
+                            return <QRElement key={key} {...common}
+                                el={{ ...el, qrValue: resolvedQR }}
+                                onSelect={() => { }} />;
+                        }
                         case 'image':
                             if (el.image) return <KImage key={key} {...common} image={el.image} width={el.width} height={el.height} />;
                             return <ImageElement key={key} {...common} el={el} />;
-
                         default:
                             return null;
                     }
@@ -540,6 +759,7 @@ const LayoutLabel = ({
 
 // ─── PDF Vector Rendering ─────────────────────────────────────────────────────
 const renderQRAtPos = async (pdf, value, x, y, size) => {
+    if (!value || !String(value).trim()) return;
     try {
         const dataUrl = await QRCode.toDataURL(String(value), {
             margin: 1, errorCorrectionLevel: 'M', width: 512,
@@ -552,6 +772,13 @@ const renderQRAtPos = async (pdf, value, x, y, size) => {
 const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduction = false) => {
     try {
         const fmt = (format || 'CODE128').toUpperCase();
+
+        if (fmt === 'QRCODE' || fmt === 'EPC') {
+            if (!value || !String(value).trim()) return;
+            const qsz = Math.min(w, h);
+            await renderQRAtPos(pdf, value, x + (w - qsz) / 2, y + (h - qsz) / 2, qsz, fill);
+            return;
+        }
 
         if (fmt === 'EAN13') {
             const L = { 0: '0001101', 1: '0011001', 2: '0010011', 3: '0111101', 4: '0100011', 5: '0110001', 6: '0101111', 7: '0111011', 8: '0110111', 9: '0001011' };
@@ -566,7 +793,7 @@ const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduct
             bits += '01010';
             for (let i = 0; i < 6; i++) bits += R[d[i + 7]];
             bits += '101';
-            const fsPt = isProduction ? 9 : 6;
+            const fsPt = isProduction ? 7 : 4;
             const fsMM = fsPt * 0.352778;
             const barZoneH = h - fsMM - 0.1, guardH = barZoneH + 1.2;
             const unitW = w / 109, bsX = x + unitW * 7;
@@ -581,7 +808,16 @@ const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduct
                     cx += unitW * sp; i += sp;
                 } else { cx += unitW; i++; }
             }
-            try { pdf.setFont('OCR-BT', 'normal'); } catch { pdf.setFont('courier', 'normal'); }
+            const fontList = pdf.getFontList();
+            if (fontList['JetBrainsMono']) {
+                pdf.setFont('JetBrainsMono', 'normal');
+            } else if (fontList['OCR-BT']) {
+                pdf.setFont('OCR-BT', 'normal');
+            } else if (fontList['OCR-B']) {
+                pdf.setFont('OCR-B', 'normal');
+            } else {
+                pdf.setFont('courier', 'normal');
+            }
             pdf.setFontSize(fsPt);
             const ty = y + barZoneH + fsMM * 1.0 - 2 * PX_TO_MM;
             pdf.text(s[0], x + unitW * 2.5, ty, { align: 'center' });
@@ -608,7 +844,16 @@ const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduct
                 } else { cx += unitW; i++; }
             }
         });
-        try { pdf.setFont('OCR-BT', 'normal'); } catch { pdf.setFont('courier', 'normal'); }
+        const fl = pdf.getFontList();
+        if (fl['JetBrainsMono']) {
+            pdf.setFont('JetBrainsMono', 'normal');
+        } else if (fl['OCR-BT']) {
+            pdf.setFont('OCR-BT', 'normal');
+        } else if (fl['OCR-B']) {
+            pdf.setFont('OCR-B', 'normal');
+        } else {
+            pdf.setFont('courier', 'normal');
+        }
         const scaledFs = fsPt * (w / 44);
         pdf.setFontSize(scaledFs);
         pdf.text(String(value), x + w / 2, y + barH + 0.5 + (scaledFs * 0.352778) * 0.8, { align: 'center' });
@@ -655,9 +900,10 @@ function DownloadModal({
         const nm = { ...modalMapping };
         (template?.elements || []).forEach(el => {
             if (!['text', 'placeholder', 'barcode', 'qrcode', 'rect'].includes(el.type)) return;
-            // QR elements always map to EPC
-            if (el.type === 'qrcode') {
-                nm[el.id] = '__epc';  // ← this should already be here
+            // QR elements: Map to __epc by default, but respect el.fieldName if set
+            const isActuallyQr = el.type === 'qrcode' || (el.type === 'barcode' && (el.barcodeFormat || '').toUpperCase() === 'QRCODE');
+            if (isActuallyQr) {
+                if (!nm[el.id]) nm[el.id] = el.fieldName || '__epc';
                 return;
             }
             const templateValue = el.type === 'barcode' ? el.barcodeValue : el.text;
@@ -804,181 +1050,249 @@ function DownloadModal({
     );
 
     return (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}>
-            <div style={{ background: 'white', borderRadius: 16, width: 600, maxWidth: '95vw', padding: 24, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', position: 'relative' }}>
-                <button onClick={onClose} style={{ position: 'absolute', top: 20, right: 20, background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20} /></button>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-                    <div style={{ background: '#f5f3ff', color: '#8b5cf6', padding: 10, borderRadius: 12 }}><Layers size={22} /></div>
-                    <div>
-                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#1e293b' }}>Generate Batch Labels</h2>
-                        <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>Upload label and EPC data files</div>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.7)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}>
+            <div style={{ 
+                background: 'white', 
+                borderRadius: 24, 
+                width: 650, 
+                maxWidth: '95vw', 
+                maxHeight: '90vh', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                boxShadow: '0 30px 60px -12px rgba(0,0,0,0.3)', 
+                position: 'relative',
+                overflow: 'hidden',
+                animation: 'modalSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
+            }}>
+                <style>{`
+                    @keyframes modalSlideUp {
+                        from { transform: translateY(30px); opacity: 0; }
+                        to { transform: translateY(0); opacity: 1; }
+                    }
+                    .modal-scroll::-webkit-scrollbar { width: 6px; }
+                    .modal-scroll::-webkit-scrollbar-track { background: transparent; }
+                    .modal-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+                    .modal-scroll::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+                `}</style>
+
+                {/* Header Section (Fixed) */}
+                <div style={{ padding: '24px 32px 12px', borderBottom: '1px solid #f1f5f9', position: 'relative' }}>
+                    <button onClick={onClose} style={{ position: 'absolute', top: 24, right: 24, background: '#f8fafc', border: 'none', color: '#94a3b8', cursor: 'pointer', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }} className="hover-bg-red">
+                        <X size={18} />
+                    </button>
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
+                        <div style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1)', color: 'white', padding: 10, borderRadius: 12, boxShadow: '0 4px 12px rgba(99,102,241,0.2)' }}>
+                            <Layers size={22} />
+                        </div>
+                        <div>
+                            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.01em' }}>Generate Batch Labels</h2>
+                            <div style={{ fontSize: 13, color: '#64748b', marginTop: 1, fontWeight: 500 }}>Upload label and EPC data files</div>
+                        </div>
+                    </div>
+
+                    {/* Step indicators */}
+                    <div style={{ display: 'flex', alignItems: 'center', position: 'relative', padding: '0 10px' }}>
+                        <div style={{ height: 2, background: '#f1f5f9', position: 'absolute', left: 40, right: 40, top: 12, zIndex: 0 }} />
+                        {[{ num: 1, label: 'Upload' }, { num: 2, label: 'Review' }, { num: 3, label: 'Generate' }].map((s, i) => (
+                            <div key={s.num} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, position: 'relative', zIndex: 1, background: 'white', padding: '0 8px', justifyContent: i === 0 ? 'flex-start' : i === 2 ? 'flex-end' : 'center' }}>
+                                <div style={{ 
+                                    width: 26, height: 26, borderRadius: '50%', 
+                                    background: step >= s.num ? 'linear-gradient(135deg, #8b5cf6, #6366f1)' : '#f1f5f9', 
+                                    color: step >= s.num ? 'white' : '#94a3b8', 
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                    fontSize: 12, fontWeight: 800,
+                                    boxShadow: step === s.num ? '0 0 0 4px rgba(99,102,241,0.1)' : 'none',
+                                    transition: 'all 0.3s'
+                                }}>
+                                    {step > s.num ? <Check size={14} /> : s.num}
+                                </div>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: step >= s.num ? '#6366f1' : '#94a3b8' }}>{s.label}</span>
+                            </div>
+                        ))}
                     </div>
                 </div>
 
-                {/* Step indicators */}
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24, position: 'relative' }}>
-                    <div style={{ height: 2, background: '#f1f5f9', position: 'absolute', left: 0, right: 0, top: 12, zIndex: 0 }} />
-                    {[{ num: 1, label: 'Upload' }, { num: 2, label: 'Review' }, { num: 3, label: 'Generate' }].map((s, i) => (
-                        <div key={s.num} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, position: 'relative', zIndex: 1, background: 'white', padding: '0 8px', justifyContent: i === 0 ? 'flex-start' : i === 2 ? 'flex-end' : 'center' }}>
-                            <div style={{ width: 24, height: 24, borderRadius: '50%', background: step >= s.num ? '#8b5cf6' : '#e2e8f0', color: step >= s.num ? 'white' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 'bold' }}>{s.num}</div>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: step >= s.num ? '#8b5cf6' : '#94a3b8' }}>{s.label}</span>
+                {/* Content Section (Scrollable) */}
+                <div className="modal-scroll" style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+                    {error && (
+                        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '12px 16px', borderRadius: 12, fontSize: 13, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <AlertCircle size={18} /> {error}
                         </div>
-                    ))}
+                    )}
+
+                    {/* Step 1 Content */}
+                    {step === 1 && (
+                        <div>
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 14, padding: '18px 22px', marginBottom: 18 }}>
+                                <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>1 — SELECT DESIGN TEMPLATE</div>
+                                <select
+                                    style={{ width: '100%', padding: '12px 16px', fontSize: 14, fontWeight: 700, border: `2px solid ${activeTemplate ? '#10b981' : '#e2e8f0'}`, borderRadius: 12, background: 'white', color: activeTemplate ? '#065f46' : '#1e293b', cursor: 'pointer', outline: 'none', transition: 'all 0.2s', boxShadow: activeTemplate ? '0 2px 8px rgba(16,185,129,0.05)' : 'none' }}
+                                    value={modalDesignId}
+                                    onChange={e => handleDesignChange(e.target.value)}
+                                >
+                                    <option value="">— Choose Design —</option>
+                                    {(templates || []).map(t => <option key={t._id || t.id} value={t._id || t.id}>{t.title}</option>)}
+                                </select>
+                                {activeTemplate && (
+                                    <div style={{ marginTop: 10, fontSize: 12, color: '#059669', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981' }} /> Active Template: {activeTemplate.title}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 14, padding: '18px 22px', marginBottom: 18 }}>
+                                <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>2 — LABEL DATA SOURCE (.XLSX)</div>
+                                {uploadZone('Upload label file', 'Data for label placeholders', labelInputRef, labelFile, setLabelFile, <FileSpreadsheet size={24} />)}
+                            </div>
+
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 14, padding: '18px 22px' }}>
+                                <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>3 — EPC MAPPING FILE (OPTIONAL)</div>
+                                {uploadZone('Upload EPC file', 'Barcode to EPC identifier mapping', epcInputRef, epcFile, setEpcFile, <Link2 size={24} />, true)}
+                                {rfidHeaders.length > 0 && (
+                                    <div style={{ marginTop: 16, padding: '14px 18px', background: 'white', borderRadius: 12, border: '1.5px solid #e2e8f0', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}><Search size={12} /> QR CODE COLUMN (EPC SOURCE):</div>
+                                        <select
+                                            style={{ width: '100%', padding: '10px 14px', fontSize: 13, borderRadius: 8, border: '1.5px solid #cbd5e1', background: '#f8fafc', fontWeight: 600, color: '#334155', outline: 'none' }}
+                                            value={qrCol}
+                                            onChange={e => setQrCol(e.target.value)}
+                                        >
+                                            {rfidHeaders.map((h, i) => <option key={i} value={h}>{h}</option>)}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Step 2 Content */}
+                    {step === 2 && summary && (
+                        <div>
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 16, padding: 24, boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 20 }}>
+                                    <div>
+                                        <div style={{ fontSize: 32, fontWeight: 900, color: '#0f172a', lineHeight: 1 }}>{summary.totalLabels.toLocaleString()}</div>
+                                        <div style={{ fontSize: 13, color: '#64748b', marginTop: 6, fontWeight: 600 }}>Total labels to generate</div>
+                                    </div>
+                                    <div style={{ background: '#f1f5f9', padding: '6px 14px', borderRadius: 20, fontSize: 11, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                        Summary Statistics
+                                    </div>
+                                </div>
+                                
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                                    <div style={{ background: 'white', padding: 18, borderRadius: 14, border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#059669', fontWeight: 700, fontSize: 13, marginBottom: 8 }}><CheckCircle2 size={16} /> EPC Matched</div>
+                                        <div style={{ fontSize: 22, fontWeight: 800, color: '#1e293b' }}>{summary.matched.toLocaleString()}</div>
+                                    </div>
+                                    <div style={{ background: 'white', padding: 18, borderRadius: 14, border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: summary.unmatched > 0 ? '#dc2626' : '#64748b', fontWeight: 700, fontSize: 13, marginBottom: 8 }}>
+                                            {summary.unmatched > 0 ? <AlertCircle size={16} /> : <div style={{ width: 16 }} />} EPC Missing
+                                        </div>
+                                        <div style={{ fontSize: 22, fontWeight: 800, color: '#1e293b' }}>{summary.unmatched.toLocaleString()}</div>
+                                    </div>
+                                </div>
+
+                                <div style={{ marginTop: 24 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>Visual Preview (First 15 Items)</div>
+                                    <div className="modal-scroll" style={{ display: 'flex', gap: 20, overflowX: 'auto', padding: '16px 4px 24px', minHeight: 180 }}>
+                                        {summary.validRows.slice(0, 15).map((row, idx) => (
+                                            <div key={idx} style={{ flexShrink: 0, width: 110, height: 240, position: 'relative' }}>
+                                                <Stage width={110} height={240} style={{ borderRadius: 8, overflow: 'hidden', boxShadow: '0 10px 20px -5px rgba(0,0,0,0.15)' }}>
+                                                    <Layer>
+                                                        <LayoutLabel
+                                                            width={110} height={240}
+                                                            elements={activeTemplate.elements}
+                                                            data={row} mapping={activeMapping}
+                                                            designW={activeTemplate.canvasWidth || activeTemplate.width}
+                                                            designH={activeTemplate.canvasHeight || activeTemplate.height}
+                                                            labelType={getLabelType(activeTemplate)}
+                                                        />
+                                                    </Layer>
+                                                </Stage>
+                                                <div style={{ position: 'absolute', bottom: -8, left: '50%', transform: 'translateX(-50%)', background: '#0f172a', color: 'white', fontSize: 10, padding: '3px 8px', borderRadius: 12, fontWeight: 800, boxShadow: '0 4px 10px rgba(0,0,0,0.2)' }}>#{idx + 1}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {summary.unmatched > 0 && (
+                                    <div style={{ marginTop: 20, padding: '12px 18px', borderRadius: 12, background: '#fffbeb', border: '1px solid #fde68a', fontSize: 12, color: '#92400e', display: 'flex', alignItems: 'flex-start', gap: 10, lineHeight: 1.5 }}>
+                                        <AlertCircle size={16} style={{ marginTop: 2, flexShrink: 0 }} />
+                                        <span><strong>Attention Needed:</strong> {summary.unmatched} labels are missing EPC mapping. These QR codes will be generated with placeholder data.</span>
+                                    </div>
+                                )}
+                                {summary.matched === summary.totalLabels && summary.totalLabels > 0 && (
+                                    <div style={{ marginTop: 20, padding: '12px 18px', borderRadius: 12, background: '#ecfdf5', border: '1px solid #a7f3d0', fontSize: 12, color: '#065f46', display: 'flex', alignItems: 'center', gap: 10, fontWeight: 600 }}>
+                                        <CheckCircle2 size={16} /> All {summary.totalLabels} labels successfully mapped with EPC identifiers.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {step === 3 && (
+                        <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                            <div style={{ width: 80, height: 80, margin: '0 auto 24px', borderRadius: '50%', background: '#f5f3ff', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 25px rgba(139,92,246,0.1)' }}>
+                                <Cpu size={40} className="animate-pulse" />
+                            </div>
+                            <h3 style={{ fontSize: 22, fontWeight: 900, color: '#1e293b', marginBottom: 12 }}>Generating Label Assets</h3>
+                            <p style={{ fontSize: 14, color: '#64748b', marginBottom: 30, maxWidth: 300, margin: '0 auto 30px' }}>Your high-fidelity vector labels are being assembled. This may take a moment for large batches.</p>
+                            
+                            <div style={{ maxWidth: 360, margin: '0 auto' }}>
+                                <div style={{ height: 10, background: '#f1f5f9', borderRadius: 5, overflow: 'hidden', marginBottom: 14, border: '1px solid #e2e8f0' }}>
+                                    <div style={{ width: `${progress}%`, height: '100%', background: 'linear-gradient(90deg, #8b5cf6, #6366f1)', transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }} />
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div style={{ fontSize: 13, fontWeight: 800, color: '#6366f1' }}>{progress}% Complete</div>
+                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>Please do not close this window</div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {step === 4 && (
+                        <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                            <div style={{ width: 80, height: 80, margin: '0 auto 24px', borderRadius: '50%', background: '#ecfdf5', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 25px rgba(16,185,129,0.1)' }}>
+                                <CheckCircle2 size={40} />
+                            </div>
+                            <h3 style={{ fontSize: 22, fontWeight: 900, color: '#1e293b', marginBottom: 12 }}>Batch Ready for Download</h3>
+                            <p style={{ fontSize: 14, color: '#64748b', marginBottom: 32, maxWidth: 320, margin: '0 auto 32px' }}>Label generation process successfully completed. Your PDF documents are ready for local storage.</p>
+                            
+                            <div style={{ background: '#f8fafc', padding: 20, borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 32, display: 'inline-block', minWidth: 200 }}>
+                                <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Total Generated</div>
+                                <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a' }}>{summary?.totalLabels} Labels</div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                {error && (
-                    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '12px 16px', borderRadius: 8, fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <AlertCircle size={16} /> {error}
-                    </div>
-                )}
-
-                {/* Step 1 */}
-                {step === 1 && (
-                    <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-                        {/* Design Select */}
-                        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: '16px 20px', marginBottom: 14 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>1 — SELECT DESIGN</div>
-                            <select
-                                style={{ width: '100%', padding: '10px 14px', fontSize: 14, fontWeight: 600, border: `2px solid ${activeTemplate ? '#10b981' : '#e2e8f0'}`, borderRadius: 10, background: activeTemplate ? '#f0fdf4' : '#f8fafc', color: activeTemplate ? '#065f46' : '#64748b', cursor: 'pointer', outline: 'none' }}
-                                value={modalDesignId}
-                                onChange={e => handleDesignChange(e.target.value)}
-                            >
-                                <option value="">— Choose Design —</option>
-                                {(templates || []).map(t => <option key={t._id || t.id} value={t._id || t.id}>{t.title}</option>)}
-                            </select>
-                            {activeTemplate && (
-                                <div style={{ marginTop: 8, fontSize: 12, color: '#059669', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <CheckCircle2 size={14} /> {activeTemplate.title}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Label file */}
-                        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: '16px 20px', marginBottom: 14 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>2 — LABEL DATA FILE</div>
-                            {uploadZone('Upload label file (.xlsx)', 'Data for label fields', labelInputRef, labelFile, setLabelFile, <FileSpreadsheet size={24} />)}
-                        </div>
-
-                        {/* EPC file */}
-                        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: '16px 20px', marginBottom: 14 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>3 — EPC MAPPING FILE (OPTIONAL)</div>
-                            {uploadZone('Upload EPC file (.xlsx)', 'Barcode → EPC mapping', epcInputRef, epcFile, setEpcFile, <Link2 size={24} />, true)}
-                            {rfidHeaders.length > 0 && (
-                                <div style={{ marginTop: 12, padding: '10px 14px', background: '#f1f5f9', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                                    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>QR CODE COLUMN (maps to EPC field):</div>
-                                    <select
-                                        style={{ width: '100%', padding: '8px 12px', fontSize: 13, borderRadius: 6, border: '1px solid #cbd5e1', background: 'white' }}
-                                        value={qrCol}
-                                        onChange={e => setQrCol(e.target.value)}
-                                    >
-                                        {rfidHeaders.map((h, i) => <option key={i} value={h}>{h}</option>)}
-                                    </select>
-                                </div>
-                            )}
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-                            <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-                            <button className="btn btn-primary px-6" onClick={handleValidate} disabled={!labelFile || !activeTemplate}>
+                {/* Footer Section (Fixed) */}
+                <div style={{ padding: '20px 32px', borderTop: '1px solid #f1f5f9', background: '#fcfcfd', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+                    {step === 1 && (
+                        <>
+                            <button className="btn btn-ghost px-6" onClick={onClose} style={{ borderRadius: 10, fontWeight: 700 }}>Cancel</button>
+                            <button className="btn btn-primary px-8" onClick={handleValidate} disabled={!labelFile || !activeTemplate} style={{ borderRadius: 10, fontWeight: 700, boxShadow: '0 4px 12px rgba(99,102,241,0.2)' }}>
                                 Validate & Continue
                             </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Step 2 */}
-                {step === 2 && summary && (
-                    <div>
-                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 20 }}>
-                            <div style={{ fontSize: 24, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>{summary.totalLabels.toLocaleString()}</div>
-                            <div style={{ fontSize: 13, color: '#64748b', marginBottom: 20 }}>Total labels to generate</div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                                <div style={{ background: 'white', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#059669', fontWeight: 600, fontSize: 13, marginBottom: 4 }}><CheckCircle2 size={14} /> EPC Matched</div>
-                                    <div style={{ fontSize: 20, fontWeight: 700, color: '#1e293b' }}>{summary.matched.toLocaleString()}</div>
-                                </div>
-                                <div style={{ background: 'white', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: summary.unmatched > 0 ? '#dc2626' : '#64748b', fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
-                                        {summary.unmatched > 0 ? <AlertCircle size={14} /> : null} EPC Missing
-                                    </div>
-                                    <div style={{ fontSize: 20, fontWeight: 700, color: '#1e293b' }}>{summary.unmatched.toLocaleString()}</div>
-                                </div>
-                            </div>
-
-                            {/* Preview */}
-                            <div style={{ marginTop: 20 }}>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>Preview (first 15 labels)</div>
-                                <div style={{ display: 'flex', gap: 16, overflowX: 'auto', padding: '10px 4px', background: '#f1f5f9', borderRadius: 12, border: '1px solid #e2e8f0', minHeight: 180 }}>
-                                    {summary.validRows.slice(0, 15).map((row, idx) => (
-                                        <div key={idx} style={{ flexShrink: 0, width: 100, height: 230, position: 'relative' }}>
-                                            <Stage width={100} height={230} style={{ borderRadius: 6, overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                                                <Layer>
-                                                    <LayoutLabel
-                                                        width={100} height={230}
-                                                        elements={activeTemplate.elements}
-                                                        data={row} mapping={activeMapping}
-                                                        designW={activeTemplate.canvasWidth || activeTemplate.width}
-                                                        designH={activeTemplate.canvasHeight || activeTemplate.height}
-                                                        labelType={getLabelType(activeTemplate)}
-                                                    />
-                                                </Layer>
-                                            </Stage>
-                                            <div style={{ position: 'absolute', bottom: -5, left: '50%', transform: 'translateX(-50%)', background: '#1e293b', color: 'white', fontSize: 9, padding: '2px 6px', borderRadius: 10, fontWeight: 'bold' }}>#{idx + 1}</div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {summary.unmatched > 0 && (
-                                <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: '#fffbeb', border: '1px solid #fde68a', fontSize: 12, color: '#92400e', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                                    <AlertCircle size={14} style={{ marginTop: 1, flexShrink: 0 }} />
-                                    <span><strong>{summary.unmatched}</strong> labels have no EPC — their QR codes will be blank. Upload an EPC file to fix this.</span>
-                                </div>
-                            )}
-                            {summary.matched === summary.totalLabels && summary.totalLabels > 0 && (
-                                <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: '#ecfdf5', border: '1px solid #a7f3d0', fontSize: 12, color: '#065f46', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <CheckCircle2 size={14} /> All {summary.totalLabels} labels have EPC values.
-                                </div>
-                            )}
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-                            <button className="btn btn-ghost" onClick={() => setStep(1)}>Back</button>
-                            <button className="btn btn-secondary px-4 gap-2" onClick={() => handleGenerate('rowwise')}>
-                                <Layers size={16} /> Row Wise ({new Set(summary.validRows.map(r => r.__originalRowIndex)).size} PDFs)
+                        </>
+                    )}
+                    
+                    {step === 2 && (
+                        <>
+                            <button className="btn btn-ghost px-6" onClick={() => setStep(1)} style={{ borderRadius: 10, fontWeight: 700 }}>Back</button>
+                            <button className="btn btn-secondary px-5 gap-2" onClick={() => handleGenerate('rowwise')} style={{ borderRadius: 10, fontWeight: 700 }}>
+                                <Layers size={16} /> Row Wise ({new Set(summary.validRows.map(r => r.__originalRowIndex)).size})
                             </button>
-                            <button className="btn btn-primary px-6 gap-2" onClick={() => handleGenerate('full')}>
-                                <Cpu size={16} /> Full ({summary.totalLabels} labels)
+                            <button className="btn btn-primary px-8 gap-2" onClick={() => handleGenerate('full')} style={{ borderRadius: 10, fontWeight: 700, boxShadow: '0 4px 12px rgba(99,102,241,0.2)' }}>
+                                <Cpu size={16} /> Full Batch
                             </button>
-                        </div>
-                    </div>
-                )}
+                        </>
+                    )}
 
-                {/* Step 3 */}
-                {step === 3 && (
-                    <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                        <div style={{ width: 64, height: 64, margin: '0 auto 20px', borderRadius: '50%', background: '#f5f3ff', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Cpu size={32} className="animate-pulse" />
-                        </div>
-                        <h3 style={{ fontSize: 18, fontWeight: 700, color: '#1e293b', marginBottom: 8 }}>Generating PDF…</h3>
-                        <div style={{ height: 6, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden', margin: '20px auto', maxWidth: 300 }}>
-                            <div style={{ width: `${progress}%`, height: '100%', background: '#8b5cf6', transition: 'width 0.3s' }} />
-                        </div>
-                        <div style={{ fontSize: 13, color: '#64748b' }}>{progress}% — please don't close this window.</div>
-                    </div>
-                )}
-
-                {/* Step 4 */}
-                {step === 4 && (
-                    <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                        <div style={{ width: 64, height: 64, margin: '0 auto 20px', borderRadius: '50%', background: '#ecfdf5', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <CheckCircle2 size={32} />
-                        </div>
-                        <h3 style={{ fontSize: 18, fontWeight: 700, color: '#1e293b', marginBottom: 8 }}>Download Complete!</h3>
-                        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>Labels generated and saved successfully.</div>
-                        <button className="btn btn-primary px-8" onClick={onClose}>Done</button>
-                    </div>
-                )}
+                    {step === 4 && (
+                        <button className="btn btn-primary px-12" onClick={onClose} style={{ borderRadius: 10, fontWeight: 700, boxShadow: '0 4px 12px rgba(99,102,241,0.2)' }}>Done</button>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -1079,8 +1393,10 @@ export default function Layout() {
             const fields = [];
             design.elements.forEach(el => {
                 if (!['text', 'placeholder', 'barcode', 'qrcode', 'rect'].includes(el.type)) return;
-                if (el.type === 'qrcode') {
-                    fields.push({ id: el.id, name: '__epc', type: 'qrcode', label: '{{EPC}}' });
+                const isActuallyQr = el.type === 'qrcode' || (el.type === 'barcode' && (el.barcodeFormat || '').toUpperCase() === 'QRCODE');
+                if (isActuallyQr) {
+                    const lbl = el.fieldName || el.name || '{{EPC}}';
+                    fields.push({ id: el.id, name: '__epc', type: 'qrcode', label: lbl });
                     return;
                 }
                 if (el.type === 'rect') {
@@ -1219,6 +1535,7 @@ export default function Layout() {
     };
 
     // ── PDF: vector label drawing ─────────────────────────────────────────────
+    // ── PDF: vector label drawing ─────────────────────────────────────────────
     const drawVectorLabel = async (
         pdf, elements, data, mapping,
         mmX, mmY, mmW, mmH,
@@ -1226,6 +1543,7 @@ export default function Layout() {
     ) => {
         await loadCustomFonts(pdf);
 
+        const labelType = getLabelType(selectedTemplate);
         const unit = selectedTemplate?.canvasUnit || 'px';
         const rawW = selectedTemplate?.canvasWidth || selectedTemplate?.width || 166;
         const rawH = selectedTemplate?.canvasHeight || selectedTemplate?.height || 387;
@@ -1273,9 +1591,29 @@ export default function Layout() {
         );
         const sizeVal = String(data[sizeCol] || '').trim().toUpperCase();
 
-        // Find rects that should be black (behind highlighted size text)
+        // ── Azortee: build circle visibility map ──────────────────────────────
+        const azorteeVisibleCircles = new Set();
+        if (labelType === 'azortee' && sizeVal) {
+            const circleTextMap = buildAzorteeCircleMap(elements, data);
+            circleTextMap.forEach((pairedText, circleId) => {
+                if (pairedText === sizeVal) azorteeVisibleCircles.add(circleId);
+            });
+        }
+
+        // ── Livsmart: find text elements that should be highlighted ───────────
+        const livsmartHighlightTextIds = new Set();
+        if (labelType === 'livsmart' && sizeVal) {
+            elements.forEach(el => {
+                if (el.type !== 'text' && el.type !== 'placeholder') return;
+                if (el.text?.includes('{{')) return;
+                const cleanText = (el.text || '').trim().toUpperCase();
+                if (cleanText === sizeVal && cleanText.length < 8) livsmartHighlightTextIds.add(el.id);
+            });
+        }
+
+        // ── Normal/livsmart: find rects behind size text to highlight ─────────
         const sizeHighlightRectIds = new Set();
-        if (sizeVal) {
+        if ((labelType === 'normal' || labelType === 'livsmart') && sizeVal) {
             elements.forEach(textEl => {
                 if (textEl.type !== 'text' && textEl.type !== 'placeholder') return;
                 const { text: resolved } = resolveDynamicText(textEl.text, data);
@@ -1302,45 +1640,60 @@ export default function Layout() {
             const eh = (el.height || 0) * unitScale * cs * elSY;
             const elName = (el.name || '').toLowerCase();
 
-            // ── QR Code (EPC) ──────────────────────────────────────────────
+            // ── Size indicator circles (azortee / normal) ──────────────────────
+            if (el.type === 'circle' && (elName.includes('sizeindicator') || elName.includes('sizecircle') || elName.includes('circle'))) {
+                if (labelType === 'azortee' && azorteeVisibleCircles.has(el.id)) {
+                    const rx = (el.radius || 10) * unitScale * cs * (el.scaleX || 1);
+                    const ry = (el.radius || 10) * unitScale * cs * (el.scaleY || 1);
+                    pdf.setDrawColor(el.stroke || el.fill || '#000000');
+                    pdf.setLineWidth(Math.max(0.2, (el.strokeWidth || 1.5) * unitScale * cs * (el.scaleX || 1)));
+                    pdf.ellipse(ex, ey, rx, ry, 'D');
+                }
+                // For non-azortee, skip all size-indicator circles
+                pdf.restoreGraphicsState(); continue;
+            }
+
+            // ── QR Code ────────────────────────────────────────────────────────
             if (el.type === 'qrcode') {
                 const qv = resolveQRValue(el, data, mapping);
-                if (qv && String(qv).trim()) {
-                    const qsz = isProduction ? Math.min(ew, eh) : 6;
-                    const qx = ex + (ew - qsz) / 2;
-                    const qy = isProduction ? ey + (eh - qsz) / 2 : ey + (eh - qsz) / 2 - 10 * PX_TO_MM;
-                    await renderQRAtPos(pdf, String(qv).trim(), qx, qy, qsz);
-                } else if (!isProduction) {
-                    const qsz = 6, qx = ex + (ew - qsz) / 2 - 2 * PX_TO_MM, qy = ey + (eh - qsz) / 2 - 10 * PX_TO_MM;
-                    pdf.setDrawColor('#9ca3af'); pdf.setLineWidth(0.3);
-                    pdf.setLineDashPattern([0.8, 0.5], 0);
+                const qsz = Math.min(ew, eh);
+                const qx = ex + (ew - qsz) / 2;
+                const qy = ey + (eh - qsz) / 2;
+
+                if (!isProduction) {
+                    pdf.setDrawColor('#9ca3af'); pdf.setLineWidth(0.2);
+                    pdf.setLineDashPattern([0.5, 0.5], 0);
                     pdf.rect(qx, qy, qsz, qsz, 'D');
                     pdf.setLineDashPattern([], 0);
-                    pdf.setFontSize(3.5); pdf.setTextColor('#9ca3af');
-                    pdf.text('EPC', qx + qsz / 2, qy + qsz * 0.42, { align: 'center' });
-                    pdf.text('PENDING', qx + qsz / 2, qy + qsz * 0.68, { align: 'center' });
+                    pdf.setFontSize(Math.max(3, qsz * 0.15)); pdf.setTextColor('#9ca3af');
+                    pdf.text('QR CODE', qx + qsz / 2, qy + qsz * 0.45, { align: 'center' });
+                    pdf.text('DUMMY', qx + qsz / 2, qy + qsz * 0.65, { align: 'center' });
                     pdf.setTextColor('#000000');
+                } else {
+                    const isRealEpc = data.__isAutoEpc === false;
+                    if (isRealEpc && qv && String(qv).trim()) {
+                        await renderQRAtPos(pdf, String(qv).trim(), qx, qy, qsz);
+                    }
                 }
                 pdf.restoreGraphicsState(); continue;
             }
 
-            // ── Barcode (EAN only — never EPC) ─────────────────────────────
+            // ── Barcode ────────────────────────────────────────────────────────
             if (el.type === 'barcode') {
                 const bv = resolveBarcodeValue(el, data, mapping);
                 const fmt = (el.barcodeFormat || 'CODE128').toUpperCase();
                 let bw = ew, bh = eh * 0.9, bx = ex, by = ey;
-                if (isProduction && fmt === 'EAN13') {
-                    bw = 26.2; bh = 10.4;
+                if (fmt === 'EAN13') {
+                    bw = 26.2 * cs; bh = 10.4 * cs;
                     bx = ex + (ew - bw) / 2;
-                    by = ey + (eh - bh) / 2 + 5 * PX_TO_MM;
+                    by = ey + (eh - bh) / 2 + 5 * PX_TO_MM * cs;
                 }
                 await drawVectorBarcode(pdf, bv, bx, by, bw, bh, fmt, el.fill, isProduction);
                 pdf.restoreGraphicsState(); continue;
             }
 
-            // ── Text / Placeholder ─────────────────────────────────────────
+            // ── Text / Placeholder ─────────────────────────────────────────────
             if (el.type === 'text' || el.type === 'placeholder') {
-                // Resolve value
                 const mp = mapping[el.id];
                 let val;
                 if (mp && mp !== '__epc' && data[mp] !== undefined) {
@@ -1359,9 +1712,18 @@ export default function Layout() {
                 const pdfStyle = bold && italic ? 'bolditalic' : bold ? 'bold' : italic ? 'italic' : 'normal';
                 const pdfFont = resolvePdfFont(el.fontFamily || '');
 
-                // Size highlight background
                 const cleanV = val.trim().toUpperCase();
-                if (sizeVal && cleanV === sizeVal && cleanV.length < 6) {
+
+                // ── Livsmart size highlight ──────────────────────────────────
+                if (labelType === 'livsmart' && livsmartHighlightTextIds.has(el.id)) {
+                    const measW = pdf.getTextWidth(val) || 0;
+                    const rectW = (ew > 2 ? ew : measW) + 1;
+                    pdf.setFillColor('#000000');
+                    pdf.rect(ex - 0.5, ey - 0.5, rectW, fsMM * 1.5, 'F');
+                }
+
+                // ── Normal size highlight ────────────────────────────────────
+                if (labelType === 'normal' && sizeVal && cleanV === sizeVal && cleanV.length < 6) {
                     const measW = pdf.getTextWidth(val) || 0;
                     const rectW = (ew > 2 ? ew : measW) + 1;
                     pdf.setFillColor('#000000');
@@ -1369,7 +1731,8 @@ export default function Layout() {
                 }
 
                 let textColor = el.fill || '#000000';
-                if (sizeVal && cleanV === sizeVal && cleanV.length < 6) textColor = '#ffffff';
+                if (labelType === 'livsmart' && livsmartHighlightTextIds.has(el.id)) textColor = '#ffffff';
+                else if ((labelType === 'normal') && sizeVal && cleanV === sizeVal && cleanV.length < 6) textColor = '#ffffff';
 
                 pdf.setFontSize(fs); pdf.setTextColor(textColor);
                 try {
@@ -1414,20 +1777,20 @@ export default function Layout() {
                         else if (align === 'right') { anchorX = ex + effectiveW; opts = { align: 'right' }; }
                         pdf.text(line, anchorX, lineY, opts);
                     } else {
-                        const imgW = fsMM * 0.95 * (elSX || 1);
-                        const plainW = pdf.getTextWidth(line.replace(/\s*₹\s*/g, ''));
+                        const rupeeFsMM = 12.758 * 0.352778;
+                        const imgW = rupeeFsMM * 0.85 * (elSX || 1);
                         const rupeeCnt = (line.match(/₹/g) || []).length;
-                        const visualW = plainW * (elSX || 1) + rupeeCnt * (imgW + 3 * PX_TO_MM);
+                        const visualW = rupeeCnt * (imgW + 5 * PX_TO_MM);
                         let lineX = ex;
                         if (align === 'center') lineX = ex + (effectiveW - visualW) / 2;
                         else if (align === 'right') lineX = ex + effectiveW - visualW;
-                        drawRupeeText(pdf, line, lineX, lineY, elSX);
+                        drawRupeeText(pdf, line, lineX, lineY, elSX, fs, fsMM);
                     }
                 });
 
                 if (elSX !== 1 && elSX > 0) pdf.internal.write('100 Tz');
 
-                // ── Rect ───────────────────────────────────────────────────────
+                // ── Rect ───────────────────────────────────────────────────────────
             } else if (el.type === 'rect') {
                 let fill = el.fill;
                 const isStrip = elName.includes('strip') || elName.includes('color') ||
@@ -1446,6 +1809,7 @@ export default function Layout() {
                         if (sc && data[sc]) { const mc = resolveStripColor(String(data[sc]).trim()); if (mc) fill = mc; }
                     }
                 }
+                // Only apply sizeHighlightRectIds for normal/livsmart, NOT azortee
                 if (sizeHighlightRectIds.has(el.id)) fill = '#000000';
                 const isLabelBorder = Math.abs(ew - mmW) < 3 && Math.abs(eh - mmH) < 3;
                 const r = el.cornerRadius ? Math.max(0, el.cornerRadius * unitScale * cs) : isLabelBorder ? tagR : 0;
@@ -1459,7 +1823,7 @@ export default function Layout() {
                     r > 0 ? pdf.roundedRect(ex, ey, ew, eh, r, r, 'D') : pdf.rect(ex, ey, ew, eh, 'D');
                 }
 
-                // ── Image ──────────────────────────────────────────────────────
+                // ── Image ──────────────────────────────────────────────────────────
             } else if (el.type === 'image') {
                 const src = el.image || el.src || el.url;
                 if (src) {
@@ -1471,14 +1835,14 @@ export default function Layout() {
                     } catch { }
                 }
 
-                // ── Line ───────────────────────────────────────────────────────
+                // ── Line ───────────────────────────────────────────────────────────
             } else if (el.type === 'line') {
                 const pts = el.points || [0, 0, 100, 0];
                 pdf.setDrawColor(el.stroke || '#000000');
                 pdf.setLineWidth(Math.max(0.05, (el.strokeWidth || 1) * unitScale * cs));
                 pdf.line(ex + pts[0] * unitScale * cs, ey + pts[1] * unitScale * cs, ex + pts[2] * unitScale * cs, ey + pts[3] * unitScale * cs);
 
-                // ── Circle ─────────────────────────────────────────────────────
+                // ── Circle (non-size-indicator) ─────────────────────────────────────
             } else if (el.type === 'circle') {
                 const rx = (el.radius || 10) * unitScale * cs * (el.scaleX || 1);
                 const ry = (el.radius || 10) * unitScale * cs * (el.scaleY || 1);
@@ -1535,7 +1899,15 @@ export default function Layout() {
         const gridW = cols * labelW + (cols - 1) * hGap, gridH = rows * labelH + (rows - 1) * vGap;
         const startX = (PAGE_W - gridW) / 2, startY = HEADER_H + 5 + (usableH - gridH) / 2;
 
-        const sourceRows = expandedData.filter(r => !r.__blank);
+        const sourceRows = [];
+        const seenRows = new Set();
+        for (const r of expandedData) {
+            if (r.__blank) continue;
+            if (!seenRows.has(r.__originalRowIndex)) {
+                seenRows.add(r.__originalRowIndex);
+                sourceRows.push(r);
+            }
+        }
         const pages = [];
         let page = [{ isBranding: true }];
         for (const row of sourceRows) {
@@ -1891,7 +2263,8 @@ export default function Layout() {
                                 <div className="section-label-mini">6 · Field Mapping</div>
                                 <div className="mapping-row-toolbar">
                                     {templateFields.map(field => {
-                                        const isEpcField = field.type === 'qrcode';
+                                        // A field is an EPC field if it's type qrcode OR it's a barcode named/formatted as QR
+                                        const isEpcField = field.type === 'qrcode' || (field.label || '').toUpperCase().includes('EPC');
                                         return (
                                             <div key={field.id} className={`mapping-item-compact ${isEpcField ? 'is-epc' : ''}`}>
                                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>

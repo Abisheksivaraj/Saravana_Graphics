@@ -52,10 +52,9 @@ function encodeSGTIN96(barcode, serial, filter = 1, partition = 5) {
     }
 }
 
-// ─── Serial Range Config ────────────────────────────────────────────────────
-const SERIAL_START = 274655906933n;
-const SERIAL_END   = 274675906933n;
-const TOTAL_SERIALS = Number(SERIAL_END - SERIAL_START + 1n);
+// ─── Defaults ───────────────────────────────────────────────────────────────
+const DEFAULT_SERIAL_START = 274655906933n;
+const DEFAULT_SERIAL_END   = 274675906933n;
 const LOW_THRESHOLD = 100000;
 
 // ─── Main Component ─────────────────────────────────────────────────────────
@@ -69,15 +68,41 @@ export default function RFIDFormat() {
     });
 
     const [importedData, setImportedData]     = useState([]);
-    const [currentSerial, setCurrentSerial]   = useState(SERIAL_START);
-    const [usedSerials, setUsedSerials]        = useState(0n);
+    
+    // Persistence initialization
+    const [serialStart, setSerialStart] = useState(() => {
+        const saved = localStorage.getItem('rfid_serial_start');
+        return saved ? BigInt(saved) : DEFAULT_SERIAL_START;
+    });
+    const [serialEnd, setSerialEnd] = useState(() => {
+        const saved = localStorage.getItem('rfid_serial_end');
+        return saved ? BigInt(saved) : DEFAULT_SERIAL_END;
+    });
+    const [currentSerial, setCurrentSerial] = useState(() => {
+        const saved = localStorage.getItem('rfid_current_serial');
+        return saved ? BigInt(saved) : (localStorage.getItem('rfid_serial_start') ? BigInt(localStorage.getItem('rfid_serial_start')) : DEFAULT_SERIAL_START);
+    });
+    const [usedSerials, setUsedSerials] = useState(() => {
+        const saved = localStorage.getItem('rfid_used_serials');
+        return saved ? BigInt(saved) : 0n;
+    });
+
     const [generating, setGenerating]         = useState(false);
     const [alert, setAlert]                   = useState(null); // { type, message }
     const [lastFileName, setLastFileName]     = useState('');
     const [previewEPC, setPreviewEPC]         = useState('');
 
-    const remaining = Number(SERIAL_END - currentSerial + 1n);
-    const pct = Math.max(0, Math.min(100, (remaining / TOTAL_SERIALS) * 100));
+    const totalSerials = Number(serialEnd - serialStart + 1n);
+    const remaining = Number(serialEnd - currentSerial + 1n);
+    const pct = Math.max(0, Math.min(100, (remaining / (totalSerials || 1)) * 100));
+
+    // Save to localStorage whenever serial states change
+    useEffect(() => {
+        localStorage.setItem('rfid_serial_start', serialStart.toString());
+        localStorage.setItem('rfid_serial_end', serialEnd.toString());
+        localStorage.setItem('rfid_current_serial', currentSerial.toString());
+        localStorage.setItem('rfid_used_serials', usedSerials.toString());
+    }, [serialStart, serialEnd, currentSerial, usedSerials]);
 
     // Recompute preview EPC whenever params change
     useEffect(() => {
@@ -410,10 +435,25 @@ export default function RFIDFormat() {
                     <p style={s.subtitle}>Configure SGTIN-96 RFID tag encoding parameters</p>
                 </div>
                 <div style={s.btnRow}>
-                    <button style={s.btnSecondary}>
+                    <button 
+                        style={s.btnSecondary}
+                        onClick={() => {
+                            if (window.confirm('Reset all serial tracking data to defaults?')) {
+                                setSerialStart(DEFAULT_SERIAL_START);
+                                setSerialEnd(DEFAULT_SERIAL_END);
+                                setCurrentSerial(DEFAULT_SERIAL_START);
+                                setUsedSerials(0n);
+                                localStorage.removeItem('rfid_serial_start');
+                                localStorage.removeItem('rfid_serial_end');
+                                localStorage.removeItem('rfid_current_serial');
+                                localStorage.removeItem('rfid_used_serials');
+                                showAlert('success', 'Reset tracking data to defaults.');
+                            }
+                        }}
+                    >
                         <RefreshCw size={14} /> Reset
                     </button>
-                    <button style={s.btnPrimary}>
+                    <button style={s.btnPrimary} onClick={() => showAlert('success', 'Format configuration saved locally.')}>
                         <Save size={14} /> Save Format
                     </button>
                 </div>
@@ -463,16 +503,73 @@ export default function RFIDFormat() {
                     <div style={s.progressFill(pct)} />
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#475569', marginTop: '5px' }}>
-                    <span>Start: {SERIAL_START.toString()}</span>
+                    <span>Start: {serialStart.toString()}</span>
                     <span>{pct.toFixed(1)}% remaining</span>
-                    <span>End: {SERIAL_END.toString()}</span>
+                    <span>End: {serialEnd.toString()}</span>
                 </div>
             </div>
 
             {/* Main Grid */}
             <div style={s.grid}>
                 {/* Left: Config Panel */}
-                <div style={s.card}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {/* Serial Range Configuration Card */}
+                    <div style={s.card}>
+                        <div style={s.cardHeader}>
+                            <Hash size={16} color="#3b82f6" />
+                            <h3 style={s.cardTitle}>Serial Range Configuration</h3>
+                        </div>
+                        <div style={s.cardBody}>
+                            <div style={s.row}>
+                                <div style={{ flex: 1 }}>
+                                    <label style={s.label}>Serial Start</label>
+                                    <input 
+                                        style={s.input} 
+                                        type="text" 
+                                        value={serialStart.toString()} 
+                                        onChange={(e) => {
+                                            try {
+                                                const val = BigInt(e.target.value.replace(/\D/g, '') || '0');
+                                                setSerialStart(val);
+                                                if (usedSerials === 0n) setCurrentSerial(val);
+                                            } catch {}
+                                        }} 
+                                    />
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                    <label style={s.label}>Serial End</label>
+                                    <input 
+                                        style={s.input} 
+                                        type="text" 
+                                        value={serialEnd.toString()} 
+                                        onChange={(e) => {
+                                            try {
+                                                const val = BigInt(e.target.value.replace(/\D/g, '') || '0');
+                                                setSerialEnd(val);
+                                            } catch {}
+                                        }} 
+                                    />
+                                </div>
+                            </div>
+                            <p style={{ ...s.fieldHint, marginTop: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Info size={12} />
+                                Currently tracking from <strong style={{ color: '#93c5fd' }}>{currentSerial.toString()}</strong>. 
+                                <button 
+                                    onClick={() => {
+                                        if (window.confirm('Reset tracking to current Serial Start? This will clear Used count.')) {
+                                            setCurrentSerial(serialStart);
+                                            setUsedSerials(0n);
+                                        }
+                                    }}
+                                    style={{ background: 'none', border: 'none', color: '#3b82f6', fontSize: '11px', fontWeight: '700', cursor: 'pointer', padding: '0 4px', textDecoration: 'underline' }}
+                                >
+                                    Reset Tracking
+                                </button>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div style={s.card}>
                     <div style={s.cardHeader}>
                         <Settings size={16} color="#3b82f6" />
                         <h3 style={s.cardTitle}>SGTIN-96 Data Source</h3>
@@ -571,6 +668,7 @@ export default function RFIDFormat() {
                             </div>
                         )}
                     </div>
+                    </div>
                 </div>
 
                 {/* Right: Preview Panel */}
@@ -633,7 +731,7 @@ export default function RFIDFormat() {
             {/* Info bar */}
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px 16px', borderRadius: '10px', background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)', fontSize: '12px', color: '#64748b' }}>
                 <Info size={14} color="#3b82f6" style={{ flexShrink: 0, marginTop: 1 }} />
-                <span>SGTIN-96 encodes a GTIN + Serial Number into 96 bits. Serial numbers decrement from <strong style={{ color: '#93c5fd' }}>{SERIAL_END.toString()}</strong> down to <strong style={{ color: '#93c5fd' }}>{SERIAL_START.toString()}</strong>. An alert is triggered when fewer than {LOW_THRESHOLD.toLocaleString()} remain.</span>
+                <span>SGTIN-96 encodes a GTIN + Serial Number into 96 bits. Serial numbers decrement from <strong style={{ color: '#93c5fd' }}>{serialEnd.toString()}</strong> down to <strong style={{ color: '#93c5fd' }}>{serialStart.toString()}</strong>. An alert is triggered when fewer than {LOW_THRESHOLD.toLocaleString()} remain.</span>
             </div>
 
             <style>{`

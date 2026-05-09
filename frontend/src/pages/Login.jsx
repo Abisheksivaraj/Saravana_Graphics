@@ -1,27 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { 
-    Layers, Eye, EyeOff, LogIn, Mail, Lock, Zap, Shield, Sparkles, 
-    Factory, ShoppingCart, User, RefreshCw, CheckCircle2, ShieldCheck, 
+import {
+    Layers, Eye, EyeOff, LogIn, Mail, Lock, Zap, Shield, Sparkles,
+    Factory, ShoppingCart, User, RefreshCw, CheckCircle2, ShieldCheck,
     Key, ArrowRight, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import logo from '../assets/logo.png';
+import logo from '../assets/mainlogo.png';
 import { authAPI } from '../api';
 import './Auth.css';
 
 export default function Login() {
     const [searchParams] = useSearchParams();
-    const [portalType, setPortalType] = useState('admin'); 
+    const [portalType, setPortalType] = useState('admin');
     const [form, setForm] = useState({ identifier: '', password: '' });
     const [showPwd, setShowPwd] = useState(false);
     const [loading, setLoading] = useState(false);
-    
+
     // Captcha State
     const [captcha, setCaptcha] = useState({ q: '', a: null });
     const [userCaptcha, setUserCaptcha] = useState('');
-    
+
     // Flow States
     const [view, setView] = useState('login'); // 'login', 'forgot', 'otp', 'reset', 'firstLogin'
     const [forgotEmail, setForgotEmail] = useState('');
@@ -51,7 +51,7 @@ export default function Login() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!form.identifier || !form.password) return toast.error('All fields required');
-        
+
         // Vendor/Buyer requirement: Captcha
         if (portalType !== 'admin') {
             if (parseInt(userCaptcha) !== captcha.a) {
@@ -89,7 +89,7 @@ export default function Login() {
     const handleUpdateCreds = async (e) => {
         e.preventDefault();
         if (newCreds.password && newCreds.password !== newCreds.confirm) return toast.error('Passwords do not match');
-        
+
         setLoading(true);
         try {
             await authAPI.updateCredentials({
@@ -171,12 +171,17 @@ export default function Login() {
 
             <div className="auth-container">
                 <div className="auth-hero">
-                    <div className="auth-hero-content">
-                        <div className="auth-hero-logo">
-                            <img src={logo} alt="Saravana Graphics" style={{ height: 100, width: 'auto' }} />
-                        </div>
-                        <h1 className="auth-hero-title">{currentConfig.title}</h1>
-                        <p className="auth-hero-subtitle">{currentConfig.subtitle}</p>
+                    <div className="auth-hero-content" style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <img
+                            src={logo}
+                            alt="Saravana Graphics"
+                            style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'contain',
+                                padding: '40px'
+                            }}
+                        />
                     </div>
                 </div>
 
@@ -186,7 +191,7 @@ export default function Login() {
                             <>
                                 <div className="portal-switcher">
                                     {['admin', 'vendor', 'buyer'].map(t => (
-                                        <button 
+                                        <button
                                             key={t}
                                             className={`portal-btn ${portalType === t ? 'active' : ''}`}
                                             onClick={() => {
@@ -210,8 +215,8 @@ export default function Login() {
                                         <label>Username or Email</label>
                                         <div className="input-wrapper">
                                             <Mail className="input-icon" size={18} />
-                                            <input 
-                                                className="auth-input" type="text" placeholder="Identification" 
+                                            <input
+                                                className="auth-input" type="text" placeholder="Identification"
                                                 value={form.identifier} onChange={e => setForm({ ...form, identifier: e.target.value })} required
                                             />
                                         </div>
@@ -226,8 +231,8 @@ export default function Login() {
                                         </div>
                                         <div className="input-wrapper">
                                             <Lock className="input-icon" size={18} />
-                                            <input 
-                                                className="auth-input" type={showPwd ? 'text' : 'password'} placeholder="••••••••" 
+                                            <input
+                                                className="auth-input" type={showPwd ? 'text' : 'password'} placeholder="••••••••"
                                                 value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required
                                             />
                                             <button type="button" className="pwd-toggle" onClick={() => setShowPwd(!showPwd)}>{showPwd ? <EyeOff size={18} /> : <Eye size={18} />}</button>
@@ -238,13 +243,13 @@ export default function Login() {
                                     {portalType !== 'admin' && (
                                         <div className="form-field">
                                             <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                Verification Code 
+                                                Verification Code
                                                 <span style={{ color: '#f97316', fontWeight: 900 }}>{captcha.q}</span>
                                             </label>
                                             <div className="input-wrapper">
                                                 <ShieldCheck className="input-icon" size={18} />
-                                                <input 
-                                                    className="auth-input" type="number" placeholder="Enter answer" 
+                                                <input
+                                                    className="auth-input" type="number" placeholder="Enter answer"
                                                     value={userCaptcha} onChange={e => setUserCaptcha(e.target.value)} required
                                                 />
                                                 <button type="button" className="pwd-toggle" onClick={generateCaptcha}><RefreshCw size={16} /></button>
@@ -271,8 +276,8 @@ export default function Login() {
                                         <label>Email Address</label>
                                         <div className="input-wrapper">
                                             <Mail className="input-icon" size={18} />
-                                            <input 
-                                                className="auth-input" type="email" placeholder="vendor@example.com" 
+                                            <input
+                                                className="auth-input" type="email" placeholder="vendor@example.com"
                                                 value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} required
                                             />
                                         </div>
@@ -296,9 +301,9 @@ export default function Login() {
                                     <div className="form-field">
                                         <div className="input-wrapper">
                                             <Lock className="input-icon" size={18} />
-                                            <input 
-                                                className="auth-input" style={{ textAlign: 'center', letterSpacing: 8, fontWeight: 900, fontSize: 24 }} 
-                                                maxLength={6} placeholder="000000" 
+                                            <input
+                                                className="auth-input" style={{ textAlign: 'center', letterSpacing: 8, fontWeight: 900, fontSize: 24 }}
+                                                maxLength={6} placeholder="000000"
                                                 value={otp} onChange={e => setOtp(e.target.value)} required
                                             />
                                         </div>
@@ -317,15 +322,15 @@ export default function Login() {
                                 <form onSubmit={handleResetPassword} className="auth-form-modern">
                                     <div className="form-field">
                                         <label>New Password</label>
-                                        <input 
-                                            className="auth-input" type="password" placeholder="••••••••" 
+                                        <input
+                                            className="auth-input" type="password" placeholder="••••••••"
                                             value={newCreds.password} onChange={e => setNewCreds({ ...newCreds, password: e.target.value })} required
                                         />
                                     </div>
                                     <div className="form-field">
                                         <label>Confirm Password</label>
-                                        <input 
-                                            className="auth-input" type="password" placeholder="••••••••" 
+                                        <input
+                                            className="auth-input" type="password" placeholder="••••••••"
                                             value={newCreds.confirm} onChange={e => setNewCreds({ ...newCreds, confirm: e.target.value })} required
                                         />
                                     </div>
@@ -346,8 +351,8 @@ export default function Login() {
                                         <label>Custom Username</label>
                                         <div className="input-wrapper">
                                             <User className="input-icon" size={18} />
-                                            <input 
-                                                className="auth-input" value={newCreds.username} 
+                                            <input
+                                                className="auth-input" value={newCreds.username}
                                                 onChange={e => setNewCreds({ ...newCreds, username: e.target.value })} required
                                             />
                                         </div>
@@ -356,8 +361,8 @@ export default function Login() {
                                         <label>New Password (Optional)</label>
                                         <div className="input-wrapper">
                                             <Lock className="input-icon" size={18} />
-                                            <input 
-                                                className="auth-input" type="password" placeholder="Leave blank to keep current" 
+                                            <input
+                                                className="auth-input" type="password" placeholder="Leave blank to keep current"
                                                 value={newCreds.password} onChange={e => setNewCreds({ ...newCreds, password: e.target.value })}
                                             />
                                         </div>
@@ -365,8 +370,8 @@ export default function Login() {
                                     {newCreds.password && (
                                         <div className="form-field">
                                             <label>Confirm Password</label>
-                                            <input 
-                                                className="auth-input" type="password" placeholder="Confirm new password" 
+                                            <input
+                                                className="auth-input" type="password" placeholder="Confirm new password"
                                                 value={newCreds.confirm} onChange={e => setNewCreds({ ...newCreds, confirm: e.target.value })} required
                                             />
                                         </div>
