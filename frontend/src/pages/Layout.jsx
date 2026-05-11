@@ -1881,7 +1881,7 @@ export default function Layout() {
         const dH = selectedTemplate.canvasHeight || selectedTemplate.height || 387;
         const origW = unit === 'mm' ? dW : dW * PX_TO_MM;
         const origH = unit === 'mm' ? dH : dH * PX_TO_MM;
-        const cols = 5, rows = 2, hGap = 6, vGap = 8, HEADER_H = 35;
+        const cols = 6, rows = 2, hGap = 6, vGap = 8, HEADER_H = 35;
         const usableW = PAGE_W - 25, usableH = PAGE_H - 30 - HEADER_H;
         const masterScale = Math.min(
             0.95,
