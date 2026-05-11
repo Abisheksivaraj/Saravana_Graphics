@@ -386,13 +386,10 @@ const resolveQRValue = (el, data, mapping) => {
 
     // 2. Explicit EPC QR Code (Always shows RFID EPC)
     if (isExplicitEpc) {
-        // If we have matched RFID data, use it
-        if (data.__isAutoEpc === false && data.__qr && String(data.__qr).trim())
+        // If we have matched RFID data or auto-gen is allowed, use it
+        if (data.__qr && String(data.__qr).trim())
             return String(data.__qr).trim();
-
-        // If it's a dedicated EPC QR, we should NOT show EAN if no match is found
-        // Return real EPC or empty string
-        return data.__isAutoEpc ? '' : String(data.__qr || '').trim();
+        return '';
     }
 
     // 3. Dual-mode / Standard QR Code (Existing Logic)
@@ -766,7 +763,17 @@ const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduct
         const fmt = (format || 'CODE128').toUpperCase();
 
         if (fmt === 'QRCODE' || fmt === 'EPC') {
-            if (!value || !String(value).trim()) return;
+            const hasValue = value && String(value).trim();
+            if (!hasValue) {
+                if (!isProduction) {
+                    const qsz = Math.min(w, h);
+                    pdf.setDrawColor('#9ca3af'); pdf.setLineWidth(0.1);
+                    pdf.rect(x + (w - qsz) / 2, y + (h - qsz) / 2, qsz, qsz, 'D');
+                    pdf.setFontSize(Math.max(3, qsz * 0.15)); pdf.setTextColor('#9ca3af');
+                    pdf.text('QR PENDING', x + w / 2, y + h * 0.6, { align: 'center' });
+                }
+                return;
+            }
             const qsz = Math.min(w, h);
             await renderQRAtPos(pdf, value, x + (w - qsz) / 2, y + (h - qsz) / 2, qsz, fill);
             return;
@@ -1878,6 +1885,7 @@ export default function Layout() {
         const seenRows = new Set();
         for (const r of expandedData) {
             if (r.__blank) continue;
+            // Use unique index to ensure only one layout per original Excel row
             if (!seenRows.has(r.__originalRowIndex)) {
                 seenRows.add(r.__originalRowIndex);
                 sourceRows.push(r);
@@ -2119,7 +2127,7 @@ export default function Layout() {
                         <div className="toolbar-section">
                             <div className="section-label-mini">2 · Logo</div>
                             <button className={`ts-btn ${brandingImg ? 'active' : ''}`} onClick={() => document.getElementById('branding-upload').click()}>
-                                <Wand2 size={13} /> {brandingImg ? 'Logo ✓' : 'Add Logo'}
+                                <Wand2 size={13} /> {brandingImg ? 'Logo ✓' : 'Add Front Logo'}
                             </button>
                             <input type="file" id="branding-upload" hidden accept="image/*" onChange={handleBrandingLogoUpload} />
                         </div>
