@@ -7,7 +7,7 @@ import {
     Key, ArrowRight, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import logo from '../assets/mainlogo.png';
+import logo from '../assets/logo3.png';
 import { authAPI } from '../api';
 import './Auth.css';
 
