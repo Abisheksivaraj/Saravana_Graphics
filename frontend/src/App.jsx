@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from './store/authStore';
 import Login from './pages/Login';
@@ -41,11 +41,27 @@ function ProtectedRoute({ children, allowedRoles }) {
 
 function PublicRoute({ children }) {
   const { token, user, isLoading } = useAuthStore();
+  const [searchParams] = useSearchParams();
+  const type = searchParams.get('type');
+
   if (isLoading) return null;
+  
   if (token && user) {
-    if (user.role === 'vendor') return <Navigate to="/vendor-portal" replace />;
-    if (user.role === 'buyer') return <Navigate to="/buyer/dashboard" replace />;
-    return <Navigate to="/dashboard" replace />;
+    // If no specific type requested, redirect based on current role
+    if (!type) {
+      if (user.role === 'vendor') return <Navigate to="/vendor-portal" replace />;
+      if (user.role === 'buyer') return <Navigate to="/buyer/dashboard" replace />;
+      return <Navigate to="/dashboard" replace />;
+    }
+    
+    // If type requested matches current role, redirect to their portal
+    if (type === user.role) {
+      if (user.role === 'vendor') return <Navigate to="/vendor-portal" replace />;
+      if (user.role === 'buyer') return <Navigate to="/buyer/dashboard" replace />;
+      return <Navigate to="/dashboard" replace />;
+    }
+    
+    // Otherwise (type doesn't match current role), allow showing the login page for that type
   }
   return children;
 }

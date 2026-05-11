@@ -189,21 +189,23 @@ export default function Login() {
                     <div className="auth-card-modern">
                         {view === 'login' && (
                             <>
-                                <div className="portal-switcher">
-                                    {['admin', 'vendor', 'buyer'].map(t => (
-                                        <button
-                                            key={t}
-                                            className={`portal-btn ${portalType === t ? 'active' : ''}`}
-                                            onClick={() => {
-                                                setPortalType(t);
-                                                navigate(`/login?type=${t}`, { replace: true });
-                                            }}
-                                        >
-                                            {t === 'admin' ? <Shield size={16} /> : t === 'vendor' ? <Factory size={16} /> : <ShoppingCart size={16} />}
-                                            {t.charAt(0).toUpperCase() + t.slice(1)}
-                                        </button>
-                                    ))}
-                                </div>
+                                {!searchParams.has('type') && (
+                                    <div className="portal-switcher">
+                                        {['admin', 'vendor', 'buyer'].map(t => (
+                                            <button
+                                                key={t}
+                                                className={`portal-btn ${portalType === t ? 'active' : ''}`}
+                                                onClick={() => {
+                                                    setPortalType(t);
+                                                    navigate(`/login?type=${t}`, { replace: true });
+                                                }}
+                                            >
+                                                {t === 'admin' ? <Shield size={16} /> : t === 'vendor' ? <Factory size={16} /> : <ShoppingCart size={16} />}
+                                                {t.charAt(0).toUpperCase() + t.slice(1)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
 
                                 <div className="auth-card-header">
                                     <h2>{currentConfig.formTitle}</h2>
