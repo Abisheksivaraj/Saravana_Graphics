@@ -36,7 +36,7 @@ const loadCustomFonts = async (pdf) => {
         { name: 'Arial', style: 'bolditalic', file: '/fonts/Arial-Bold-Italic.ttf' },
         { name: 'Calibri', style: 'normal', file: '/fonts/Calibri.ttf' },
         { name: 'Calibri', style: 'bold', file: '/fonts/Calibri-Bold.ttf' },
-        { name: 'JetBrainsMono', style: 'normal', file: '/fonts/JetBrainsMono.ttf' },
+
         { name: 'OCR-BT', style: 'normal', file: '/fonts/OCRB.ttf' },
         { name: 'OCR-B', style: 'normal', file: '/fonts/OCRB.ttf' },
         { name: 'RupeeForbidan', style: 'normal', file: '/fonts/RupeeForbidan.ttf' },
@@ -69,7 +69,7 @@ const resolvePdfFont = (fontFamily = '') => {
     if (ff.includes('ocr')) return 'OCR-B';
     if (ff.includes('rupee') || ff.includes('forbidan')) return 'RupeeForbidan';
     if (ff.includes('times')) return 'times';
-    if (ff.includes('courier')) return 'courier';
+    if (ff.includes('helvetica')) return 'helvetica';
     return 'Arial';
 };
 
@@ -758,7 +758,7 @@ const renderQRAtPos = async (pdf, value, x, y, size) => {
     } catch (e) { console.warn('QR render failed:', e); }
 };
 
-const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduction = false) => {
+const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduction = false, fontFamily = '', fontWeight = 'normal', fontStyle = 'normal') => {
     try {
         const fmt = (format || 'CODE128').toUpperCase();
 
@@ -807,13 +807,19 @@ const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduct
                     cx += unitW * sp; i += sp;
                 } else { cx += unitW; i++; }
             }
+            const pdfFont = resolvePdfFont(fontFamily || '');
+            let isBold = String(fontWeight || '').includes('bold') || fontWeight === '700' || fontWeight === 700;
+            if (!fontWeight && fmt === 'EAN13') isBold = true; 
+            const isItalic = fontStyle === 'italic';
+            const pdfStyle = (isBold && isItalic) ? 'bolditalic' : isBold ? 'bold' : isItalic ? 'italic' : 'normal';
+
             const fontList = pdf.getFontList();
-            if (fontList['JetBrainsMono']) {
-                pdf.setFont('JetBrainsMono', 'normal');
-            } else if (fontList['OCR-BT']) {
-                pdf.setFont('OCR-BT', 'normal');
-            } else if (fontList['OCR-B']) {
-                pdf.setFont('OCR-B', 'normal');
+            if (fontList[pdfFont]) {
+                pdf.setFont(pdfFont, pdfStyle);
+            } else if (fontList['Arial']) {
+                pdf.setFont('Arial', isBold ? 'bold' : 'normal');
+            } else if (fontList['helvetica']) {
+                pdf.setFont('helvetica', isBold ? 'bold' : 'normal');
             } else {
                 pdf.setFont('courier', 'normal');
             }
@@ -843,13 +849,18 @@ const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduct
                 } else { cx += unitW; i++; }
             }
         });
+        const pdfFont = resolvePdfFont(fontFamily || '');
+        const isBold = String(fontWeight || '').includes('bold') || fontWeight === '700' || fontWeight === 700;
+        const isItalic = fontStyle === 'italic';
+        const pdfStyle = (isBold && isItalic) ? 'bolditalic' : isBold ? 'bold' : isItalic ? 'italic' : 'normal';
+
         const fl = pdf.getFontList();
-        if (fl['JetBrainsMono']) {
-            pdf.setFont('JetBrainsMono', 'normal');
-        } else if (fl['OCR-BT']) {
-            pdf.setFont('OCR-BT', 'normal');
-        } else if (fl['OCR-B']) {
-            pdf.setFont('OCR-B', 'normal');
+        if (fl[pdfFont]) {
+            pdf.setFont(pdfFont, pdfStyle);
+        } else if (fl['Arial']) {
+            pdf.setFont('Arial', isBold ? 'bold' : 'normal');
+        } else if (fl['helvetica']) {
+            pdf.setFont('helvetica', isBold ? 'bold' : 'normal');
         } else {
             pdf.setFont('courier', 'normal');
         }
@@ -1687,7 +1698,7 @@ export default function Layout() {
                     bx = ex + (ew - bw) / 2;
                     by = ey + (eh - bh) / 2 + 5 * PX_TO_MM * cs;
                 }
-                await drawVectorBarcode(pdf, bv, bx, by, bw, bh, fmt, el.fill, isProduction);
+                await drawVectorBarcode(pdf, bv, bx, by, bw, bh, fmt, el.fill, isProduction, el.fontFamily, el.fontWeight, el.fontStyle);
                 pdf.restoreGraphicsState(); continue;
             }
 

@@ -154,7 +154,7 @@ export default function BarcodeElement({ el, isSelected, onSelect, ...props }) {
         const textStyle = {
             fontSize:       el.fontSize   || (isEAN13 ? 10 : elHeight * 0.12),
             fontFamily:     el.fontFamily || 'Arial',
-            fontStyle:      `${el.fontStyle === 'italic' ? 'italic' : 'normal'} ${el.fontWeight === 'bold' ? 'bold' : 'normal'}`,
+            fontStyle:      `${el.fontStyle === 'italic' ? 'italic' : 'normal'} ${(el.fontWeight === 'bold' || (!el.fontWeight && isEAN13)) ? 'bold' : 'normal'}`,
             fill:           el.fill || '#000000',
             textDecoration: el.underline ? 'underline' : '',
         };
