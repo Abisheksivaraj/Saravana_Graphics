@@ -599,18 +599,10 @@ const LayoutLabel = ({
             }
             if (el.type === 'text' || el.type === 'placeholder') {
                 const cleanV = (newEl.text || '').trim().toUpperCase();
-                if (sizeVal && cleanV === sizeVal && cleanV.length < 6) {
-                    newEl.fill = '#000000'; newEl.isHighlightedSize = true;
-                }
+                // Removed black background tinting for size
             }
             if (el.type === 'rect') {
-                const isSizeBox = elements.some(other => {
-                    if (other.type !== 'text' && other.type !== 'placeholder') return false;
-                    const ot = (other.text || '').trim().toUpperCase();
-                    if (!sizeVal || ot !== sizeVal || ot.length >= 6) return false;
-                    return Math.abs((other.x || 0) - (el.x || 0)) <= 8 && Math.abs((other.y || 0) - (el.y || 0)) <= 8;
-                });
-                if (isSizeBox) newEl.fill = '#000000';
+                // Removed black background tinting for size boxes
             }
             return newEl;
         });
@@ -819,7 +811,7 @@ const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduct
                 pdf.setFont('courier', 'normal');
             }
             pdf.setFontSize(fsPt);
-            const ty = y + barZoneH + fsMM * 1.0 - 2 * PX_TO_MM;
+            const ty = y + barZoneH + fsMM * 1.0;
             pdf.text(s[0], x + unitW * 2.5, ty, { align: 'center' });
             for (let i = 0; i < 6; i++) pdf.text(s[i + 1], bsX + unitW * (3 + i * 7 + 3.5), ty, { align: 'center' });
             for (let i = 0; i < 6; i++) pdf.text(s[i + 7], bsX + unitW * (50 + i * 7 + 3.5), ty, { align: 'center' });
@@ -1051,15 +1043,15 @@ function DownloadModal({
 
     return (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.7)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}>
-            <div style={{ 
-                background: 'white', 
-                borderRadius: 24, 
-                width: 650, 
-                maxWidth: '95vw', 
-                maxHeight: '90vh', 
-                display: 'flex', 
-                flexDirection: 'column', 
-                boxShadow: '0 30px 60px -12px rgba(0,0,0,0.3)', 
+            <div style={{
+                background: 'white',
+                borderRadius: 24,
+                width: 650,
+                maxWidth: '95vw',
+                maxHeight: '90vh',
+                display: 'flex',
+                flexDirection: 'column',
+                boxShadow: '0 30px 60px -12px rgba(0,0,0,0.3)',
                 position: 'relative',
                 overflow: 'hidden',
                 animation: 'modalSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
@@ -1080,7 +1072,7 @@ function DownloadModal({
                     <button onClick={onClose} style={{ position: 'absolute', top: 24, right: 24, background: '#f8fafc', border: 'none', color: '#94a3b8', cursor: 'pointer', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }} className="hover-bg-red">
                         <X size={18} />
                     </button>
-                    
+
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
                         <div style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1)', color: 'white', padding: 10, borderRadius: 12, boxShadow: '0 4px 12px rgba(99,102,241,0.2)' }}>
                             <Layers size={22} />
@@ -1096,11 +1088,11 @@ function DownloadModal({
                         <div style={{ height: 2, background: '#f1f5f9', position: 'absolute', left: 40, right: 40, top: 12, zIndex: 0 }} />
                         {[{ num: 1, label: 'Upload' }, { num: 2, label: 'Review' }, { num: 3, label: 'Generate' }].map((s, i) => (
                             <div key={s.num} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, position: 'relative', zIndex: 1, background: 'white', padding: '0 8px', justifyContent: i === 0 ? 'flex-start' : i === 2 ? 'flex-end' : 'center' }}>
-                                <div style={{ 
-                                    width: 26, height: 26, borderRadius: '50%', 
-                                    background: step >= s.num ? 'linear-gradient(135deg, #8b5cf6, #6366f1)' : '#f1f5f9', 
-                                    color: step >= s.num ? 'white' : '#94a3b8', 
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                <div style={{
+                                    width: 26, height: 26, borderRadius: '50%',
+                                    background: step >= s.num ? 'linear-gradient(135deg, #8b5cf6, #6366f1)' : '#f1f5f9',
+                                    color: step >= s.num ? 'white' : '#94a3b8',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     fontSize: 12, fontWeight: 800,
                                     boxShadow: step === s.num ? '0 0 0 4px rgba(99,102,241,0.1)' : 'none',
                                     transition: 'all 0.3s'
@@ -1178,7 +1170,7 @@ function DownloadModal({
                                         Summary Statistics
                                     </div>
                                 </div>
-                                
+
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                                     <div style={{ background: 'white', padding: 18, borderRadius: 14, border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#059669', fontWeight: 700, fontSize: 13, marginBottom: 8 }}><CheckCircle2 size={16} /> EPC Matched</div>
@@ -1237,7 +1229,7 @@ function DownloadModal({
                             </div>
                             <h3 style={{ fontSize: 22, fontWeight: 900, color: '#1e293b', marginBottom: 12 }}>Generating Label Assets</h3>
                             <p style={{ fontSize: 14, color: '#64748b', marginBottom: 30, maxWidth: 300, margin: '0 auto 30px' }}>Your high-fidelity vector labels are being assembled. This may take a moment for large batches.</p>
-                            
+
                             <div style={{ maxWidth: 360, margin: '0 auto' }}>
                                 <div style={{ height: 10, background: '#f1f5f9', borderRadius: 5, overflow: 'hidden', marginBottom: 14, border: '1px solid #e2e8f0' }}>
                                     <div style={{ width: `${progress}%`, height: '100%', background: 'linear-gradient(90deg, #8b5cf6, #6366f1)', transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }} />
@@ -1257,7 +1249,7 @@ function DownloadModal({
                             </div>
                             <h3 style={{ fontSize: 22, fontWeight: 900, color: '#1e293b', marginBottom: 12 }}>Batch Ready for Download</h3>
                             <p style={{ fontSize: 14, color: '#64748b', marginBottom: 32, maxWidth: 320, margin: '0 auto 32px' }}>Label generation process successfully completed. Your PDF documents are ready for local storage.</p>
-                            
+
                             <div style={{ background: '#f8fafc', padding: 20, borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 32, display: 'inline-block', minWidth: 200 }}>
                                 <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Total Generated</div>
                                 <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a' }}>{summary?.totalLabels} Labels</div>
@@ -1276,7 +1268,7 @@ function DownloadModal({
                             </button>
                         </>
                     )}
-                    
+
                     {step === 2 && (
                         <>
                             <button className="btn btn-ghost px-6" onClick={() => setStep(1)} style={{ borderRadius: 10, fontWeight: 700 }}>Back</button>
@@ -1660,20 +1652,20 @@ export default function Layout() {
                 const qx = ex + (ew - qsz) / 2;
                 const qy = ey + (eh - qsz) / 2;
 
-                if (!isProduction) {
+                const hasValue = qv && String(qv).trim();
+
+                if (hasValue) {
+                    // Show real QR if we have a value, even in proof sheets
+                    await renderQRAtPos(pdf, String(qv).trim(), qx, qy, qsz);
+                } else if (!isProduction) {
                     pdf.setDrawColor('#9ca3af'); pdf.setLineWidth(0.2);
                     pdf.setLineDashPattern([0.5, 0.5], 0);
                     pdf.rect(qx, qy, qsz, qsz, 'D');
                     pdf.setLineDashPattern([], 0);
                     pdf.setFontSize(Math.max(3, qsz * 0.15)); pdf.setTextColor('#9ca3af');
                     pdf.text('QR CODE', qx + qsz / 2, qy + qsz * 0.45, { align: 'center' });
-                    pdf.text('DUMMY', qx + qsz / 2, qy + qsz * 0.65, { align: 'center' });
+                    pdf.text('PENDING', qx + qsz / 2, qy + qsz * 0.65, { align: 'center' });
                     pdf.setTextColor('#000000');
-                } else {
-                    const isRealEpc = data.__isAutoEpc === false;
-                    if (isRealEpc && qv && String(qv).trim()) {
-                        await renderQRAtPos(pdf, String(qv).trim(), qx, qy, qsz);
-                    }
                 }
                 pdf.restoreGraphicsState(); continue;
             }
@@ -1714,25 +1706,8 @@ export default function Layout() {
 
                 const cleanV = val.trim().toUpperCase();
 
-                // ── Livsmart size highlight ──────────────────────────────────
-                if (labelType === 'livsmart' && livsmartHighlightTextIds.has(el.id)) {
-                    const measW = pdf.getTextWidth(val) || 0;
-                    const rectW = (ew > 2 ? ew : measW) + 1;
-                    pdf.setFillColor('#000000');
-                    pdf.rect(ex - 0.5, ey - 0.5, rectW, fsMM * 1.5, 'F');
-                }
-
-                // ── Normal size highlight ────────────────────────────────────
-                if (labelType === 'normal' && sizeVal && cleanV === sizeVal && cleanV.length < 6) {
-                    const measW = pdf.getTextWidth(val) || 0;
-                    const rectW = (ew > 2 ? ew : measW) + 1;
-                    pdf.setFillColor('#000000');
-                    pdf.rect(ex - 0.5, ey - 0.5, rectW, fsMM * 1.5, 'F');
-                }
-
                 let textColor = el.fill || '#000000';
-                if (labelType === 'livsmart' && livsmartHighlightTextIds.has(el.id)) textColor = '#ffffff';
-                else if ((labelType === 'normal') && sizeVal && cleanV === sizeVal && cleanV.length < 6) textColor = '#ffffff';
+                // Removed conditional white text for size highlight
 
                 pdf.setFontSize(fs); pdf.setTextColor(textColor);
                 try {
@@ -1810,7 +1785,7 @@ export default function Layout() {
                     }
                 }
                 // Only apply sizeHighlightRectIds for normal/livsmart, NOT azortee
-                if (sizeHighlightRectIds.has(el.id)) fill = '#000000';
+                // Removed sizeHighlightRectIds check to prevent black tinting
                 const isLabelBorder = Math.abs(ew - mmW) < 3 && Math.abs(eh - mmH) < 3;
                 const r = el.cornerRadius ? Math.max(0, el.cornerRadius * unitScale * cs) : isLabelBorder ? tagR : 0;
                 if (fill && fill !== 'transparent') {
