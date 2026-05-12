@@ -15,7 +15,7 @@ const sendAccountCreationEmail = async (toEmail, role, identifierCode, username,
         
         const fromEmail = process.env.EMAIL_FROM || '"Saravana Graphics Supporting Team" <support@saravanagraphics.com>';
         const supportEmail = process.env.SMTP_USER || 'support@saravanagraphics.com';
-        const contactNo = '+91 0000000000'; // Default, update as needed
+        const contactNo = '+91 93811 60606 | +91 93608 07755'; // Default, update as needed
 
         const identifierLabel = role === 'vendor' ? 'Vendor Number' : 'Buyer Code';
 
