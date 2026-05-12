@@ -10,9 +10,9 @@ const transporter = nodemailer.createTransport({
 
 const sendAccountCreationEmail = async (toEmail, role, identifierCode, username, password) => {
     try {
-        const baseUrl = process.env.LOGIN_URL || 'http://localhost:5173/login';
+        const baseUrl = process.env.LOGIN_URL || 'https://saravanagraphics.onrender.com/login';
         const loginUrl = (role === 'vendor' || role === 'buyer') ? `${baseUrl}?type=${role}` : baseUrl;
-        
+
         const fromEmail = process.env.EMAIL_FROM || '"Saravana Graphics Supporting Team" <support@saravanagraphics.com>';
         const supportEmail = process.env.SMTP_USER || 'support@saravanagraphics.com';
         const contactNo = '+91 93811 60606 | +91 93608 07755'; // Default, update as needed
@@ -20,7 +20,7 @@ const sendAccountCreationEmail = async (toEmail, role, identifierCode, username,
         const identifierLabel = role === 'vendor' ? 'Vendor Number' : 'Buyer Code';
 
         const frontendUrl = process.env.FRONTEND_URL || 'https://saravanagraphics.onrender.com';
-        
+
         const htmlContent = `
         <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0;">
             <div style="background-color: white; padding: 15px; text-align: center; border-bottom: 3px solid #0b6bc7;">
@@ -74,8 +74,8 @@ const sendAccountCreationEmail = async (toEmail, role, identifierCode, username,
 
 const sendOtpEmail = async (toEmail, otp) => {
     try {
-        const fromEmail = process.env.EMAIL_FROM || '"Saravana Graphics Supporting Team" <support@saravanagraphics.com>';
-        
+        const fromEmail = process.env.EMAIL_FROM || '"Saravana Graphics Supporting Team" <info@saravanarfid.com>';
+
         const htmlContent = `
         <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; padding: 20px;">
             <h2 style="color: #0b6bc7;">Verification Code</h2>
