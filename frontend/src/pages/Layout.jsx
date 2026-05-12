@@ -19,7 +19,7 @@ import QRCode from 'qrcode';
 import BarcodeElement from '../components/BarcodeElement';
 import QRElement from '../components/QRElement';
 import ImageElement from '../components/ImageElement';
-import logo from '../assets/logo.png';
+import logo from '../assets/artwork.png';
 import './Layout.css';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -809,7 +809,7 @@ const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduct
             }
             const pdfFont = resolvePdfFont(fontFamily || '');
             let isBold = String(fontWeight || '').includes('bold') || fontWeight === '700' || fontWeight === 700;
-            if (!fontWeight && fmt === 'EAN13') isBold = true; 
+            if (!fontWeight && fmt === 'EAN13') isBold = true;
             const isItalic = fontStyle === 'italic';
             const pdfStyle = (isBold && isItalic) ? 'bolditalic' : isBold ? 'bold' : isItalic ? 'italic' : 'normal';
 
@@ -1577,17 +1577,21 @@ export default function Layout() {
             pdf.circle(mmX + mmW / 2, mmY + 5, 1.5, 'D');
         }
 
-        // Branding page
+        // Branding page — white background, logo centred
         if (isBranding) {
-            pdf.setFillColor('#000000');
-            pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'F');
             const bImg = brandingImg || logoImg;
             if (bImg) {
                 try {
-                    const aspect = bImg.height / bImg.width;
-                    const dw = mmW * 0.85, dh = dw * aspect;
-                    pdf.addImage(bImg, 'PNG', mmX + (mmW - dw) / 2, mmY + (mmH - dh) / 2, dw, dh);
+                    // Fill the entire tag area with the image (no padding, no outline)
+                    pdf.addImage(bImg, 'PNG', mmX, mmY, mmW, mmH, 'FRONT_LOGO', 'FAST');
                 } catch { }
+            } else {
+                pdf.setFillColor('#f1f5f9');
+                tagR > 0
+                    ? pdf.roundedRect(mmX, mmY, mmW, mmH, tagR, tagR, 'F')
+                    : pdf.rect(mmX, mmY, mmW, mmH, 'F');
+                pdf.setFontSize(7); pdf.setFont('Arial', 'bold'); pdf.setTextColor('#94a3b8');
+                pdf.text('BRAND LOGO', mmX + mmW / 2, mmY + mmH / 2, { align: 'center' });
             }
             return;
         }
@@ -1852,86 +1856,234 @@ export default function Layout() {
     };
 
     // ── Branding header for proof sheet ──
-    const drawBrandingHeader = (pdf, pageNum, totalPages, PAGE_W) => {
+    const drawBrandingHeader = (pdf, pageNum, totalPages, PAGE_W, labelW, labelH, startY, brandImg, logoImg_) => {
         pdf.saveGraphicsState();
-        const bImg = brandingImg || logoImg;
-        if (bImg) {
+
+        // Front logo — only rendered if brandImg is provided (page 1 only)
+        if (brandImg) {
             try {
-                const aspect = bImg.height / bImg.width;
-                const imgW = 28, imgH = imgW * aspect;
-                pdf.addImage(bImg, 'PNG', 10, 6, imgW, imgH);
+                pdf.addImage(brandImg, 'PNG', 3, startY, labelW, labelH, 'FRONT_LOGO', 'FAST');
             } catch { }
         }
-        pdf.setFontSize(16); pdf.setFont('Arial', 'bold'); pdf.setTextColor('#000080');
-        pdf.text('DESIGN PROOF APPROVAL SHEET', PAGE_W - 10, 13, { align: 'right' });
-        pdf.setFontSize(9); pdf.setFont('Arial', 'normal'); pdf.setTextColor('#777777');
-        pdf.text(`Page ${pageNum} of ${totalPages}`, PAGE_W - 10, 19, { align: 'right' });
-        pdf.text(`Date: ${new Intl.DateTimeFormat('en-IN').format(new Date())}`, PAGE_W - 10, 24, { align: 'right' });
-        pdf.setDrawColor('#e2e8f0'); pdf.setLineWidth(0.4);
-        pdf.line(10, 32, PAGE_W - 10, 32);
+
+        const HEADER_TEXT_Y = startY / 2 + 1.5;
+
+        if (logoImg_) {
+            try {
+                const aspect = logoImg_.height / logoImg_.width;
+                const imgH = 14;
+                const imgW = imgH / aspect;
+                pdf.addImage(logoImg_, 'PNG', 3, HEADER_TEXT_Y - imgH / 2, imgW, imgH, 'HEADER_LOGO', 'FAST');
+            } catch { }
+        }
+
+        const dateStr = new Intl.DateTimeFormat('en-IN').format(new Date());
+        const rightText = `ARTWORK APPROVAL SHEET   |   Page ${pageNum} of ${totalPages}   |   Date: ${dateStr}`;
+        pdf.setFontSize(9);
+        pdf.setFont('Arial', 'bold');
+        pdf.setTextColor('#000080');
+        pdf.text(rightText, PAGE_W - 5, HEADER_TEXT_Y + 1.5, { align: 'right' });
+
+        pdf.setDrawColor('#e2e8f0');
+        pdf.setLineWidth(0.4);
+        pdf.line(3, startY - 2, PAGE_W - 3, startY - 2);
+
         pdf.restoreGraphicsState();
     };
 
     // ── Proof sheet PDF ──
-    const buildProofPdf = async () => {
-        const PAGE_W = 297, PAGE_H = 210;
-        const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const buildProofPdf = async (PAGE_W = 297, PAGE_H = 210, groupByStrip = false) => {
+        const pdf = new jsPDF({
+            orientation: PAGE_W > PAGE_H ? 'landscape' : 'portrait',
+            unit: 'mm',
+            format: [PAGE_W, PAGE_H]
+        });
+
         const unit = selectedTemplate.canvasUnit || 'px';
         const dW = selectedTemplate.canvasWidth || selectedTemplate.width || 166;
         const dH = selectedTemplate.canvasHeight || selectedTemplate.height || 387;
         const origW = unit === 'mm' ? dW : dW * PX_TO_MM;
         const origH = unit === 'mm' ? dH : dH * PX_TO_MM;
-        const cols = 6, rows = 2, hGap = 6, vGap = 8, HEADER_H = 35;
-        const usableW = PAGE_W - 25, usableH = PAGE_H - 30 - HEADER_H;
+
+        const MARGIN = 3;
+        const HEADER_H = 22;
+        const hGap = 2, vGap = 3;
+        const COLS = 6;
+        const ROWS = 2;
+        const SLOTS_PER_PAGE = COLS * ROWS; // 12
+
+        const usableW = PAGE_W - MARGIN * 2;
+        const usableH = PAGE_H - MARGIN * 2 - HEADER_H;
+
         const masterScale = Math.min(
-            0.95,
-            (usableW - (cols - 1) * hGap) / (cols * origW),
-            (usableH - (rows - 1) * vGap) / (rows * origH)
+            (usableW - (COLS - 1) * hGap) / (COLS * origW),
+            (usableH - (ROWS - 1) * vGap) / (ROWS * origH)
         );
-        const labelW = origW * masterScale, labelH = origH * masterScale, maxPP = cols * rows;
-        const gridW = cols * labelW + (cols - 1) * hGap, gridH = rows * labelH + (rows - 1) * vGap;
-        const startX = (PAGE_W - gridW) / 2, startY = HEADER_H + 5 + (usableH - gridH) / 2;
+        const labelW = origW * masterScale;
+        const labelH = origH * masterScale;
+        const startY = MARGIN + HEADER_H;
 
-        const sourceRows = [];
-        const seenRows = new Set();
-        for (const r of expandedData) {
-            if (r.__blank) continue;
-            // Use unique index to ensure only one layout per original Excel row
-            if (!seenRows.has(r.__originalRowIndex)) {
-                seenRows.add(r.__originalRowIndex);
-                sourceRows.push(r);
+        // ── Build color groups from expandedData using blank row boundaries ──────
+        let colorGroups = [];
+
+        if (groupByStrip) {
+            let currentGroup = [];
+            for (const r of expandedData) {
+                if (r.__blank) {
+                    if (currentGroup.length > 0) {
+                        colorGroups.push([...currentGroup]);
+                        currentGroup = [];
+                    }
+                } else {
+                    currentGroup.push(r);
+                }
+            }
+            if (currentGroup.length > 0) colorGroups.push(currentGroup);
+        } else {
+            colorGroups = [expandedData.filter(r => !r.__blank)];
+        }
+
+        // ── Count total pages ────────────────────────────────────────────────────
+        // When groupByStrip=true:
+        //   - First group, first page: 11 data slots (logo takes 1)
+        //   - First group, overflow pages: 12 slots each
+        //   - Every other group: each color gets its OWN page(s), never shared
+        // When groupByStrip=false: same packing, no color isolation
+        let totalPages = 0;
+        colorGroups.forEach((group, gi) => {
+            if (groupByStrip) {
+                // Each color group always starts fresh — count pages needed for this group
+                const firstPageSlots = gi === 0 ? SLOTS_PER_PAGE - 1 : SLOTS_PER_PAGE;
+                if (group.length <= firstPageSlots) {
+                    totalPages += 1;
+                } else {
+                    const overflow = group.length - firstPageSlots;
+                    totalPages += 1 + Math.ceil(overflow / SLOTS_PER_PAGE);
+                }
+            } else {
+                // No isolation — count across all groups as one stream
+                if (gi === 0) {
+                    const firstPageSlots = SLOTS_PER_PAGE - 1;
+                    if (group.length <= firstPageSlots) totalPages += 1;
+                    else totalPages += 1 + Math.ceil((group.length - firstPageSlots) / SLOTS_PER_PAGE);
+                } else {
+                    totalPages += Math.ceil(group.length / SLOTS_PER_PAGE);
+                }
+            }
+        });
+
+        let pageNum = 0;
+        let isVeryFirstPage = true;
+
+        // Helper: render one page of labels
+        const renderPage = async (rowsForThisPage, hasLogoSlot, colorLabel) => {
+            pageNum++;
+            if (pageNum > 1) pdf.addPage([PAGE_W, PAGE_H], PAGE_W > PAGE_H ? 'landscape' : 'portrait');
+
+            drawBrandingHeader(
+                pdf, pageNum, totalPages, PAGE_W, labelW, labelH, startY,
+                hasLogoSlot ? (brandingImg || logoImg) : null,
+                logoImg
+            );
+
+
+
+            // Draw each label in its slot
+            for (let i = 0; i < rowsForThisPage.length; i++) {
+                let finalCol, finalRow;
+                if (hasLogoSlot) {
+                    // Logo at (row=0, col=0); data slots:
+                    // i=0..4  → row 0, cols 1-5
+                    // i=5..10 → row 1, cols 0-5
+                    if (i < COLS - 1) {
+                        finalCol = i + 1;
+                        finalRow = 0;
+                    } else {
+                        const offset = i - (COLS - 1);
+                        finalCol = offset % COLS;
+                        finalRow = 1 + Math.floor(offset / COLS);
+                    }
+                } else {
+                    finalCol = i % COLS;
+                    finalRow = Math.floor(i / COLS);
+                }
+
+                const x = MARGIN + finalCol * (labelW + hGap);
+                const y = startY + finalRow * (labelH + vGap);
+
+                await drawVectorLabel(
+                    pdf, selectedTemplate.elements, rowsForThisPage[i],
+                    manualMapping, x, y, labelW, labelH, false, false
+                );
+            }
+            // NOTE: remaining slots on this page are intentionally left blank
+        };
+
+        for (let gi = 0; gi < colorGroups.length; gi++) {
+            const group = colorGroups[gi];
+
+            // Detect color label from first row of this group
+            const stripCol = Object.keys(group[0] || {}).find(k => {
+                const n = k.toLowerCase().replace(/[\s_-]/g, '');
+                return n.includes('stripcolor') || n === 'strip' || n === 'color';
+            });
+            const colorLabel = stripCol ? String(group[0][stripCol] || '').trim() : '';
+
+            if (groupByStrip) {
+                // ── GROUPED MODE: each color gets its own page(s), rest stays blank ──
+                let remaining = [...group];
+
+                // First page of this group
+                const firstPageSlots = isVeryFirstPage ? SLOTS_PER_PAGE - 1 : SLOTS_PER_PAGE;
+                const firstBatch = remaining.splice(0, firstPageSlots);
+                await renderPage(firstBatch, isVeryFirstPage, colorLabel);
+                isVeryFirstPage = false;
+
+                // Overflow pages for same color (rare: >11 or >12 labels of one color)
+                while (remaining.length > 0) {
+                    const batch = remaining.splice(0, SLOTS_PER_PAGE);
+                    await renderPage(batch, false, colorLabel);
+                }
+                // ← After all pages for this color are done, the NEXT color
+                //   always starts on a fresh page (via pageNum++ in renderPage)
+
+            } else {
+                // ── NORMAL MODE: pack labels across pages without isolation ──────────
+                let remaining = [...group];
+
+                if (gi === 0) {
+                    // First group, first page has logo slot
+                    const firstBatch = remaining.splice(0, SLOTS_PER_PAGE - 1);
+                    await renderPage(firstBatch, true, colorLabel);
+                    isVeryFirstPage = false;
+                }
+
+                while (remaining.length > 0) {
+                    const batch = remaining.splice(0, SLOTS_PER_PAGE);
+                    await renderPage(batch, false, colorLabel);
+                }
             }
         }
-        const pages = [];
-        let page = [{ isBranding: true }];
-        for (const row of sourceRows) {
-            if (page.length >= maxPP) { pages.push(page); page = []; }
-            page.push({ isBranding: false, data: row });
-        }
-        if (page.length) pages.push(page);
 
-        for (let pIdx = 0; pIdx < pages.length; pIdx++) {
-            if (pIdx > 0) pdf.addPage();
-            drawBrandingHeader(pdf, pIdx + 1, pages.length, PAGE_W);
-            for (let i = 0; i < pages[pIdx].length; i++) {
-                const item = pages[pIdx][i];
-                const c = i % cols, r = Math.floor(i / cols);
-                const x = startX + c * (labelW + hGap), y = startY + r * (labelH + vGap);
-                if (item.isBranding) await drawVectorLabel(pdf, [], {}, {}, x, y, labelW, labelH, true);
-                else await drawVectorLabel(pdf, selectedTemplate.elements, item.data, manualMapping, x, y, labelW, labelH, false, false);
-            }
-        }
         return pdf;
     };
 
-    const downloadPDF = async () => {
+    const downloadPDF = () => {
         if (!selectedTemplate) return;
+        setShowPaperModal(true);
+    };
+
+    const handlePaperDownload = async () => {
+        setShowPaperModal(false);
         try {
             toast.loading('Generating Proof Sheet…', { id: 'pdf' });
-            const pdf = await buildProofPdf();
+            const pdf = await buildProofPdf(paperSize.width, paperSize.height, groupByStrip); // ← pass groupByStrip
             pdf.save(`Proof_Sheet_${Date.now()}.pdf`);
             toast.success('Downloaded!', { id: 'pdf' });
-        } catch (err) { console.error(err); toast.error('Failed to generate PDF', { id: 'pdf' }); }
+        } catch (err) {
+            console.error(err);
+            toast.error('Failed to generate PDF', { id: 'pdf' });
+        }
     };
 
     const saveProofSheet = () => {
@@ -1996,6 +2148,10 @@ export default function Layout() {
         { name: 'White', hex: '#FFFFFF' }, { name: 'Process Black', hex: '#000000' },
     ];
 
+    const [showPaperModal, setShowPaperModal] = useState(false);
+    const [paperSize, setPaperSize] = useState({ width: 297, height: 210 });
+    const [groupByStrip, setGroupByStrip] = useState(false);
+
     return (
         <div className={`layout-page ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
 
@@ -2043,6 +2199,97 @@ export default function Layout() {
                                 <button className="save-btn-cancel" onClick={() => setShowSaveModal(false)}>Cancel</button>
                                 <button className="save-btn-confirm" onClick={handleSaveSubmit}><Save size={16} /> Save to Server</button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showPaperModal && (
+                <div style={{
+                    position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)',
+                    backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', zIndex: 99999
+                }}>
+                    <div style={{
+                        background: 'white', borderRadius: 20, padding: '32px 36px',
+                        width: 400, boxShadow: '0 24px 48px rgba(0,0,0,0.2)'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+                            <div style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', borderRadius: 10, padding: 8, color: 'white' }}>
+                                <FileText size={20} />
+                            </div>
+                            <div>
+                                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#0f172a' }}>Paper Size</h2>
+                                <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>Set custom sheet dimensions in mm</p>
+                            </div>
+                        </div>
+
+                        {/* Preset buttons */}
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+                            {[
+                                { label: 'A4 Landscape', w: 297, h: 210 },
+                                { label: 'A4 Portrait', w: 210, h: 297 },
+                                { label: 'A3 Landscape', w: 420, h: 297 },
+                                { label: 'Letter', w: 279, h: 216 },
+                            ].map(p => (
+                                <button key={p.label}
+                                    onClick={() => setPaperSize({ width: p.w, height: p.h })}
+                                    style={{
+                                        padding: '5px 12px', fontSize: 12, fontWeight: 700,
+                                        border: `2px solid ${paperSize.width === p.w && paperSize.height === p.h ? '#6366f1' : '#e2e8f0'}`,
+                                        borderRadius: 8, cursor: 'pointer',
+                                        background: paperSize.width === p.w && paperSize.height === p.h ? '#eef2ff' : 'white',
+                                        color: paperSize.width === p.w && paperSize.height === p.h ? '#4f46e5' : '#475569',
+                                    }}>
+                                    {p.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 28 }}>
+                            <div>
+                                <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>Width (mm)</label>
+                                <input
+                                    type="number" min="50" max="1200"
+                                    value={paperSize.width}
+                                    onChange={e => setPaperSize(p => ({ ...p, width: Number(e.target.value) }))}
+                                    style={{ width: '100%', padding: '10px 12px', fontSize: 15, fontWeight: 700, border: '2px solid #e2e8f0', borderRadius: 10, outline: 'none', boxSizing: 'border-box' }}
+                                />
+                            </div>
+                            <div>
+                                <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>Height (mm)</label>
+                                <input
+                                    type="number" min="50" max="1200"
+                                    value={paperSize.height}
+                                    onChange={e => setPaperSize(p => ({ ...p, height: Number(e.target.value) }))}
+                                    style={{ width: '100%', padding: '10px 12px', fontSize: 15, fontWeight: 700, border: '2px solid #e2e8f0', borderRadius: 10, outline: 'none', boxSizing: 'border-box' }}
+                                />
+                            </div>
+                        </div>
+                        <div style={{ marginBottom: 20, padding: '14px 16px', background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={groupByStrip}
+                                    onChange={e => setGroupByStrip(e.target.checked)}
+                                    style={{ width: 16, height: 16, accentColor: '#6366f1', cursor: 'pointer' }}
+                                />
+                                <div>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>Group by Strip Color</div>
+                                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>Each color variation starts on a new page</div>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                            <button onClick={() => setShowPaperModal(false)}
+                                style={{ padding: '10px 20px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer', color: '#64748b' }}>
+                                Cancel
+                            </button>
+                            <button onClick={handlePaperDownload}
+                                style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Download size={15} /> Download PDF
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -2334,7 +2581,7 @@ export default function Layout() {
                                         <Layer>
                                             <Rect width={sheetW} height={sheetH} fill="#f1f5f9" />
                                             <Group x={marginSide} y={20}>
-                                                {logoImg && <KImage image={logoImg} width={100} height={45} />}
+                                                {logoImg && <KImage image={logoImg} width={200} height={55} />}
                                                 <Rect y={55} width={sheetW - marginSide * 2} height={1} fill="#e2e8f0" />
                                                 <Text text="DESIGN PROOF APPROVAL SHEET" y={65} fontSize={10} fontFamily="Arial" fill="#94a3b8" letterSpacing={2} />
                                             </Group>
@@ -2368,12 +2615,6 @@ export default function Layout() {
                                             </Group>
                                         </Layer>
                                     </Stage>
-                                </div>
-
-                                <div className="zoom-bar">
-                                    <button className="btn btn-ghost btn-xs" onClick={() => setZoom(z => Math.max(0.1, z - 0.1))}><ZoomOut size={15} /></button>
-                                    <span className="zoom-pct">{Math.round(zoom * 100)}%</span>
-                                    <button className="btn btn-ghost btn-xs" onClick={() => setZoom(z => Math.min(3, z + 0.1))}><ZoomIn size={15} /></button>
                                 </div>
                             </div>
                         )}

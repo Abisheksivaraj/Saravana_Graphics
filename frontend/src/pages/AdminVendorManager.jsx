@@ -17,12 +17,10 @@ export default function AdminVendorManager() {
     const [filterStatus, setFilterStatus] = useState('All');
     const { user } = useAuthStore();
     
-    // New vendor form state
+    // New vendor form state — entities as unified rows
     const [formData, setFormData] = useState({
         name: '', email: '', vendorName: '', adminCode: '',
-        vendorCodes: [''],
-        brandNames: [''],
-        gstinNumbers: ['']
+        entities: [{ vendorCode: '', brandName: '', gstin: '' }]
     });
 
     const fetchVendors = async () => {
@@ -78,21 +76,21 @@ export default function AdminVendorManager() {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    // Separate list helpers
-    const handleListChange = (listName, index, value) => {
-        const newList = [...formData[listName]];
-        newList[index] = value;
-        setFormData({ ...formData, [listName]: newList });
+    // Row-based entity helpers
+    const handleEntityChange = (index, field, value) => {
+        const updated = formData.entities.map((ent, i) =>
+            i === index ? { ...ent, [field]: value } : ent
+        );
+        setFormData({ ...formData, entities: updated });
     };
 
-    const addListItem = (listName) => {
-        setFormData({ ...formData, [listName]: [...formData[listName], ''] });
+    const addEntityRow = () => {
+        setFormData({ ...formData, entities: [...formData.entities, { vendorCode: '', brandName: '', gstin: '' }] });
     };
 
-    const removeListItem = (listName, index) => {
-        if (formData[listName].length === 1) return toast.error('At least one item is required');
-        const newList = formData[listName].filter((_, i) => i !== index);
-        setFormData({ ...formData, [listName]: newList });
+    const removeEntityRow = (index) => {
+        if (formData.entities.length === 1) return toast.error('At least one vendor entity is required');
+        setFormData({ ...formData, entities: formData.entities.filter((_, i) => i !== index) });
     };
 
     const [avatarFile, setAvatarFile] = useState(null);
@@ -106,56 +104,54 @@ export default function AdminVendorManager() {
         }
     };
 
+
     const handleCreateVendor = async (e) => {
         e.preventDefault();
-        for (const code of formData.vendorCodes) {
-            if (!code) return toast.error('Vendor Code is required');
+        for (const ent of formData.entities) {
+            if (!ent.vendorCode.trim()) return toast.error('Every row must have a Vendor Code');
         }
 
         const loadingToast = toast.loading('Creating vendor account...');
         try {
             const data = new FormData();
-            
+
             // Core fields
             data.append('name', formData.name);
             data.append('email', formData.email);
             data.append('vendorName', formData.vendorName);
             data.append('adminCode', formData.adminCode);
-            data.append('vendorCode', formData.vendorCodes[0] || '');
-            data.append('vendorGstin', formData.gstinNumbers[0] || '');
+            // Convenience top-level fields from first entity
+            data.append('vendorCode', formData.entities[0]?.vendorCode || '');
+            data.append('vendorGstin', formData.entities[0]?.gstin || '');
+            data.append('vendorBrand', formData.entities[0]?.brandName || '');
             data.append('autoGenerate', true);
-            
-            // Build entities from the three separate lists
-            const maxLen = Math.max(formData.vendorCodes.length, formData.brandNames.length, formData.gstinNumbers.length);
-            const entities = [];
-            for (let i = 0; i < maxLen; i++) {
-                entities.push({
-                    vendorCode: formData.vendorCodes[i] || '',
-                    brandName: formData.brandNames[i] || '',
-                    vendorGstin: formData.gstinNumbers[i] || '',
-                    vendorName: formData.vendorName
-                });
-            }
+
+            // All entities — saved to entities[] array in DB
+            const entities = formData.entities.map(ent => ({
+                vendorCode: ent.vendorCode.trim(),
+                brandName: ent.brandName.trim(),
+                vendorGstin: ent.gstin.trim(),
+                vendorName: formData.vendorName
+            }));
             data.append('entities', JSON.stringify(entities));
 
-            if (avatarFile) {
-                data.append('avatar', avatarFile);
-            }
+            if (avatarFile) data.append('avatar', avatarFile);
 
             await vendorAPI.createAccount(data);
-            toast.success('Vendor added! Login credentials sent via email.', { id: loadingToast });
+            toast.success(`Vendor added with ${entities.length} entity(ies)! Credentials sent via email.`, { id: loadingToast });
             setShowModal(false);
-            setFormData({ 
+            setFormData({
                 name: '', email: '', vendorName: '', adminCode: '',
-                vendorCodes: [''], brandNames: [''], gstinNumbers: ['']
+                entities: [{ vendorCode: '', brandName: '', gstin: '' }]
             });
             setAvatarFile(null);
             setAvatarPreview(null);
             fetchVendors();
         } catch (err) {
-             toast.error(err.response?.data?.message || 'Failed to create vendor', { id: loadingToast });
+            toast.error(err.response?.data?.message || 'Failed to create vendor', { id: loadingToast });
         }
     };
+
 
     const filteredVendors = vendors.filter(v => {
         const query = search.toLowerCase();
@@ -190,9 +186,9 @@ export default function AdminVendorManager() {
                         }}><RefreshCcw size={16} color="#64748b" /></button>
                         <button className="btn btn-primary" onClick={() => {
                             const aCode = generateAdminCode();
-                            setFormData({ 
+                            setFormData({
                                 name: '', email: '', vendorName: '', adminCode: aCode,
-                                vendorCodes: [''], brandNames: [''], gstinNumbers: [''] 
+                                entities: [{ vendorCode: '', brandName: '', gstin: '' }]
                             });
                             setAvatarPreview(null);
                             setAvatarFile(null);
@@ -512,89 +508,79 @@ export default function AdminVendorManager() {
                                         </p>
                                     </div>
 
-                                    <hr style={{ border: 'none', borderTop: '1px solid #f1f5f9', margin: 0 }} />
 
-                                    {/* Bottom Row: Three Separate Lists */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-                                        {/* Vendor Codes Column */}
-                                        <div style={{ background: '#fbfcfd', borderRadius: '14px', border: '1px solid #f1f5f9', padding: '14px' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                                                <label style={{ fontSize: '0.65rem', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase' }}>Vendor Codes</label>
-                                                <button type="button" onClick={() => addListItem('vendorCodes')} 
-                                                    style={{ fontSize: '0.65rem', fontWeight: 800, color: '#f97316', background: 'rgba(249,115,22,0.08)', border: 'none', padding: '3px 8px', borderRadius: '6px', cursor: 'pointer' }}>+ Add</button>
-                                            </div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 140, overflowY: 'auto' }}>
-                                                {formData.vendorCodes.map((code, idx) => (
-                                                    <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                                        <input 
-                                                            style={{ flex: 1, background: '#fff', border: '1px solid #e2e8f0', color: '#f97316', padding: '6px 10px', borderRadius: '8px', fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', outline: 'none' }} 
-                                                            value={code} 
-                                                            onChange={e => handleListChange('vendorCodes', idx, e.target.value.toUpperCase())}
-                                                        />
-                                                        {idx > 0 && (
-                                                            <button type="button" onClick={() => removeListItem('vendorCodes', idx)} 
-                                                                style={{ width: 26, height: 26, borderRadius: '6px', border: 'none', background: '#fee2e2', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                                                <Trash2 size={12} />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
+                                    {/* Row-based Entity Builder */}
+                                    <div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                                            <label style={{ fontSize: '0.65rem', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                                Vendor Entities <span style={{ color: '#f97316' }}>({formData.entities.length})</span>
+                                            </label>
+                                            <button type="button" onClick={addEntityRow}
+                                                style={{ fontSize: '0.72rem', fontWeight: 800, color: '#fff', background: 'linear-gradient(135deg,#f97316,#ea580c)', border: 'none', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                                                <Plus size={13} /> Add Entity
+                                            </button>
                                         </div>
 
-                                        {/* Brand Names Column */}
-                                        <div style={{ background: '#fbfcfd', borderRadius: '14px', border: '1px solid #f1f5f9', padding: '14px' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                                                <label style={{ fontSize: '0.65rem', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase' }}>Brand Names</label>
-                                                <button type="button" onClick={() => addListItem('brandNames')} 
-                                                    style={{ fontSize: '0.65rem', fontWeight: 800, color: '#f97316', background: 'rgba(249,115,22,0.08)', border: 'none', padding: '3px 8px', borderRadius: '6px', cursor: 'pointer' }}>+ Add</button>
-                                            </div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 140, overflowY: 'auto' }}>
-                                                {formData.brandNames.map((brand, idx) => (
-                                                    <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                                        <input 
-                                                            style={{ flex: 1, padding: '6px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', outline: 'none', fontSize: '0.8rem' }} 
-                                                            value={brand} 
-                                                            onChange={e => handleListChange('brandNames', idx, e.target.value)}
-                                                        />
-                                                        {idx > 0 && (
-                                                            <button type="button" onClick={() => removeListItem('brandNames', idx)} 
-                                                                style={{ width: 26, height: 26, borderRadius: '6px', border: 'none', background: '#fee2e2', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                                                <Trash2 size={12} />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
+                                        {/* Column Header */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 34px', gap: 8, padding: '7px 12px', background: 'linear-gradient(135deg,#0f172a,#1e293b)', borderRadius: '10px 10px 0 0' }}>
+                                            {['Vendor Code *', 'Brand Name', 'GSTIN Number'].map(h => (
+                                                <span key={h} style={{ fontSize: '0.6rem', fontWeight: 900, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
+                                            ))}
+                                            <span />
                                         </div>
 
-                                        {/* GSTIN Numbers Column */}
-                                        <div style={{ background: '#fbfcfd', borderRadius: '14px', border: '1px solid #f1f5f9', padding: '14px' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                                                <label style={{ fontSize: '0.65rem', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase' }}>GSTIN Numbers</label>
-                                                <button type="button" onClick={() => addListItem('gstinNumbers')} 
-                                                    style={{ fontSize: '0.65rem', fontWeight: 800, color: '#f97316', background: 'rgba(249,115,22,0.08)', border: 'none', padding: '3px 8px', borderRadius: '6px', cursor: 'pointer' }}>+ Add</button>
-                                            </div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 140, overflowY: 'auto' }}>
-                                                {formData.gstinNumbers.map((gstin, idx) => (
-                                                    <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                                        <input 
-                                                            style={{ flex: 1, padding: '6px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', outline: 'none', fontSize: '0.8rem', textTransform: 'uppercase' }} 
-                                                            value={gstin} 
-                                                            onChange={e => handleListChange('gstinNumbers', idx, e.target.value.toUpperCase())}
-                                                        />
-                                                        {idx > 0 && (
-                                                            <button type="button" onClick={() => removeListItem('gstinNumbers', idx)} 
-                                                                style={{ width: 26, height: 26, borderRadius: '6px', border: 'none', background: '#fee2e2', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                                                <Trash2 size={12} />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
+                                        {/* Entity Rows */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 0, maxHeight: 220, overflowY: 'auto', border: '1px solid #e2e8f0', borderTop: 'none', borderRadius: '0 0 10px 10px' }}>
+                                            {formData.entities.map((ent, idx) => (
+                                                <div key={idx} style={{
+                                                    display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 34px', gap: 8,
+                                                    padding: '10px 12px',
+                                                    background: idx % 2 === 0 ? '#ffffff' : '#fafbfc',
+                                                    borderBottom: idx < formData.entities.length - 1 ? '1px solid #f1f5f9' : 'none',
+                                                    alignItems: 'center',
+                                                    transition: 'background 0.15s'
+                                                }}>
+                                                    {/* Vendor Code */}
+                                                    <input
+                                                        required
+                                                        placeholder="e.g. SG000001"
+                                                        style={{ width: '100%', background: '#fff7ed', border: '1.5px solid #fed7aa', color: '#f97316', padding: '6px 10px', borderRadius: '7px', fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', outline: 'none' }}
+                                                        value={ent.vendorCode}
+                                                        onChange={e => handleEntityChange(idx, 'vendorCode', e.target.value.toUpperCase())}
+                                                    />
+                                                    {/* Brand Name */}
+                                                    <input
+                                                        placeholder="e.g. Nike"
+                                                        style={{ width: '100%', background: '#fff', border: '1.5px solid #e2e8f0', padding: '6px 10px', borderRadius: '7px', fontSize: '0.82rem', outline: 'none', color: '#334155' }}
+                                                        value={ent.brandName}
+                                                        onChange={e => handleEntityChange(idx, 'brandName', e.target.value)}
+                                                    />
+                                                    {/* GSTIN */}
+                                                    <input
+                                                        placeholder="Optional GSTIN"
+                                                        style={{ width: '100%', background: '#fff', border: '1.5px solid #e2e8f0', padding: '6px 10px', borderRadius: '7px', fontSize: '0.78rem', outline: 'none', color: '#64748b', textTransform: 'uppercase' }}
+                                                        value={ent.gstin}
+                                                        onChange={e => handleEntityChange(idx, 'gstin', e.target.value.toUpperCase())}
+                                                    />
+                                                    {/* Remove button */}
+                                                    {idx > 0 ? (
+                                                        <button type="button" onClick={() => removeEntityRow(idx)}
+                                                            style={{ width: 30, height: 30, borderRadius: '8px', border: 'none', background: '#fee2e2', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                            <Trash2 size={13} />
+                                                        </button>
+                                                    ) : (
+                                                        <div style={{ width: 30 }} />
+                                                    )}
+                                                </div>
+                                            ))}
                                         </div>
+
+                                        <p style={{ fontSize: '0.68rem', color: '#94a3b8', margin: '8px 0 0', fontStyle: 'italic' }}>
+                                            Each row = one vendor entity. All will appear in the vendor's "Create Order" dropdown.
+                                        </p>
                                     </div>
                                 </div>
+
 
                                 <div className="modal-footer" style={{ 
                                     padding: '16px 32px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', 

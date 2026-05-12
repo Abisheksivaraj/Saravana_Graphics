@@ -27,18 +27,30 @@ export default function CreateOrder() {
         const fetchProfile = async () => {
             try {
                 const res = await authAPI.getMe();
-                const userEntities = res.data.entities || [];
-                // If legacy user, create a dummy entity list from top level fields
-                if (userEntities.length === 0 && res.data.vendorCode) {
-                    userEntities.push({
-                        vendorCode: res.data.vendorCode,
-                        vendorName: res.data.vendorName || res.data.name,
-                        vendorBrand: 'General',
-                        vendorGstin: res.data.vendorGstin
+                // /me returns { user: {...} }
+                const userData = res.data.user || res.data;
+                const userEntities = userData.entities || [];
+
+                // Normalise entity list — entities use `brandName`, legacy uses top-level fields
+                const normalised = userEntities.map(e => ({
+                    vendorCode: e.vendorCode,
+                    vendorName: e.vendorName || userData.vendorName || userData.name,
+                    vendorBrand: e.brandName || e.vendorBrand || '',
+                    vendorGstin: e.vendorGstin || ''
+                }));
+
+                // If no entities array, fall back to top-level vendorCode
+                if (normalised.length === 0 && userData.vendorCode) {
+                    normalised.push({
+                        vendorCode: userData.vendorCode,
+                        vendorName: userData.vendorName || userData.name,
+                        vendorBrand: userData.vendorBrand || '',
+                        vendorGstin: userData.vendorGstin || ''
                     });
                 }
-                setEntities(userEntities);
-                if (userEntities.length > 0) setSelectedEntity(userEntities[0].vendorCode);
+
+                setEntities(normalised);
+                if (normalised.length > 0) setSelectedEntity(normalised[0].vendorCode);
             } catch (err) {
                 toast.error('Failed to load profile');
             } finally {
