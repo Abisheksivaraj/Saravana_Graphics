@@ -8,6 +8,8 @@ const vendorOrderSchema = new mongoose.Schema({
     fileName: { type: String, required: true },
     filePath: { type: String, required: true },
     brand: { type: String, trim: true },
+    groupName: { type: String, trim: true },
+    adminQuantity: { type: String, trim: true, default: '' },
     status: { 
         type: String, 
         enum: [

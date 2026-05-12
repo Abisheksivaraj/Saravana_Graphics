@@ -14,6 +14,8 @@ const vendorSchema = new mongoose.Schema({
     vendorGstin: { type: String },
     vendorName: { type: String },
     vendorBrand: { type: String },
+    address: { type: String, trim: true, default: '' },
+    groupNames: [{ type: String, trim: true }],
     isFirstLogin: { type: Boolean, default: true },
     otp: { type: String },
     otpExpires: { type: Date },
@@ -22,7 +24,8 @@ const vendorSchema = new mongoose.Schema({
         vendorName: { type: String, trim: true },
         brandName: { type: String, trim: true },
         vendorGstin: { type: String, trim: true },
-        vendorBrand: { type: String, trim: true }
+        vendorBrand: { type: String, trim: true },
+        groupName: { type: String, trim: true }
     }]
 }, { timestamps: true });
 

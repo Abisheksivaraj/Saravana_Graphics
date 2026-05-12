@@ -19,6 +19,8 @@ export default function CreateOrder() {
     const [uploading, setUploading] = useState(false);
     const [dragOver, setDragOver] = useState(false);
     const [entities, setEntities] = useState([]);
+    const [groups, setGroups] = useState([]);
+    const [selectedGroup, setSelectedGroup] = useState('');
     const [selectedEntity, setSelectedEntity] = useState('');
     const [loadingProfile, setLoadingProfile] = useState(true);
     const navigate = useNavigate();
@@ -36,21 +38,24 @@ export default function CreateOrder() {
                     vendorCode: e.vendorCode,
                     vendorName: e.vendorName || userData.vendorName || userData.name,
                     vendorBrand: e.brandName || e.vendorBrand || '',
-                    vendorGstin: e.vendorGstin || ''
+                    vendorGstin: e.vendorGstin || '',
+                    groupName: e.groupName || ''
                 }));
 
-                // If no entities array, fall back to top-level vendorCode
-                if (normalised.length === 0 && userData.vendorCode) {
-                    normalised.push({
-                        vendorCode: userData.vendorCode,
-                        vendorName: userData.vendorName || userData.name,
-                        vendorBrand: userData.vendorBrand || '',
-                        vendorGstin: userData.vendorGstin || ''
-                    });
-                }
-
+                const userGroups = userData.groupNames || [];
+                setGroups(userGroups);
                 setEntities(normalised);
-                if (normalised.length > 0) setSelectedEntity(normalised[0].vendorCode);
+                
+                // Smart auto-selection
+                if (userGroups.length > 0) {
+                    const firstGroup = userGroups[0];
+                    setSelectedGroup(firstGroup);
+                    // Find first entity in this group
+                    const firstMatch = normalised.find(e => e.groupName === firstGroup);
+                    if (firstMatch) setSelectedEntity(firstMatch.vendorCode);
+                } else if (normalised.length > 0) {
+                    setSelectedEntity(normalised[0].vendorCode);
+                }
             } catch (err) {
                 toast.error('Failed to load profile');
             } finally {
@@ -65,12 +70,21 @@ export default function CreateOrder() {
         if (!file) { toast.error('Please select a file first'); return; }
         if (!selectedEntity) { toast.error('Please select a Vendor Entity'); return; }
 
+        console.log('SUBMITTING ORDER:', {
+            fileName: file.name,
+            fileType: file.type,
+            fileSize: file.size,
+            vendorCode: selectedEntity,
+            group: selectedGroup
+        });
+
         const entity = entities.find(e => e.vendorCode === selectedEntity);
 
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('vendorCode', entity.vendorCode);
-        formData.append('brand', entity.vendorBrand || 'General');
+        formData.append('vendorCode', entity?.vendorCode || selectedEntity);
+        formData.append('brand', entity?.vendorBrand || 'General');
+        formData.append('groupName', selectedGroup);
         formData.append('barcodeFileId', '');
         if (message.trim()) {
             formData.append('initialMessage', message.trim());
@@ -112,7 +126,7 @@ export default function CreateOrder() {
         }}>
             <Typography variant="h5" sx={{ fontWeight: 900, color: '#0f172a', mb: 0.5 }}>Create New Order</Typography>
             <Typography variant="body2" sx={{ color: '#64748b', mb: 4 }}>
-                Select your business unit and upload your Excel template.
+                Select your group and business unit to upload your Excel template.
             </Typography>
 
             <form onSubmit={handleUpload}>
@@ -125,32 +139,66 @@ export default function CreateOrder() {
                     {/* Left Side: Entity Selection & Upload */}
                     <Paper elevation={0} sx={{ p: 4, border: '1px solid #e2e8f0', borderRadius: '16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
                         
-                        {/* Entity Selector */}
-                        <Box sx={{ p: 2.5, bgcolor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                            <FormControl fullWidth>
-                                <InputLabel sx={{ fontWeight: 700, color: '#f97316' }}>Select Business Unit (Vendor Code)</InputLabel>
-                                <Select
-                                    value={selectedEntity}
-                                    onChange={(e) => setSelectedEntity(e.target.value)}
-                                    label="Select Business Unit (Vendor Code)"
-                                    sx={{ 
-                                        borderRadius: '8px', bgcolor: 'white',
-                                        '& .MuiSelect-select': { py: 1.5, fontWeight: 700 }
-                                    }}
-                                >
-                                    {entities.map(ent => (
-                                        <MenuItem key={ent.vendorCode} value={ent.vendorCode}>
-                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                                                <BusinessIcon sx={{ color: '#64748b', fontSize: 20 }} />
-                                                <Box>
-                                                    <Typography sx={{ fontWeight: 800, fontSize: '0.9rem' }}>{ent.vendorCode}</Typography>
-                                                    <Typography sx={{ fontSize: '0.75rem', color: '#64748b' }}>{ent.vendorName} {ent.vendorBrand ? `· ${ent.vendorBrand}` : ''}</Typography>
+                        {/* Dropdowns Container - Horizontal Layout */}
+                        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
+                            {/* Group Selector */}
+                            <Box sx={{ p: 2, bgcolor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', flex: 1 }}>
+                                <FormControl fullWidth>
+                                    <InputLabel sx={{ fontWeight: 700, color: '#3b82f6' }}>Select Group Name</InputLabel>
+                                    <Select
+                                        value={selectedGroup}
+                                        onChange={(e) => {
+                                            const g = e.target.value;
+                                            setSelectedGroup(g);
+                                            const match = entities.find(ent => ent.groupName === g);
+                                            setSelectedEntity(match ? match.vendorCode : '');
+                                        }}
+                                        label="Select Group Name"
+                                        sx={{ 
+                                            borderRadius: '8px', bgcolor: 'white',
+                                            '& .MuiSelect-select': { py: 1.2, fontWeight: 700 }
+                                        }}
+                                    >
+                                        <MenuItem value=""><em>None</em></MenuItem>
+                                        {groups.map(g => (
+                                            <MenuItem key={g} value={g} sx={{ fontWeight: 700 }}>{g}</MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            </Box>
+
+                            {/* Entity Selector */}
+                            <Box sx={{ p: 2, bgcolor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', flex: 1 }}>
+                                <FormControl fullWidth disabled={!selectedGroup}>
+                                    <InputLabel sx={{ fontWeight: 700, color: '#f97316' }}>Select Vendor Code</InputLabel>
+                                    <Select
+                                        value={selectedEntity}
+                                        onChange={(e) => setSelectedEntity(e.target.value)}
+                                        label="Select Vendor Code"
+                                        sx={{ 
+                                            borderRadius: '8px', bgcolor: 'white',
+                                            '& .MuiSelect-select': { py: 1.2, fontWeight: 700 }
+                                        }}
+                                    >
+                                        {entities.filter(ent => ent.groupName === selectedGroup).map(ent => (
+                                            <MenuItem key={ent.vendorCode} value={ent.vendorCode}>
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                                                    <BusinessIcon sx={{ color: '#64748b', fontSize: 20 }} />
+                                                    <Box>
+                                                        <Typography sx={{ fontWeight: 800, fontSize: '0.9rem' }}>{ent.vendorCode}</Typography>
+                                                        <Typography sx={{ fontSize: '0.75rem', color: '#64748b' }}>{ent.vendorBrand || ent.vendorName}</Typography>
+                                                    </Box>
                                                 </Box>
-                                            </Box>
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
+                                            </MenuItem>
+                                        ))}
+                                        {entities.filter(ent => ent.groupName === selectedGroup).length === 0 && (
+                                            <MenuItem disabled value="">
+                                                <Typography sx={{ fontSize: '0.8rem', fontStyle: 'italic' }}>No codes found for this group</Typography>
+                                            </MenuItem>
+                                        )}
+                                    </Select>
+                                </FormControl>
+                            </Box>
                         </Box>
 
                         <Box

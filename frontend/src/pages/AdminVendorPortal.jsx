@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { vendorAPI, BASE_URL } from '../api';
-import { 
-    Search, Filter, RefreshCcw, FileText, Clock, Package, Truck, 
+import {
+    Search, Filter, RefreshCcw, FileText, Clock, Package, Truck,
     MessageSquare, Edit, AlertCircle, Loader2, Calendar, Upload, Trash2,
     FileSpreadsheet, FileSearch, CheckCircle2, CreditCard, ShieldCheck, User, X,
     Paperclip, Send,
@@ -31,25 +31,22 @@ const ADMIN_STATUS_OPTIONS = [
 ];
 
 const STAGES = [
-    { label: 'Excel', icon: FileSpreadsheet },
-    { label: 'Layout', icon: FileSearch },
-    { label: 'Artwork', icon: CheckCircle2 },
-    { label: 'Invoice', icon: FileText },
-    { label: 'Payment', icon: CreditCard },
-    { label: 'Production', icon: Package },
-    { label: 'Delivered', icon: Truck },
+    { label: 'Excel', dotLabel: 'E', icon: FileSpreadsheet },
+    { label: 'Artwork', dotLabel: 'A', icon: CheckCircle2 },
+    { label: 'Performa Invoice', dotLabel: 'PI', icon: FileText },
+    { label: 'Payment', dotLabel: 'P', icon: CreditCard },
+    { label: 'Under Production', dotLabel: 'UP', icon: Package },
+    { label: 'Delivered', dotLabel: 'D', icon: Truck },
 ];
 
 function getStageIndex(status) {
     const s = (status || '').toLowerCase();
     if (s.includes('excel')) return 0;
-    if (s.includes('layout')) return 1;
-    if (s.includes('artwork rejected') || s.includes('revised')) return 1;
-    if (s.includes('artwork approved')) return 2;
-    if (s.includes('performa')) return 3;
-    if (s.includes('payment')) return 4;
-    if (s.includes('production')) return 5;
-    if (s.includes('delivered') || s.includes('completed')) return 6;
+    if (s.includes('layout') || s.includes('artwork rejected') || s.includes('revised') || s.includes('artwork approved')) return 1;
+    if (s.includes('performa')) return 2;
+    if (s.includes('payment')) return 3;
+    if (s.includes('production')) return 4;
+    if (s.includes('delivered') || s.includes('completed')) return 5;
     return 0;
 }
 
@@ -456,9 +453,9 @@ function JobModal({ order, onClose, onRefresh }) {
                             <div className="jm-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                                 <div className="jm-field">
                                     <label>Delivery Remarks / Data</label>
-                                    <input 
-                                        type="text" 
-                                        className="jm-input" 
+                                    <input
+                                        type="text"
+                                        className="jm-input"
                                         placeholder="Enter delivery details..."
                                         value={deliveryRemarks}
                                         onChange={e => setDeliveryRemarks(e.target.value)}
@@ -483,6 +480,63 @@ function JobModal({ order, onClose, onRefresh }) {
                     <button className="jm-btn-save" onClick={handleSave} disabled={saving}>
                         {saving ? <><Loader2 size={16} className="oc-spin" /> Saving...</> : <><CheckCircle size={16} /> Save Changes</>}
                     </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// 3. Add the ArtworkHistoryModal component (add before AdminVendorPortal export)
+function ArtworkHistoryModal({ order, onClose }) {
+    const allEntries = [
+        // Original layout
+        ...(order.layoutHistory || []).map(h => ({ ...h, type: 'Layout' })),
+        // All revised artworks
+        ...(order.revisedArtworkHistory || []).map(h => ({ ...h, type: 'Revised Artwork' })),
+        // Current layoutFileUrl if no history recorded
+        ...(order.layoutFileUrl && !(order.layoutHistory?.length) ? [{
+            type: 'Layout',
+            fileUrl: order.layoutFileUrl,
+            uploadedAt: order.updatedAt,
+        }] : []),
+    ].sort((a, b) => new Date(a.uploadedAt) - new Date(b.uploadedAt));
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="ah-modal" onClick={e => e.stopPropagation()}>
+                <div className="jm-header">
+                    <div>
+                        <h2 className="jm-title">Artwork History</h2>
+                        <span className="jm-order-id">#{order.orderId} · {order.vendorId?.name}</span>
+                    </div>
+                    <button className="jm-close" onClick={onClose}><X size={22} /></button>
+                </div>
+
+                <div className="ah-timeline">
+                    {allEntries.length === 0 ? (
+                        <p style={{ color: '#94a3b8', padding: '20px' }}>No artwork history found.</p>
+                    ) : allEntries.map((entry, idx) => (
+                        <div key={idx} className={`ah-entry ${entry.type === 'Layout' ? 'layout' : 'revised'}`}>
+                            <div className="ah-entry-badge">
+                                {entry.type === 'Layout' ? 'L' : `RA${idx}`}
+                            </div>
+                            <div className="ah-entry-info">
+                                <div className="ah-entry-type">{entry.type}</div>
+                                <div className="ah-entry-date">
+                                    {new Date(entry.uploadedAt).toLocaleString()}
+                                </div>
+                            </div>
+                            <a
+                                href={`${BASE_URL}/${entry.fileUrl}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="jm-upload-btn"
+                                style={{ textDecoration: 'none' }}
+                            >
+                                <Eye size={14} /> View
+                            </a>
+                        </div>
+                    ))}
                 </div>
             </div>
         </div>
@@ -524,13 +578,13 @@ export default function AdminVendorPortal() {
     useEffect(() => { fetchData(); }, []);
 
     const filteredOrders = orders.filter(o => {
-        const matchesSearch = 
+        const matchesSearch =
             o.orderId?.toLowerCase().includes(search.toLowerCase()) ||
             o.vendorId?.name?.toLowerCase().includes(search.toLowerCase()) ||
             o.fileName?.toLowerCase().includes(search.toLowerCase());
-        
+
         const matchesStatus = statusFilter === 'All' || o.status === statusFilter;
-        
+
         // Tab filtering
         const isCompleted = o.status === 'Delivered' || o.status === 'Completed';
         const matchesTab = activeTab === 'active' ? !isCompleted : isCompleted;
@@ -538,10 +592,21 @@ export default function AdminVendorPortal() {
         return matchesSearch && matchesStatus && matchesTab;
     });
 
+
+
     const stats = STATUS_OPTIONS.reduce((acc, s) => {
         acc[s] = orders.filter(o => o.status === s).length;
         return acc;
     }, {});
+
+    function getArtworkState(status) {
+        const s = (status || '').toLowerCase();
+        if (s.includes('artwork rejected')) return 'rejected';
+        if (s.includes('revised artwork uploaded')) return 'revised';
+        return null;
+    }
+
+    const [artworkHistory, setArtworkHistory] = useState(null);
 
     return (
         <div className="admin-portal-layout">
@@ -556,6 +621,13 @@ export default function AdminVendorPortal() {
                         <RefreshCcw size={18} />
                     </button>
                 </header>
+
+                {artworkHistory && (
+                    <ArtworkHistoryModal
+                        order={artworkHistory}
+                        onClose={() => setArtworkHistory(null)}
+                    />
+                )}
 
                 {/* Stats Strip */}
                 <div className="ap-stats-strip">
@@ -600,7 +672,7 @@ export default function AdminVendorPortal() {
 
                 {/* Tabs */}
                 <div className="ap-tabs">
-                    <button 
+                    <button
                         className={`ap-tab ${activeTab === 'active' ? 'active' : ''}`}
                         onClick={() => setActiveTab('active')}
                     >
@@ -609,7 +681,7 @@ export default function AdminVendorPortal() {
                             {orders.filter(o => o.status !== 'Delivered' && o.status !== 'Completed').length}
                         </span>
                     </button>
-                    <button 
+                    <button
                         className={`ap-tab ${activeTab === 'completed' ? 'active' : ''}`}
                         onClick={() => setActiveTab('completed')}
                     >
@@ -628,6 +700,7 @@ export default function AdminVendorPortal() {
                                 <th>#</th>
                                 <th>Order ID</th>
                                 <th>Vendor</th>
+                                <th>Group</th>
                                 <th>File</th>
                                 <th>Brand</th>
                                 <th>Progress</th>
@@ -647,6 +720,7 @@ export default function AdminVendorPortal() {
                                 </td></tr>
                             ) : filteredOrders.map((o, idx) => {
                                 const stageIdx = getStageIndex(o.status);
+                                const artworkState = getArtworkState(o.status);
                                 return (
                                     <tr key={o._id} className="ap-row">
                                         <td className="ap-td-num">{idx + 1}</td>
@@ -656,6 +730,11 @@ export default function AdminVendorPortal() {
                                                 <span className="ap-vendor-name">{o.vendorId?.name || 'Unknown'}</span>
                                                 <span className="ap-vendor-code">{o.vendorId?.vendorCode || '—'}</span>
                                             </div>
+                                        </td>
+                                        <td className="ap-td-group">
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#f97316', background: '#fff7ed', padding: '2px 8px', borderRadius: '6px' }}>
+                                                {o.groupName || '—'}
+                                            </span>
                                         </td>
                                         <td className="ap-file-cell">
                                             <FileText size={15} />
@@ -671,14 +750,29 @@ export default function AdminVendorPortal() {
                                         <td>
                                             {/* Mini progress bar */}
                                             <div className="ap-mini-progress">
-                                                {STAGES.map((_, i) => (
-                                                    <div
-                                                        key={i}
-                                                        className={`ap-mini-step ${i < stageIdx ? 'done' : ''} ${i === stageIdx ? 'active' : ''}`}
-                                                    />
-                                                ))}
+                                                {STAGES.map((stage, i) => {
+                                                    let extraClass = '';
+                                                    let dotLabel = stage.dotLabel;
+
+                                                    if (i === 1 && artworkState === 'rejected') extraClass = 'rejected';
+                                                    if (i === 1 && artworkState === 'revised') {
+                                                        extraClass = 'revised';
+                                                        dotLabel = 'RA';
+                                                    }
+
+                                                    return (
+                                                        <div
+                                                            key={i}
+                                                            className={`ap-mini-step ${i < stageIdx ? 'done' : ''} ${i === stageIdx ? 'active' : ''} ${extraClass} ${i === 1 ? 'clickable' : ''}`}
+                                                            title={i === 1 ? 'View Artwork History' : stage.label}
+                                                            onClick={i === 1 ? (e) => { e.stopPropagation(); setArtworkHistory(o); } : undefined}
+                                                        >
+                                                            {dotLabel}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
-                                            <div className="ap-mini-label">{stageIdx + 1}/7</div>
+                                            <div className="ap-mini-label">{stageIdx + 1}/6</div>
                                         </td>
                                         <td>
                                             <span className={`ap-status-badge ${getStatusBadgeClass(o.status)}`}>

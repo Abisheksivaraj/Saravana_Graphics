@@ -8,7 +8,7 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-const sendAccountCreationEmail = async (toEmail, role, identifierCode, username, password) => {
+const sendAccountCreationEmail = async (toEmail, role, identifierCode, username, password, adminCode) => {
     try {
         const baseUrl = process.env.LOGIN_URL || 'https://saravanagraphics.onrender.com/login';
         const loginUrl = (role === 'vendor' || role === 'buyer') ? `${baseUrl}?type=${role}` : baseUrl;
@@ -30,7 +30,8 @@ const sendAccountCreationEmail = async (toEmail, role, identifierCode, username,
                 <p>Dear Sir/Madam,</p>
                 <p>Your account is created.</p>
                 
-                <p style="margin-bottom: 5px;"><strong>${identifierLabel}:</strong> ${identifierCode}</p>
+                ${adminCode ? `<p style="margin-bottom: 5px;"><strong>Saravana Rfid code:</strong> ${adminCode}</p>` : ''}
+                <p style="margin-bottom: 5px; margin-top: 5px;"><strong>${identifierLabel}:</strong> ${identifierCode}</p>
                 <p style="margin-bottom: 5px; margin-top: 5px;"><strong>User Name:</strong> ${username}</p>
                 <p style="margin-bottom: 5px; margin-top: 5px;"><strong>Password:</strong> ${password}</p>
                 <p style="margin-top: 5px;"><strong>Login URL:</strong> <a href="${loginUrl}">Login Link</a></p>

@@ -7,7 +7,6 @@ export const BASE_URL = window.location.hostname === 'localhost'
 const api = axios.create({
     // Use full URL in production because frontend and   backend are on different domains
     baseURL: window.location.hostname === 'localhost' ? '/api' : `${BASE_URL}/api`,
-    headers: { 'Content-Type': 'application/json' },
 });
 
 // Attach token to every request
@@ -71,21 +70,13 @@ export const companiesAPI = {
 export const vendorAPI = {
     getStats: () => api.get('/vendors/stats'),
     getOrders: () => api.get('/vendors/orders'),
-    upload: (formData) => api.post('/vendors/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-    }),
-    uploadLayout: (id, formData) => api.post(`/vendors/layout/${id}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-    }),
-    uploadRevisedArtwork: (id, formData) => api.post(`/vendors/revised-artwork/${id}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-    }),
-    uploadPerformaInvoice: (id, formData) => api.post(`/vendors/performa-invoice/${id}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-    }),
+    upload: (formData) => api.post('/vendors/upload', formData),
+    uploadLayout: (id, formData) => api.post(`/vendors/layout/${id}`, formData),
+    uploadRevisedArtwork: (id, formData) => api.post(`/vendors/revised-artwork/${id}`, formData),
+    uploadPerformaInvoice: (id, formData) => api.post(`/vendors/performa-invoice/${id}`, formData),
     updateStatus: (id, data) => api.patch(`/vendors/status/${id}`, data),
     updateDates: (id, data) => api.patch(`/vendors/dates/${id}`, data),
-    submitPayment: (id, formData) => api.post(`/vendors/payment/${id}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    submitPayment: (id, formData) => api.post(`/vendors/payment/${id}`, formData),
     createAccount: (data) => api.post('/vendors/account', data),
     getAccounts: () => api.get('/vendors/accounts'),
     getMessages: (orderId) => api.get(`/vendors/chat/${orderId}`),
@@ -94,11 +85,11 @@ export const vendorAPI = {
     markAsRead: (orderId) => api.patch(`/vendors/chat/${orderId}/read`),
     approvePerforma: (id) => api.patch(`/vendors/approve-performa/${id}`),
     rejectPerforma: (id, data) => api.patch(`/vendors/reject-performa/${id}`, data),
-    uploadDeliveryProof: (id, formData) => api.post(`/vendors/delivery-proof/${id}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-    }),
+    uploadDeliveryProof: (id, formData) => api.post(`/vendors/delivery-proof/${id}`, formData),
     deleteOrder: (id) => api.delete(`/vendors/order/${id}`),
     deleteAccount: (id) => api.delete(`/vendors/account/${id}`),
+    updateAccount: (id, data) => api.patch(`/vendors/account/${id}`, data),
+    getNotifications: () => api.get('/vendors/notifications'),
 };
 
 // Strip Colors

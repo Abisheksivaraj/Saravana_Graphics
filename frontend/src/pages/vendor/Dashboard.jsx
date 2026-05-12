@@ -125,7 +125,7 @@ export default function Dashboard() {
                 <Table>
                     <TableHead>
                         <TableRow sx={{ bgcolor: '#f97316' }}>
-                            {['SrNo', 'Vendor Code', 'FileName', 'Brand', 'Uploaded_By', 'Upload_On', 'Status', 'Remarks', 'Actions'].map(h => (
+                            {['SrNo', 'Vendor Code', 'Group Name', 'FileName', 'Brand', 'Uploaded_By', 'Upload_On', 'Status', 'Remarks', 'Actions'].map(h => (
                                 <TableCell key={h} sx={{ color: '#fff', fontWeight: 800, fontSize: '0.8rem', py: 2 }}>{h}</TableCell>
                             ))}
                         </TableRow>
@@ -150,9 +150,10 @@ export default function Dashboard() {
                                     >
                                         {o.vendorCode || o.barcodeFileId || o.orderId}
                                     </TableCell>
+                                    <TableCell sx={{ fontSize: '0.8rem', fontWeight: 800, color: '#f97316' }}>{o.groupName || '-'}</TableCell>
                                     <TableCell sx={{ fontSize: '0.85rem', fontWeight: 500 }}>{o.fileName}</TableCell>
                                     <TableCell sx={{ fontSize: '0.85rem', color: '#475569', textTransform: 'uppercase' }}>{o.brand || 'General'}</TableCell>
-                                    <TableCell sx={{ fontSize: '0.85rem' }}>{o.uploadedBy?.name || 'Vipin'}</TableCell>
+                                    <TableCell sx={{ fontSize: '0.85rem' }}>{o.uploadedBy?.name || '—'}</TableCell>
                                     <TableCell sx={{ fontSize: '0.85rem', color: '#64748b' }}>{formatDate(o.createdAt)}</TableCell>
                                     <TableCell>
                                         <Box sx={{ 

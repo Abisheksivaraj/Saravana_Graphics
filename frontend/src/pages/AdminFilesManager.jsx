@@ -109,54 +109,69 @@ export default function AdminFilesManager() {
                     </div>
 
                     {loading ? (
-                        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-                            <Loader className="animate-spin" style={{ margin: '0 auto' }} />
+                        <div style={{ textAlign: 'center', padding: '60px 0', color: '#94a3b8' }}>
+                            <Loader className="animate-spin" style={{ margin: '0 auto', width: 32, height: 32 }} />
+                            <p style={{ marginTop: 12, fontSize: 14, fontWeight: 500 }}>Fetching your files...</p>
                         </div>
                     ) : (
                         <>
                             {/* Breadcrumb Navigation */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#64748b', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 20 }}>
-                                <Home size={12} className="cursor-pointer" onClick={() => setCurrentFolder(null)} />
-                                <ChevronRight size={10} />
+                            <div style={{ 
+                                display: 'flex', alignItems: 'center', gap: 10, 
+                                background: '#f8fafc', padding: '10px 16px', borderRadius: '10px',
+                                border: '1px solid #f1f5f9', marginBottom: 24,
+                                color: '#64748b', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em'
+                            }}>
+                                <Home size={14} className="cursor-pointer" onClick={() => setCurrentFolder(null)} />
+                                <ChevronRight size={12} color="#cbd5e1" />
                                 <span
-                                    className={!currentFolder ? 'font-bold' : 'cursor-pointer'}
+                                    className={!currentFolder ? 'active-breadcrumb' : 'cursor-pointer'}
                                     style={{ color: !currentFolder ? '#7c3aed' : 'inherit' }}
                                     onClick={() => setCurrentFolder(null)}
                                 >
-                                    All Folders
+                                    Root Storage
                                 </span>
                                 {currentFolder && (
                                     <>
-                                        <ChevronRight size={10} />
-                                        <span style={{ color: '#7c3aed' }}>{currentFolder}</span>
+                                        <ChevronRight size={12} color="#cbd5e1" />
+                                        <span style={{ color: '#7c3aed', background: '#f5f3ff', padding: '2px 8px', borderRadius: '6px' }}>{currentFolder}</span>
                                     </>
                                 )}
                             </div>
 
-                            {/* Folders Grid (Only in Root or Search) */}
+                            {/* Folders Grid */}
                             {!currentFolder && !isSearching && allFolders.length > 0 && (
-                                <div style={{ marginBottom: 32 }}>
-                                    <h3 style={{ fontSize: 12, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>Folders</h3>
+                                <div style={{ marginBottom: 40 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                                        <div style={{ width: 4, height: 16, background: '#7c3aed', borderRadius: 2 }}></div>
+                                        <h3 style={{ fontSize: '0.75rem', fontWeight: 900, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>Directories</h3>
+                                    </div>
                                     <div className="folder-grid">
                                         {allFolders.map(name => {
                                             const folderFiles = files.filter(f => f.folder === name);
                                             return (
-                                                <div key={name} className="folder-card" onClick={() => setCurrentFolder(name)}>
+                                                <div key={name} className="folder-card" onClick={() => setCurrentFolder(name)}
+                                                    style={{ border: '1px solid #f1f5f9', background: '#fff' }}>
                                                     <div className="folder-icon-wrapper">
-                                                        <Folder size={40} className="folder-icon" />
+                                                        <Folder size={48} className="folder-icon" strokeWidth={1.5} />
                                                         <div className="folder-actions" onClick={e => e.stopPropagation()}>
                                                             <button
-                                                                className="btn btn-ghost btn-icon btn-xs"
-                                                                style={{ padding: 4, background: 'rgba(239, 68, 68, 0.1)', borderRadius: 6 }}
+                                                                className="btn-icon-danger"
+                                                                style={{ 
+                                                                    width: 24, height: 24, border: 'none', 
+                                                                    background: '#fee2e2', color: '#ef4444', 
+                                                                    borderRadius: '6px', cursor: 'pointer',
+                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                                }}
                                                                 onClick={() => handleDeleteFolder(name)}
                                                             >
-                                                                <Trash2 size={12} color="#ef4444" />
+                                                                <Trash2 size={12} />
                                                             </button>
                                                         </div>
                                                     </div>
                                                     <div className="folder-info">
-                                                        <div className="folder-name">{name}</div>
-                                                        <div className="folder-count">{folderFiles.length} proof sheets</div>
+                                                        <div className="folder-name" style={{ fontWeight: 800 }}>{name}</div>
+                                                        <div className="folder-count" style={{ fontWeight: 600 }}>{folderFiles.length} item{folderFiles.length !== 1 ? 's' : ''}</div>
                                                     </div>
                                                 </div>
                                             );
@@ -165,81 +180,119 @@ export default function AdminFilesManager() {
                                 </div>
                             )}
 
-                            {/* Files List */}
+                            {/* Files Table Section */}
                             <div style={{ marginTop: currentFolder ? 0 : 12 }}>
-                                <h3 style={{ fontSize: 12, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>
-                                    {currentFolder ? 'Files' : isSearching ? 'Search Results' : 'Recent Files'}
-                                </h3>
-                                <div style={{ overflowX: 'auto' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 14 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                                    <div style={{ width: 4, height: 16, background: isSearching ? '#3b82f6' : '#7c3aed', borderRadius: 2 }}></div>
+                                    <h3 style={{ fontSize: '0.75rem', fontWeight: 900, color: '#1e293b', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>
+                                        {currentFolder ? 'Directory Files' : isSearching ? `Search Results (${filteredFiles.length})` : 'Recent Documents'}
+                                    </h3>
+                                </div>
+
+                                <div style={{ border: '1px solid #f1f5f9', borderRadius: '16px', overflow: 'hidden', background: '#fff' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                         <thead>
-                                            <tr style={{ borderBottom: '2px solid var(--border-light)', color: 'var(--text-muted)' }}>
-                                                <th style={{ padding: 12, fontWeight: 600 }}>File name</th>
-                                                <th style={{ padding: 12, fontWeight: 600 }}>Date saved</th>
-                                                <th style={{ padding: 12, fontWeight: 600 }}>Uploaded by</th>
-                                                <th style={{ padding: 12, fontWeight: 600, textAlign: 'right' }}>Actions</th>
+                                            <tr style={{ background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                                                <th style={{ padding: '16px 20px', color: '#64748b', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>File Asset</th>
+                                                <th style={{ padding: '16px 20px', color: '#64748b', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Saved On</th>
+                                                <th style={{ padding: '16px 20px', color: '#64748b', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Operator</th>
+                                                <th style={{ padding: '16px 20px', color: '#64748b', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Management</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {displayItems.filter(i => !i.isFolder).map(file => (
-                                                <tr key={file._id} style={{ borderBottom: '1px solid var(--border-light)', transition: 'background 0.2s' }}>
-                                                    <td style={{ padding: 12 }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                            <div style={{ width: 36, height: 36, background: '#e0f2fe', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0284c7' }}>
-                                                                <FileIcon size={18} />
+                                            {displayItems.length > 0 ? displayItems.map((file, idx) => (
+                                                <tr key={file._id} style={{ 
+                                                    borderBottom: idx === displayItems.length - 1 ? 'none' : '1px solid #f8fafc',
+                                                    background: idx % 2 === 0 ? '#fff' : '#fafbfc',
+                                                    transition: 'all 0.2s'
+                                                }}>
+                                                    <td style={{ padding: '14px 20px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                                                            <div style={{ 
+                                                                width: 42, height: 42, background: '#f1f5f9', 
+                                                                borderRadius: '12px', display: 'flex', alignItems: 'center', 
+                                                                justifyContent: 'center', color: '#7c3aed',
+                                                                border: '1px solid #e2e8f0'
+                                                            }}>
+                                                                <FileIcon size={20} strokeWidth={2} />
                                                             </div>
-                                                            <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                                                                {file.originalName || file.filename}
-                                                                {file.folder && isSearching && (
-                                                                    <span style={{ marginLeft: 8, fontSize: 10, background: '#f1f5f9', padding: '2px 6px', borderRadius: 4, color: '#64748b' }}>in {file.folder}</span>
-                                                                )}
+                                                            <div>
+                                                                <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.9rem', marginBottom: 2 }}>
+                                                                    {file.originalName || file.filename}
+                                                                </div>
+                                                                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                                                    <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 600 }}>PDF Document</span>
+                                                                    {file.folder && isSearching && (
+                                                                        <span style={{ fontSize: '0.6rem', background: '#f5f3ff', color: '#7c3aed', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>FOLDER: {file.folder}</span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </td>
-                                                    <td style={{ padding: 12, color: 'var(--text-muted)' }}>
-                                                        {new Date(file.createdAt).toLocaleString()}
+                                                    <td style={{ padding: '14px 20px' }}>
+                                                        <div style={{ fontSize: '0.85rem', color: '#334155', fontWeight: 600 }}>
+                                                            {new Date(file.createdAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                                                            {new Date(file.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </div>
                                                     </td>
-                                                    <td style={{ padding: 12, color: 'var(--text-muted)' }}>
-                                                        {file.uploadedBy?.name || 'Admin'}
+                                                    <td style={{ padding: '14px 20px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                            <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#7c3aed', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 800 }}>
+                                                                {(file.uploadedBy?.name || 'A')[0].toUpperCase()}
+                                                            </div>
+                                                            <span style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>{file.uploadedBy?.name || 'System Admin'}</span>
+                                                        </div>
                                                     </td>
-                                                    <td style={{ padding: 12, textAlign: 'right' }}>
+                                                    <td style={{ padding: '14px 20px', textAlign: 'right' }}>
                                                         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                                                             <button
                                                                 onClick={() => setPreviewFile(file.url)}
-                                                                className="btn btn-ghost btn-sm btn-icon"
-                                                                title="View inline"
-                                                                style={{ color: '#10b981', background: '#d1fae5', border: 'none', padding: '6px 10px', borderRadius: 7, cursor: 'pointer' }}
+                                                                style={{ 
+                                                                    width: 34, height: 34, borderRadius: '10px', border: '1px solid #d1fae5', 
+                                                                    background: '#ecfdf5', color: '#10b981', cursor: 'pointer',
+                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                                }}
+                                                                title="Quick Preview"
                                                             >
-                                                                <Eye size={16} />
+                                                                <Eye size={15} />
                                                             </button>
 
                                                             <a
                                                                 href={`${BASE_URL}${file.url}`}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
-                                                                className="btn btn-ghost btn-sm btn-icon"
-                                                                title="Download"
-                                                                style={{ color: '#0284c7', background: '#e0f2fe', border: 'none', padding: '6px 10px', borderRadius: 7, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                                                                style={{ 
+                                                                    width: 34, height: 34, borderRadius: '10px', border: '1px solid #e0f2fe', 
+                                                                    background: '#f0f9ff', color: '#0284c7', cursor: 'pointer',
+                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                    textDecoration: 'none'
+                                                                }}
+                                                                title="Download Asset"
                                                             >
-                                                                <Download size={16} />
+                                                                <Download size={15} />
                                                             </a>
 
                                                             <button
                                                                 onClick={() => handleDelete(file._id)}
-                                                                className="btn btn-ghost btn-sm btn-icon"
-                                                                title="Delete"
-                                                                style={{ color: '#ef4444', background: '#fee2e2', border: 'none', padding: '6px 10px', borderRadius: 7, cursor: 'pointer' }}
+                                                                style={{ 
+                                                                    width: 34, height: 34, borderRadius: '10px', border: '1px solid #fee2e2', 
+                                                                    background: '#fef2f2', color: '#ef4444', cursor: 'pointer',
+                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                                }}
+                                                                title="Delete Permanently"
                                                             >
-                                                                <Trash2 size={16} />
+                                                                <Trash2 size={15} />
                                                             </button>
                                                         </div>
                                                     </td>
                                                 </tr>
-                                            ))}
-                                            {filteredFiles.length === 0 && (
+                                            )) : (
                                                 <tr>
-                                                    <td colSpan="4" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-                                                        No saved files found.
+                                                    <td colSpan="4" style={{ textAlign: 'center', padding: '80px 0' }}>
+                                                        <div style={{ color: '#cbd5e1', marginBottom: 12 }}><FileIcon size={48} style={{ opacity: 0.5 }} /></div>
+                                                        <p style={{ color: '#94a3b8', fontSize: '0.9rem', fontWeight: 600 }}>No documents found in this directory</p>
                                                     </td>
                                                 </tr>
                                             )}

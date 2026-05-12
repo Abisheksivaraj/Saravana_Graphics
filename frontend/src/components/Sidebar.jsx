@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useUIStore } from '../store/uiStore';
+import { vendorAPI } from '../api';
 import logo from '../assets/logo.png';
 import './Sidebar.css';
 
@@ -14,10 +15,29 @@ const Sidebar = () => {
     const { user, logout } = useAuthStore();
     const { isSidebarCollapsed, setSidebarCollapsed, toggleSidebar } = useUIStore();
 
+    const [notifications, setNotifications] = React.useState({ chat: 0, orders: 0 });
+
+    const fetchNotifications = async () => {
+        if (user?.role === 'admin') {
+            try {
+                const res = await vendorAPI.getNotifications();
+                setNotifications(res.data);
+            } catch (err) {
+                console.error('Failed to fetch notifications', err);
+            }
+        }
+    };
+
     React.useEffect(() => {
         // Automatically collapse sidebar on every navigation
         setSidebarCollapsed(true);
     }, [location.pathname]);
+
+    React.useEffect(() => {
+        fetchNotifications();
+        const interval = setInterval(fetchNotifications, 15000);
+        return () => clearInterval(interval);
+    }, [user]);
 
     const navItems = [];
 
@@ -30,7 +50,12 @@ const Sidebar = () => {
     if (user?.role === 'admin') {
         navItems.push({ path: '/admin/buyers', icon: Users, label: 'Buyer Management' });
         navItems.push({ path: '/admin/vendors', icon: Users, label: 'Manage Vendors' });
-        navItems.push({ path: '/admin/vendor-portal', icon: Upload, label: 'Vendor Orders' });
+        navItems.push({ 
+            path: '/admin/vendor-portal', 
+            icon: Upload, 
+            label: 'Vendor Orders',
+            badge: (notifications.orders || 0) + (notifications.chat || 0)
+        });
         navItems.push({ path: '/admin/files', icon: FileText, label: 'Files' });
     }
 
@@ -72,9 +97,34 @@ const Sidebar = () => {
                             className={`db-nav-item ${isActive ? 'active' : ''}`}
                             onClick={() => handleNavigation(item.path)}
                             title={item.label}
+                            style={{ position: 'relative' }}
                         >
-                            <Icon size={16} />
-                            {!isSidebarCollapsed && item.label}
+                            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Icon size={16} />
+                                {item.badge > 0 && (
+                                    <span style={{
+                                        position: 'absolute',
+                                        top: -6,
+                                        right: -6,
+                                        background: '#ef4444',
+                                        color: 'white',
+                                        fontSize: '10px',
+                                        fontWeight: 800,
+                                        minWidth: '15px',
+                                        height: '15px',
+                                        borderRadius: '10px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: '0 4px',
+                                        border: '1.5px solid white',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                                    }}>
+                                        {item.badge}
+                                    </span>
+                                )}
+                            </div>
+                            {!isSidebarCollapsed && <span style={{ marginLeft: 12 }}>{item.label}</span>}
                         </a>
                     );
                 })}

@@ -46,30 +46,29 @@ export default function VendorLayout() {
     const { user, logout } = useAuthStore();
     const location = useLocation();
     const navigate = useNavigate();
-    const [unreadTotal, setUnreadTotal] = useState(0);
+    const [notifications, setNotifications] = useState({ chat: 0, artwork: 0, payments: 0 });
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-    const fetchUnreadCount = async () => {
+    const fetchNotifications = async () => {
         try {
-            const res = await vendorAPI.getOrders();
-            const total = res.data.reduce((sum, order) => sum + (order.unreadCount || 0), 0);
-            setUnreadTotal(total);
+            const res = await vendorAPI.getNotifications();
+            setNotifications(res.data);
         } catch (err) {
-            console.error('Failed to fetch unread count', err);
+            console.error('Failed to fetch notifications', err);
         }
     };
 
     useEffect(() => {
-        fetchUnreadCount();
-        const interval = setInterval(fetchUnreadCount, 10000);
+        fetchNotifications();
+        const interval = setInterval(fetchNotifications, 10000);
         return () => clearInterval(interval);
     }, []);
 
     const navItems = [
-        { path: '/vendor-portal/dashboard', icon: <DashboardIcon />, label: 'Dashboard', showBadge: true },
+        { path: '/vendor-portal/dashboard', icon: <DashboardIcon />, label: 'Dashboard', badge: notifications.chat },
         { path: '/vendor-portal/create', icon: <UploadFileIcon />, label: 'Create Order' },
-        { path: '/vendor-portal/artwork', icon: <BrushIcon />, label: 'Artwork Approval' },
-        { path: '/vendor-portal/payments', icon: <PaymentIcon />, label: 'Payment Details' },
+        { path: '/vendor-portal/artwork', icon: <BrushIcon />, label: 'Artwork Approval', badge: notifications.artwork },
+        { path: '/vendor-portal/payments', icon: <PaymentIcon />, label: 'Payment Details', badge: notifications.payments },
     ];
 
     return (
@@ -147,8 +146,8 @@ export default function VendorLayout() {
                                                 justifyContent: 'center',
                                                 color: 'inherit'
                                             }}>
-                                                {item.showBadge ? (
-                                                    <Badge badgeContent={unreadTotal} color="error" sx={{ '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16 } }}>
+                                                {item.badge > 0 ? (
+                                                    <Badge badgeContent={item.badge} color="error" sx={{ '& .MuiBadge-badge': { fontSize: 10, height: 16, minWidth: 16 } }}>
                                                         {item.icon}
                                                     </Badge>
                                                 ) : item.icon}

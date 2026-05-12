@@ -3,8 +3,8 @@ import { vendorAPI } from '../api';
 import Sidebar from '../components/Sidebar';
 import toast from 'react-hot-toast';
 import { 
-    Users, Plus, UserPlus, FileText, CheckCircle, Eye, EyeOff, Trash2, 
-    Building2, Search, Filter, RefreshCcw, Mail, Lock, ShieldCheck
+    Users, Plus, UserPlus, FileText, CheckCircle, Eye, EyeOff, Trash2, Pencil, X,
+    Building2, Search, Filter, RefreshCcw, Mail, Lock, ShieldCheck, MapPin, Tag
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import './AdminVendorPortal.css'; 
@@ -13,14 +13,22 @@ export default function AdminVendorManager() {
     const [vendors, setVendors] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editVendor, setEditVendor] = useState(null);
+    const [editForm, setEditForm] = useState({ vendorName: '', name: '', address: '', groupNames: [], entities: [] });
+    const [newGroupName, setNewGroupName] = useState('');
+    const [newEditGroupName, setNewEditGroupName] = useState('');
     const [search, setSearch] = useState('');
     const [filterStatus, setFilterStatus] = useState('All');
+    const [editAvatarFile, setEditAvatarFile] = useState(null);
+    const [editAvatarPreview, setEditAvatarPreview] = useState(null);
     const { user } = useAuthStore();
     
     // New vendor form state — entities as unified rows
     const [formData, setFormData] = useState({
         name: '', email: '', vendorName: '', adminCode: '',
-        entities: [{ vendorCode: '', brandName: '', gstin: '' }]
+        address: '', groupNames: [],
+        entities: [{ vendorCode: '', brandName: '', gstin: '', groupName: '' }]
     });
 
     const fetchVendors = async () => {
@@ -85,12 +93,109 @@ export default function AdminVendorManager() {
     };
 
     const addEntityRow = () => {
-        setFormData({ ...formData, entities: [...formData.entities, { vendorCode: '', brandName: '', gstin: '' }] });
+        setFormData({ ...formData, entities: [...formData.entities, { vendorCode: '', brandName: '', gstin: '', groupName: '' }] });
     };
 
     const removeEntityRow = (index) => {
         if (formData.entities.length === 1) return toast.error('At least one vendor entity is required');
         setFormData({ ...formData, entities: formData.entities.filter((_, i) => i !== index) });
+    };
+
+    // Group name helpers (create form)
+    const addGroupName = () => {
+        const g = newGroupName.trim();
+        if (!g) return;
+        if (formData.groupNames.includes(g)) return toast.error('Group already added');
+        setFormData({ ...formData, groupNames: [...formData.groupNames, g] });
+        setNewGroupName('');
+    };
+    const removeGroupName = (idx) => {
+        setFormData({ ...formData, groupNames: formData.groupNames.filter((_, i) => i !== idx) });
+    };
+
+    // Edit modal helpers
+    const openEditModal = (v) => {
+        setEditVendor(v);
+        setEditForm({
+            vendorName: v.vendorName || '',
+            name: v.name || '',
+            address: v.address || '',
+            groupNames: v.groupNames || [],
+            entities: (v.entities || []).map(e => ({ 
+                vendorCode: e.vendorCode || '', 
+                brandName: e.brandName || '', 
+                gstin: e.vendorGstin || '',
+                groupName: e.groupName || ''
+            }))
+        });
+        setNewEditGroupName('');
+        setEditAvatarFile(null);
+        setEditAvatarPreview(v.avatar ? `http://localhost:5000/${v.avatar}` : null);
+        setShowEditModal(true);
+    };
+    const handleEditAvatarChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            setEditAvatarFile(file);
+            setEditAvatarPreview(URL.createObjectURL(file));
+        }
+    };
+    const addEditGroupName = () => {
+        const g = newEditGroupName.trim();
+        if (!g) return;
+        if (editForm.groupNames.includes(g)) return toast.error('Group already added');
+        setEditForm({ ...editForm, groupNames: [...editForm.groupNames, g] });
+        setNewEditGroupName('');
+    };
+    const removeEditGroupName = (idx) => {
+        setEditForm({ ...editForm, groupNames: editForm.groupNames.filter((_, i) => i !== idx) });
+    };
+    const handleEditEntityChange = (index, field, value) => {
+        const updated = editForm.entities.map((ent, i) => i === index ? { ...ent, [field]: value } : ent);
+        setEditForm({ ...editForm, entities: updated });
+    };
+    const addEditEntityRow = () => {
+        setEditForm({ ...editForm, entities: [...editForm.entities, { vendorCode: '', brandName: '', gstin: '', groupName: '' }] });
+    };
+    const removeEditEntityRow = (idx) => {
+        if (editForm.entities.length === 1) return toast.error('At least one entity required');
+        setEditForm({ ...editForm, entities: editForm.entities.filter((_, i) => i !== idx) });
+    };
+
+    const handleUpdateVendor = async (e) => {
+        e.preventDefault();
+        const t = toast.loading('Updating vendor...');
+        try {
+            // Auto-add any typed but un-added group name
+            let finalGroupNames = [...editForm.groupNames];
+            if (newEditGroupName.trim() && !finalGroupNames.includes(newEditGroupName.trim())) {
+                finalGroupNames.push(newEditGroupName.trim());
+            }
+
+            const data = new FormData();
+            data.append('vendorName', editForm.vendorName);
+            data.append('name', editForm.name);
+            data.append('address', editForm.address);
+            data.append('groupNames', JSON.stringify(finalGroupNames));
+            const mappedEntities = editForm.entities.map(ent => ({
+                vendorCode: ent.vendorCode.trim(),
+                brandName: ent.brandName.trim(),
+                vendorGstin: ent.gstin.trim(),
+                groupName: ent.groupName,
+                vendorName: editForm.vendorName
+            }));
+            data.append('entities', JSON.stringify(mappedEntities));
+            if (editAvatarFile) data.append('avatar', editAvatarFile);
+            await vendorAPI.updateAccount(editVendor._id, data);
+            toast.success('Vendor updated!', { id: t });
+            setShowEditModal(false);
+            setEditAvatarFile(null);
+            setEditAvatarPreview(null);
+            setNewEditGroupName('');
+            fetchVendors();
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Update failed', { id: t });
+        }
     };
 
     const [avatarFile, setAvatarFile] = useState(null);
@@ -113,6 +218,12 @@ export default function AdminVendorManager() {
 
         const loadingToast = toast.loading('Creating vendor account...');
         try {
+            // Auto-add any typed but un-added group name
+            let finalGroupNames = [...formData.groupNames];
+            if (newGroupName.trim() && !finalGroupNames.includes(newGroupName.trim())) {
+                finalGroupNames.push(newGroupName.trim());
+            }
+
             const data = new FormData();
 
             // Core fields
@@ -120,6 +231,8 @@ export default function AdminVendorManager() {
             data.append('email', formData.email);
             data.append('vendorName', formData.vendorName);
             data.append('adminCode', formData.adminCode);
+            data.append('address', formData.address || '');
+            data.append('groupNames', JSON.stringify(finalGroupNames));
             // Convenience top-level fields from first entity
             data.append('vendorCode', formData.entities[0]?.vendorCode || '');
             data.append('vendorGstin', formData.entities[0]?.gstin || '');
@@ -131,6 +244,7 @@ export default function AdminVendorManager() {
                 vendorCode: ent.vendorCode.trim(),
                 brandName: ent.brandName.trim(),
                 vendorGstin: ent.gstin.trim(),
+                groupName: ent.groupName,
                 vendorName: formData.vendorName
             }));
             data.append('entities', JSON.stringify(entities));
@@ -142,8 +256,10 @@ export default function AdminVendorManager() {
             setShowModal(false);
             setFormData({
                 name: '', email: '', vendorName: '', adminCode: '',
-                entities: [{ vendorCode: '', brandName: '', gstin: '' }]
+                address: '', groupNames: [],
+                entities: [{ vendorCode: '', brandName: '', gstin: '', groupName: '' }]
             });
+            setNewGroupName('');
             setAvatarFile(null);
             setAvatarPreview(null);
             fetchVendors();
@@ -188,7 +304,8 @@ export default function AdminVendorManager() {
                             const aCode = generateAdminCode();
                             setFormData({
                                 name: '', email: '', vendorName: '', adminCode: aCode,
-                                entities: [{ vendorCode: '', brandName: '', gstin: '' }]
+                                address: '', groupNames: [],
+                                entities: [{ vendorCode: '', brandName: '', gstin: '', groupName: '' }]
                             });
                             setAvatarPreview(null);
                             setAvatarFile(null);
@@ -264,6 +381,7 @@ export default function AdminVendorManager() {
                         <thead>
                             <tr style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}>
                                 <th style={{ padding: '14px 20px', color: '#94a3b8', textAlign: 'left', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Vendor</th>
+                                <th style={{ padding: '14px 20px', color: '#94a3b8', textAlign: 'left', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Groups</th>
                                 <th style={{ padding: '14px 20px', color: '#94a3b8', textAlign: 'left', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Ref Code</th>
                                 <th style={{ padding: '14px 20px', color: '#94a3b8', textAlign: 'left', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Entities (Code / Brand / GSTIN)</th>
                                 <th style={{ padding: '14px 20px', color: '#94a3b8', textAlign: 'left', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Status</th>
@@ -306,6 +424,25 @@ export default function AdminVendorManager() {
                                                         <Mail size={10} /> {v.email}
                                                     </div>
                                                 </div>
+                                            </div>
+                                        </td>
+
+                                        {/* Groups */}
+                                        <td style={{ padding: '16px 20px', verticalAlign: 'middle' }}>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                                {(v.groupNames || []).length > 0 ? (
+                                                    v.groupNames.map((g, i) => (
+                                                        <span key={i} style={{ 
+                                                            fontSize: '0.62rem', fontWeight: 800, background: '#f0f9ff', 
+                                                            color: '#0369a1', padding: '2px 8px', borderRadius: '6px',
+                                                            border: '1px solid #e0f2fe'
+                                                        }}>
+                                                            {g}
+                                                        </span>
+                                                    ))
+                                                ) : (
+                                                    <span style={{ color: '#cbd5e1', fontSize: '0.7rem', fontStyle: 'italic' }}>None</span>
+                                                )}
                                             </div>
                                         </td>
 
@@ -378,19 +515,36 @@ export default function AdminVendorManager() {
 
                                         {/* Action */}
                                         <td style={{ padding: '16px 16px', verticalAlign: 'middle', textAlign: 'center' }}>
-                                            <button 
-                                                onClick={() => { if(window.confirm('Permanently delete this vendor account?')) vendorAPI.deleteAccount(v._id).then(fetchVendors) }}
-                                                style={{ 
-                                                    width: 32, height: 32, borderRadius: '10px', border: 'none', 
-                                                    background: '#fef2f2', color: '#ef4444', cursor: 'pointer',
-                                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                    transition: 'background 0.15s'
-                                                }}
-                                                onMouseEnter={e => e.currentTarget.style.background = '#fee2e2'}
-                                                onMouseLeave={e => e.currentTarget.style.background = '#fef2f2'}
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
+                                            <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                                                <button
+                                                    onClick={() => openEditModal(v)}
+                                                    title="Edit Vendor"
+                                                    style={{
+                                                        width: 32, height: 32, borderRadius: '10px', border: 'none',
+                                                        background: '#eff6ff', color: '#3b82f6', cursor: 'pointer',
+                                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                        transition: 'background 0.15s'
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = '#dbeafe'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = '#eff6ff'}
+                                                >
+                                                    <Pencil size={13} />
+                                                </button>
+                                                <button
+                                                    onClick={() => { if(window.confirm('Permanently delete this vendor account?')) vendorAPI.deleteAccount(v._id).then(fetchVendors) }}
+                                                    title="Delete Vendor"
+                                                    style={{
+                                                        width: 32, height: 32, borderRadius: '10px', border: 'none',
+                                                        background: '#fef2f2', color: '#ef4444', cursor: 'pointer',
+                                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                        transition: 'background 0.15s'
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = '#fee2e2'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = '#fef2f2'}
+                                                >
+                                                    <Trash2 size={13} />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -412,7 +566,7 @@ export default function AdminVendorManager() {
                             
                             {/* Compact Premium Header */}
                             <div className="modal-header" style={{ 
-                                padding: '16px 32px', 
+                                padding: '10px 24px', 
                                 background: 'linear-gradient(135deg, #e95d0cff 0%, #1e293b 100%)',
                                 display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                             }}>
@@ -425,14 +579,14 @@ export default function AdminVendorManager() {
                             </div>
 
                             <form onSubmit={handleCreateVendor} style={{ background: '#ffffff' }}>
-                                <div className="modal-body" style={{ padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+                                <div className="modal-body" style={{ padding: '12px 24px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                                     
                                     {/* Main Form Section */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 1fr', gap: 24, alignItems: 'start' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr 1fr', gap: 16, alignItems: 'start' }}>
                                         {/* Logo Column */}
                                         <div style={{ position: 'relative' }}>
                                             <div style={{ 
-                                                width: 110, height: 110, borderRadius: '24px', 
+                                                width: 80, height: 80, borderRadius: '20px', 
                                                 background: '#f8fafc', border: '2px dashed #e2e8f0', 
                                                 display: 'flex', alignItems: 'center', justifyContent: 'center', 
                                                 overflow: 'hidden'
@@ -440,16 +594,16 @@ export default function AdminVendorManager() {
                                                 {avatarPreview ? (
                                                     <img src={avatarPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                                 ) : (
-                                                    <Building2 size={32} color="#94a3b8" />
+                                                    <Building2 size={24} color="#94a3b8" />
                                                 )}
                                             </div>
                                             <label style={{ 
-                                                position: 'absolute', bottom: -5, right: -5, 
-                                                background: '#f97316', color: 'white', width: 32, height: 32, 
-                                                borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                position: 'absolute', bottom: -4, right: -4, 
+                                                background: '#f97316', color: 'white', width: 28, height: 28, 
+                                                borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', 
                                                 cursor: 'pointer', border: '2px solid white', boxShadow: '0 4px 8px rgba(0,0,0,0.1)'
                                             }}>
-                                                <Plus size={18} />
+                                                <Plus size={14} />
                                                 <input type="file" hidden accept="image/*" onChange={handleAvatarChange} />
                                             </label>
                                         </div>
@@ -457,7 +611,7 @@ export default function AdminVendorManager() {
                                         {/* Row 1 & 2 combined into columns */}
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                                             <div className="form-group">
-                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>1. Admin Ref Code (Read-Only)</label>
+                                                <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>1. Admin Ref Code (Read-Only)</label>
                                                 <input 
                                                     readOnly
                                                     name="adminCode"
@@ -467,7 +621,7 @@ export default function AdminVendorManager() {
                                                 />
                                             </div>
                                             <div className="form-group">
-                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>2. Vendor Name *</label>
+                                                <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>2. Vendor Name *</label>
                                                 <input required name="vendorName" 
                                                     style={{ width: '100%', padding: '10px 14px', borderRadius: '12px', border: '1.5px solid #e2e8f0', outline: 'none', fontSize: '0.9rem' }} 
                                                     placeholder="e.g. Saravana Graphics" value={formData.vendorName || ''} onChange={handleChange} />
@@ -476,7 +630,7 @@ export default function AdminVendorManager() {
 
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                                             <div className="form-group">
-                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>3. Mail ID *</label>
+                                                <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>3. Mail ID *</label>
                                                 <div style={{ position: 'relative' }}>
                                                     <Mail size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                                                     <input required type="email" name="email" 
@@ -485,7 +639,7 @@ export default function AdminVendorManager() {
                                                 </div>
                                             </div>
                                             <div className="form-group">
-                                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', marginBottom: 6 }}>4. Contact Person</label>
+                                                <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>4. Contact Person</label>
                                                 <div style={{ position: 'relative' }}>
                                                     <Users size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                                                     <input required name="name" 
@@ -498,9 +652,9 @@ export default function AdminVendorManager() {
 
                                     {/* Security Tip Overlay */}
                                     <div style={{ 
-                                        padding: '10px 16px', background: 'rgba(2, 132, 199, 0.05)', 
-                                        border: '1px solid rgba(2, 132, 199, 0.1)', borderRadius: '12px', 
-                                        display: 'flex', gap: 10, alignItems: 'center'
+                                        padding: '6px 12px', background: 'rgba(2, 132, 199, 0.05)', 
+                                        border: '1px solid rgba(2, 132, 199, 0.1)', borderRadius: '10px', 
+                                        display: 'flex', gap: 8, alignItems: 'center'
                                     }}>
                                         <Lock size={14} color="#0284c7" />
                                         <p style={{ fontSize: '0.7rem', color: '#0369a1', margin: 0, fontWeight: 600 }}>
@@ -508,6 +662,57 @@ export default function AdminVendorManager() {
                                         </p>
                                     </div>
 
+
+                                    {/* Address & Group Names Row */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                        {/* Address */}
+                                        <div className="form-group">
+                                            <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>
+                                                <MapPin size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />5. Address
+                                            </label>
+                                            <textarea
+                                                name="address"
+                                                rows={2}
+                                                style={{ width: '100%', padding: '8px 12px', borderRadius: '12px', border: '1.5px solid #e2e8f0', outline: 'none', fontSize: '0.85rem', resize: 'vertical', color: '#334155' }}
+                                                placeholder="Full business address"
+                                                value={formData.address || ''}
+                                                onChange={handleChange}
+                                            />
+                                        </div>
+                                        {/* Group Names */}
+                                        <div className="form-group">
+                                            <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>
+                                                <Tag size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />6. Group Names
+                                            </label>
+                                            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                                                <input
+                                                    style={{ flex: 1, padding: '8px 12px', borderRadius: '10px', border: '1.5px solid #e2e8f0', outline: 'none', fontSize: '0.85rem' }}
+                                                    placeholder="Add group name & press +"
+                                                    value={newGroupName}
+                                                    onChange={e => setNewGroupName(e.target.value)}
+                                                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addGroupName())}
+                                                />
+                                                <button type="button" onClick={addGroupName}
+                                                    style={{ width: 34, height: 34, borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg,#f97316,#ea580c)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                    <Plus size={15} />
+                                                </button>
+                                            </div>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, minHeight: 36 }}>
+                                                {(formData.groupNames || []).map((g, i) => (
+                                                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#f97316', color: '#fff', padding: '4px 10px', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 700 }}>
+                                                        {g}
+                                                        <button type="button" onClick={() => removeGroupName(i)}
+                                                            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', padding: 0, lineHeight: 1, display: 'flex' }}>
+                                                            <X size={11} />
+                                                        </button>
+                                                    </span>
+                                                ))}
+                                                {(formData.groupNames || []).length === 0 && (
+                                                    <span style={{ fontSize: '0.72rem', color: '#cbd5e1', fontStyle: 'italic' }}>No groups added yet</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
 
                                     {/* Row-based Entity Builder */}
                                     <div>
@@ -522,43 +727,52 @@ export default function AdminVendorManager() {
                                         </div>
 
                                         {/* Column Header */}
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 34px', gap: 8, padding: '7px 12px', background: 'linear-gradient(135deg,#0f172a,#1e293b)', borderRadius: '10px 10px 0 0' }}>
-                                            {['Vendor Code *', 'Brand Name', 'GSTIN Number'].map(h => (
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 34px', gap: 8, padding: '7px 12px', background: 'linear-gradient(135deg,#0f172a,#1e293b)', borderRadius: '10px 10px 0 0' }}>
+                                            {['Group Name', 'Vendor Code *', 'Brand Name', 'GSTIN Number'].map(h => (
                                                 <span key={h} style={{ fontSize: '0.6rem', fontWeight: 900, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
                                             ))}
                                             <span />
                                         </div>
 
                                         {/* Entity Rows */}
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 0, maxHeight: 220, overflowY: 'auto', border: '1px solid #e2e8f0', borderTop: 'none', borderRadius: '0 0 10px 10px' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 0, maxHeight: 160, overflowY: 'auto', border: '1px solid #e2e8f0', borderTop: 'none', borderRadius: '0 0 10px 10px' }}>
                                             {formData.entities.map((ent, idx) => (
                                                 <div key={idx} style={{
-                                                    display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 34px', gap: 8,
+                                                    display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 34px', gap: 8,
                                                     padding: '10px 12px',
                                                     background: idx % 2 === 0 ? '#ffffff' : '#fafbfc',
                                                     borderBottom: idx < formData.entities.length - 1 ? '1px solid #f1f5f9' : 'none',
                                                     alignItems: 'center',
                                                     transition: 'background 0.15s'
                                                 }}>
+                                                    {/* Group Name Select */}
+                                                    <select 
+                                                        style={{ width: '100%', background: '#fff', border: '1.5px solid #e2e8f0', padding: '4px 8px', borderRadius: '7px', fontSize: '0.8rem', outline: 'none', color: '#334155' }}
+                                                        value={ent.groupName}
+                                                        onChange={e => handleEntityChange(idx, 'groupName', e.target.value)}
+                                                    >
+                                                        <option value="">Select Group</option>
+                                                        {formData.groupNames.map(gn => <option key={gn} value={gn}>{gn}</option>)}
+                                                    </select>
                                                     {/* Vendor Code */}
                                                     <input
                                                         required
                                                         placeholder="e.g. SG000001"
-                                                        style={{ width: '100%', background: '#fff7ed', border: '1.5px solid #fed7aa', color: '#f97316', padding: '6px 10px', borderRadius: '7px', fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', outline: 'none' }}
+                                                        style={{ width: '100%', background: '#fff7ed', border: '1.5px solid #fed7aa', color: '#f97316', padding: '4px 8px', borderRadius: '7px', fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', outline: 'none' }}
                                                         value={ent.vendorCode}
                                                         onChange={e => handleEntityChange(idx, 'vendorCode', e.target.value.toUpperCase())}
                                                     />
                                                     {/* Brand Name */}
                                                     <input
                                                         placeholder="e.g. Nike"
-                                                        style={{ width: '100%', background: '#fff', border: '1.5px solid #e2e8f0', padding: '6px 10px', borderRadius: '7px', fontSize: '0.82rem', outline: 'none', color: '#334155' }}
+                                                        style={{ width: '100%', background: '#fff', border: '1.5px solid #e2e8f0', padding: '4px 8px', borderRadius: '7px', fontSize: '0.82rem', outline: 'none', color: '#334155' }}
                                                         value={ent.brandName}
                                                         onChange={e => handleEntityChange(idx, 'brandName', e.target.value)}
                                                     />
                                                     {/* GSTIN */}
                                                     <input
                                                         placeholder="Optional GSTIN"
-                                                        style={{ width: '100%', background: '#fff', border: '1.5px solid #e2e8f0', padding: '6px 10px', borderRadius: '7px', fontSize: '0.78rem', outline: 'none', color: '#64748b', textTransform: 'uppercase' }}
+                                                        style={{ width: '100%', background: '#fff', border: '1.5px solid #e2e8f0', padding: '4px 8px', borderRadius: '7px', fontSize: '0.78rem', outline: 'none', color: '#64748b', textTransform: 'uppercase' }}
                                                         value={ent.gstin}
                                                         onChange={e => handleEntityChange(idx, 'gstin', e.target.value.toUpperCase())}
                                                     />
@@ -583,7 +797,7 @@ export default function AdminVendorManager() {
 
 
                                 <div className="modal-footer" style={{ 
-                                    padding: '16px 32px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', 
+                                    padding: '10px 24px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', 
                                     display: 'flex', justifyContent: 'flex-end', gap: 12 
                                 }}>
                                     <button type="button" className="btn btn-secondary" 
@@ -595,6 +809,192 @@ export default function AdminVendorManager() {
                                             background: '#f97316', boxShadow: '0 4px 12px rgba(249, 115, 22, 0.2)', border: 'none', fontSize: '0.85rem'
                                         }}>
                                         Create & Send Credentials
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
+
+                {/* ─── Edit Vendor Modal ─── */}
+                {showEditModal && editVendor && (
+                    <div className="modal-overlay" style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(8px)'
+                    }} onClick={() => setShowEditModal(false)}>
+                        <div className="modal" style={{
+                            width: '95%', maxWidth: 860, borderRadius: '24px', overflow: 'hidden',
+                            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '1px solid rgba(59,130,246,0.4)'
+                        }} onClick={e => e.stopPropagation()}>
+                            <div style={{
+                                padding: '16px 32px',
+                                background: 'linear-gradient(135deg, #1e40af 0%, #1e293b 100%)',
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                            }}>
+                                <div>
+                                    <h2 style={{ fontWeight: 900, fontSize: '1.1rem', margin: 0, color: '#fff' }}>Edit Vendor</h2>
+                                    <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem', margin: 0 }}>{editVendor.vendorName || editVendor.name} · {editVendor.adminCode}</p>
+                                </div>
+                                <button onClick={() => setShowEditModal(false)}
+                                    style={{ color: 'white', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '10px', padding: '4px 12px', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 700 }}>✕ Close</button>
+                            </div>
+                            <form onSubmit={handleUpdateVendor} style={{ background: '#ffffff' }}>
+                                <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                    
+                                    <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr 1fr', gap: 20, alignItems: 'start' }}>
+                                        {/* Edit Logo Column */}
+                                        <div style={{ position: 'relative' }}>
+                                            <div style={{ 
+                                                width: 80, height: 80, borderRadius: '20px', 
+                                                background: '#f8fafc', border: '2px dashed #e2e8f0', 
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                overflow: 'hidden'
+                                            }}>
+                                                {editAvatarPreview ? (
+                                                    <img src={editAvatarPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                                ) : (
+                                                    <Building2 size={24} color="#94a3b8" />
+                                                )}
+                                            </div>
+                                            <label style={{ 
+                                                position: 'absolute', bottom: -4, right: -4, 
+                                                background: '#3b82f6', color: 'white', width: 28, height: 28, 
+                                                borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                                cursor: 'pointer', border: '2px solid white', boxShadow: '0 4px 8px rgba(0,0,0,0.1)'
+                                            }}>
+                                                <Plus size={14} />
+                                                <input type="file" hidden accept="image/*" onChange={handleEditAvatarChange} />
+                                            </label>
+                                        </div>
+
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Vendor Name *</label>
+                                                <input required style={{ width: '100%', padding: '10px 14px', borderRadius: '12px', border: '1.5px solid #e2e8f0', outline: 'none', fontSize: '0.9rem' }}
+                                                    placeholder="Vendor Name" value={editForm.vendorName}
+                                                    onChange={e => setEditForm({ ...editForm, vendorName: e.target.value })} />
+                                            </div>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>Contact Person</label>
+                                                <div style={{ position: 'relative' }}>
+                                                    <Users size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                                                    <input style={{ width: '100%', padding: '10px 14px 10px 36px', borderRadius: '12px', border: '1.5px solid #e2e8f0', outline: 'none', fontSize: '0.9rem' }}
+                                                        placeholder="Full Name" value={editForm.name}
+                                                        onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                            {/* Security Note or placeholder to keep layout balanced */}
+                                            <div style={{ 
+                                                padding: '10px 15px', background: '#f0f9ff', border: '1px solid #e0f2fe', 
+                                                borderRadius: '12px', display: 'flex', gap: 10, alignItems: 'center'
+                                            }}>
+                                                <ShieldCheck size={16} color="#0369a1" />
+                                                <p style={{ fontSize: '0.68rem', color: '#0369a1', margin: 0, fontWeight: 600 }}>
+                                                    Editing core vendor details. Admin Ref Code remains fixed.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>
+                                                <MapPin size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />Address
+                                            </label>
+                                            <textarea rows={2} style={{ width: '100%', padding: '8px 12px', borderRadius: '12px', border: '1.5px solid #e2e8f0', outline: 'none', fontSize: '0.85rem', resize: 'vertical', color: '#334155' }}
+                                                placeholder="Full business address" value={editForm.address}
+                                                onChange={e => setEditForm({ ...editForm, address: e.target.value })} />
+                                        </div>
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 900, color: '#64748b', textTransform: 'uppercase', marginBottom: 2 }}>
+                                                <Tag size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />Group Names
+                                            </label>
+                                            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                                                <input style={{ flex: 1, padding: '8px 12px', borderRadius: '10px', border: '1.5px solid #e2e8f0', outline: 'none', fontSize: '0.85rem' }}
+                                                    placeholder="Add group name & press +"
+                                                    value={newEditGroupName}
+                                                    onChange={e => setNewEditGroupName(e.target.value)}
+                                                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addEditGroupName())} />
+                                                <button type="button" onClick={addEditGroupName}
+                                                    style={{ width: 34, height: 34, borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg,#3b82f6,#2563eb)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                    <Plus size={15} />
+                                                </button>
+                                            </div>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, minHeight: 36 }}>
+                                                {editForm.groupNames.map((g, i) => (
+                                                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#3b82f6', color: '#fff', padding: '4px 10px', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 700 }}>
+                                                        {g}
+                                                        <button type="button" onClick={() => removeEditGroupName(i)}
+                                                            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', padding: 0, lineHeight: 1, display: 'flex' }}>
+                                                            <X size={11} />
+                                                        </button>
+                                                    </span>
+                                                ))}
+                                                {editForm.groupNames.length === 0 && (
+                                                    <span style={{ fontSize: '0.72rem', color: '#cbd5e1', fontStyle: 'italic' }}>No groups added yet</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                                            <label style={{ fontSize: '0.65rem', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                                Vendor Entities <span style={{ color: '#3b82f6' }}>({editForm.entities.length})</span>
+                                            </label>
+                                            <button type="button" onClick={addEditEntityRow}
+                                                style={{ fontSize: '0.72rem', fontWeight: 800, color: '#fff', background: 'linear-gradient(135deg,#3b82f6,#2563eb)', border: 'none', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                                                <Plus size={13} /> Add Entity
+                                            </button>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 34px', gap: 8, padding: '7px 12px', background: 'linear-gradient(135deg,#0f172a,#1e293b)', borderRadius: '10px 10px 0 0' }}>
+                                            {['Group Name', 'Vendor Code *', 'Brand Name', 'GSTIN'].map(h => (
+                                                <span key={h} style={{ fontSize: '0.6rem', fontWeight: 900, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
+                                            ))}
+                                            <span />
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 140, overflowY: 'auto', border: '1px solid #e2e8f0', borderTop: 'none', borderRadius: '0 0 10px 10px' }}>
+                                            {editForm.entities.map((ent, idx) => (
+                                                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 34px', gap: 8, padding: '10px 12px', background: idx % 2 === 0 ? '#fff' : '#fafbfc', borderBottom: idx < editForm.entities.length - 1 ? '1px solid #f1f5f9' : 'none', alignItems: 'center' }}>
+                                                    <select 
+                                                        style={{ width: '100%', background: '#fff', border: '1.5px solid #e2e8f0', padding: '4px 8px', borderRadius: '7px', fontSize: '0.8rem', outline: 'none', color: '#334155' }}
+                                                        value={ent.groupName}
+                                                        onChange={e => handleEditEntityChange(idx, 'groupName', e.target.value)}
+                                                    >
+                                                        <option value="">Select Group</option>
+                                                        {editForm.groupNames.map(gn => <option key={gn} value={gn}>{gn}</option>)}
+                                                    </select>
+                                                    <input required placeholder="e.g. SG000001"
+                                                        style={{ width: '100%', background: '#eff6ff', border: '1.5px solid #bfdbfe', color: '#1d4ed8', padding: '4px 8px', borderRadius: '7px', fontWeight: 900, fontSize: '0.8rem', fontFamily: 'monospace', outline: 'none' }}
+                                                        value={ent.vendorCode}
+                                                        onChange={e => handleEditEntityChange(idx, 'vendorCode', e.target.value.toUpperCase())} />
+                                                    <input placeholder="Brand Name"
+                                                        style={{ width: '100%', background: '#fff', border: '1.5px solid #e2e8f0', padding: '4px 8px', borderRadius: '7px', fontSize: '0.82rem', outline: 'none', color: '#334155' }}
+                                                        value={ent.brandName}
+                                                        onChange={e => handleEditEntityChange(idx, 'brandName', e.target.value)} />
+                                                    <input placeholder="Optional GSTIN"
+                                                        style={{ width: '100%', background: '#fff', border: '1.5px solid #e2e8f0', padding: '4px 8px', borderRadius: '7px', fontSize: '0.78rem', outline: 'none', color: '#64748b', textTransform: 'uppercase' }}
+                                                        value={ent.gstin}
+                                                        onChange={e => handleEditEntityChange(idx, 'gstin', e.target.value.toUpperCase())} />
+                                                    {idx > 0 ? (
+                                                        <button type="button" onClick={() => removeEditEntityRow(idx)}
+                                                            style={{ width: 30, height: 30, borderRadius: '8px', border: 'none', background: '#fee2e2', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                            <Trash2 size={13} />
+                                                        </button>
+                                                    ) : <div style={{ width: 30 }} />}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style={{ padding: '12px 32px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+                                    <button type="button"
+                                        style={{ borderRadius: '10px', fontWeight: 700, padding: '6px 16px', border: '1px solid #e2e8f0', fontSize: '0.85rem', background: '#fff', cursor: 'pointer' }}
+                                        onClick={() => setShowEditModal(false)}>Cancel</button>
+                                    <button type="submit"
+                                        style={{ borderRadius: '10px', fontWeight: 900, padding: '6px 20px', background: 'linear-gradient(135deg,#3b82f6,#2563eb)', color: '#fff', border: 'none', fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(59,130,246,0.3)' }}>
+                                        Save Changes
                                     </button>
                                 </div>
                             </form>
