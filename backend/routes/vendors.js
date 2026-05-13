@@ -271,20 +271,25 @@ router.get('/stats', auth, async (req, res) => {
 // @route   PATCH api/vendors/status/:id
 // @desc    Update order status
 // @access  Admin/Vendor
+// @route   PATCH api/vendors/status/:id
+// @desc    Update order status
+// @access  Admin/Vendor
 router.patch('/status/:id', auth, checkRole(['admin', 'vendor']), async (req, res) => {
     try {
         const { status, remarks, productionDate, dispatchDate, deliveryRemarks } = req.body;
-        const query = req.user.role === 'admin' ? { _id: req.params.id } : { _id: req.params.id, vendorId: req.user._id };
-
-        let finalStatus = status;
-        // Business logic: if moving to Delivered, also mark as Completed
-        if (status === 'Delivered') {
-            finalStatus = 'Completed';
-            update.deliveryDate = new Date();
-        }
+        const query = req.user.role === 'admin'
+            ? { _id: req.params.id }
+            : { _id: req.params.id, vendorId: req.user._id };
 
         const order = await VendorOrder.findOne(query);
         if (!order) return res.status(404).json({ message: 'Order not found or unauthorized' });
+
+        // ✅ Fixed: was referencing undefined 'update' object
+        let finalStatus = status;
+        if (status === 'Delivered') {
+            finalStatus = 'Completed';
+            order.deliveryDate = new Date(); // ✅ set directly on order
+        }
 
         order.status = finalStatus;
         if (remarks !== undefined) order.remarks = remarks;
