@@ -31,11 +31,12 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 
-
-if (req.method === 'OPTIONS') {
-  return res.status(200).end();
-}
-next()
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
