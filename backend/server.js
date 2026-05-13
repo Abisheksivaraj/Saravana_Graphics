@@ -1,4 +1,3 @@
-
 require("node:dns/promises").setServers(["1.1.1.1", "8.8.8.8"]);
 const express = require('express');
 const mongoose = require('mongoose');
@@ -10,7 +9,6 @@ dotenv.config();
 
 const app = express();
 
-// ✅ Use cors package with explicit config — handles OPTIONS preflight automatically
 const corsOptions = {
   origin: [
     'http://localhost:5173',
@@ -22,21 +20,15 @@ const corsOptions = {
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   credentials: true,
-  optionsSuccessStatus: 200 // Some browsers (IE11) choke on 204
+  optionsSuccessStatus: 200
 };
 
-app.use(cors(corsOptions));
-
-// ✅ Explicitly handle OPTIONS preflight for all routes
+// ✅ Preflight FIRST — must be before app.use(cors())
 app.options('*', cors(corsOptions));
 
+// ✅ Apply CORS to all routes
+app.use(cors(corsOptions));
 
-app.use((req, res, next) => {
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  next();
-});
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -59,7 +51,12 @@ app.use('/api/rfid', require('./routes/rfid'));
 app.get('/api/health', (req, res) => {
   const dbState = mongoose.connection.readyState;
   const dbStatus = dbState === 1 ? 'connected' : dbState === 2 ? 'connecting' : 'disconnected';
-  res.json({ status: 'OK', db: dbStatus, message: 'Label Designer API is running', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'OK',
+    db: dbStatus,
+    message: 'Label Designer API is running',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Start server immediately (don't wait for MongoDB)
@@ -69,7 +66,7 @@ app.listen(PORT, () => {
 });
 
 // MongoDB connection with retry
-const RETRY_INTERVAL = 10000; // 10 seconds
+const RETRY_INTERVAL = 10000;
 let retryCount = 0;
 
 function connectMongoDB() {
