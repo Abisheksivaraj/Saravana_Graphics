@@ -17,16 +17,12 @@ const corsOptions = {
     'https://saravanagraphics.onrender.com',
     'https://saravana-graphics.onrender.com'
   ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   credentials: true,
   optionsSuccessStatus: 200
 };
 
-// ✅ Preflight FIRST — must be before app.use(cors())
-app.options('*', cors(corsOptions));
-
-// ✅ Apply CORS to all routes
 app.use(cors(corsOptions));
 
 app.use(express.json({ limit: '50mb' }));
