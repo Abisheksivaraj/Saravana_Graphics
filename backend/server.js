@@ -41,6 +41,7 @@ app.use('/api/strip-colors', require('./routes/stripColors'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/buyers', require('./routes/buyers'));
 app.use('/api/files', require('./routes/files'));
+app.use('/api/rfid', require('./routes/rfid'));
 
 // Health check
 app.get('/api/health', (req, res) => {

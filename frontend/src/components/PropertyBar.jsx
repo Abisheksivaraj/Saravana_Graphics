@@ -17,7 +17,7 @@ const FONTS = [
   'Arial', 'Calibri', 'Times New Roman', 'Courier New',
   'Georgia', 'Verdana', 'Impact', 'Trebuchet MS',
   'ZEBRA Swiss Unicode', 'Comic Sans MS', 'Inter', 'Outfit',
-  'Rupee Forbidan', 'OCR-A', 'OCR-B', 'OCR A Extended', 'OCR-B 10 BT'
+  'Rupee_Foradian', 'OCR-A', 'OCR-B', 'OCR A Extended', 'OCR-B 10 BT'
 ];
 
 const SIZES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];

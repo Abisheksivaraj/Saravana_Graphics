@@ -74,6 +74,8 @@ router.post('/upload', auth, checkRole(['vendor', 'admin']), (req, res, next) =>
             fileName: req.file.originalname,
             filePath: req.file.path.replace(/\\/g, '/'),
             brand: req.body.brand || 'General',
+            brandName: req.body.brandName || '',
+            manualBrand: req.body.manualBrand || '',
             groupName: req.body.groupName || '',
             uploadedBy: req.user._id,
             uploaderModel: req.user.role === 'admin' ? 'User' : 'Vendor',
@@ -207,6 +209,24 @@ router.patch('/quantity/:id', auth, checkRole(['admin']), async (req, res) => {
         );
         if (!order) return res.status(404).json({ message: 'Order not found' });
         res.json({ message: 'Quantity updated', order });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// @route   PATCH api/vendors/production-start/:id
+// @desc    Update production start date and status
+// @access  Admin only
+router.patch('/production-start/:id', auth, checkRole(['admin']), async (req, res) => {
+    try {
+        const { productionStartDate, isProductionStarted, productionStartComment } = req.body;
+        const order = await VendorOrder.findByIdAndUpdate(
+            req.params.id,
+            { productionStartDate, isProductionStarted, productionStartComment },
+            { new: true }
+        );
+        if (!order) return res.status(404).json({ message: 'Order not found' });
+        res.json({ message: 'Production start updated', order });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
     }

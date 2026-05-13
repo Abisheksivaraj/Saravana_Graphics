@@ -31,14 +31,14 @@ const _fontCache = {};
 const loadCustomFonts = async (pdf) => {
     const fontFiles = [
         { name: 'Arial', style: 'normal', file: '/fonts/Arial.ttf' },
-        { name: 'Arial', style: 'bold', file: '/fonts/Arial-Bold.ttf' },
+        { name: 'Arial', style: 'bold', file: '/fonts/Arial Bold.ttf' },
         { name: 'Arial', style: 'italic', file: '/fonts/Arial-Italic.ttf' },
         { name: 'Arial', style: 'bolditalic', file: '/fonts/Arial-Bold-Italic.ttf' },
-        { name: 'Calibri', style: 'normal', file: '/fonts/Calibri.ttf' },
-        { name: 'Calibri', style: 'bold', file: '/fonts/Calibri-Bold.ttf' },
+        { name: 'Calibri', style: 'normal', file: '/fonts/calibri.ttf' },
+        { name: 'Calibri', style: 'bold', file: '/fonts/Calibri Bold.ttf' },
 
-        { name: 'OCR-BT', style: 'normal', file: '/fonts/OCRB.ttf' },
-        { name: 'OCR-B', style: 'normal', file: '/fonts/OCRB.ttf' },
+        { name: 'OCR-BT', style: 'normal', file: '/fonts/ocrb.ttf' },
+        { name: 'OCR-B', style: 'normal', file: '/fonts/ocrb.ttf' },
         { name: 'RupeeForbidan', style: 'normal', file: '/fonts/RupeeForbidan.ttf' },
     ];
     for (const font of fontFiles) {
@@ -49,8 +49,17 @@ const loadCustomFonts = async (pdf) => {
                 if (!res.ok) continue;
                 const ct = res.headers.get('content-type') || '';
                 if (ct.includes('text/html') || ct.includes('text/plain')) continue;
+                
                 const buf = await res.arrayBuffer();
                 const bytes = new Uint8Array(buf);
+                // Basic TTF validation (magic numbers: 0x00010000 or 'true')
+                const magic = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+                const isTTF = magic === 0x00010000 || magic === 0x74727565 || magic === 0x4F54544F; // OTTO
+                if (!isTTF) {
+                    console.warn(`Skipping invalid font file: ${font.file}`);
+                    continue;
+                }
+
                 let bin = '';
                 for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
                 _fontCache[fileName] = btoa(bin);
@@ -68,8 +77,6 @@ const resolvePdfFont = (fontFamily = '') => {
     if (ff.includes('calibri')) return 'Calibri';
     if (ff.includes('ocr')) return 'OCR-B';
     if (ff.includes('rupee') || ff.includes('forbidan')) return 'RupeeForbidan';
-    if (ff.includes('times')) return 'times';
-    if (ff.includes('helvetica')) return 'helvetica';
     return 'Arial';
 };
 
@@ -758,7 +765,7 @@ const renderQRAtPos = async (pdf, value, x, y, size) => {
     } catch (e) { console.warn('QR render failed:', e); }
 };
 
-const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduction = false, fontFamily = '', fontWeight = 'normal', fontStyle = 'normal') => {
+const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduction = false, fontFamily = '', fontWeight = 'normal', fontStyle = 'normal', fontSize = 0) => {
     try {
         const fmt = (format || 'CODE128').toUpperCase();
 
@@ -792,9 +799,9 @@ const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduct
             bits += '01010';
             for (let i = 0; i < 6; i++) bits += R[d[i + 7]];
             bits += '101';
-            const fsPt = isProduction ? 7 : 4;
+            const fsPt = fontSize > 0 ? fontSize : (isProduction ? 8.5 : 6);
             const fsMM = fsPt * 0.352778;
-            const barZoneH = h - fsMM - 0.1, guardH = barZoneH + 1.2;
+            const barZoneH = h - fsMM - 0.2, guardH = barZoneH + 1.2;
             const unitW = w / 109, bsX = x + unitW * 7;
             const isGuard = i => i < 3 || (i >= 45 && i < 50) || i >= 92;
             pdf.setFillColor(fill || '#000000');
@@ -807,7 +814,7 @@ const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduct
                     cx += unitW * sp; i += sp;
                 } else { cx += unitW; i++; }
             }
-            const pdfFont = resolvePdfFont(fontFamily || '');
+            const pdfFont = 'Arial';
             let isBold = String(fontWeight || '').includes('bold') || fontWeight === '700' || fontWeight === 700;
             if (!fontWeight && fmt === 'EAN13') isBold = true;
             const isItalic = fontStyle === 'italic';
@@ -816,10 +823,6 @@ const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduct
             const fontList = pdf.getFontList();
             if (fontList[pdfFont]) {
                 pdf.setFont(pdfFont, pdfStyle);
-            } else if (fontList['Arial']) {
-                pdf.setFont('Arial', isBold ? 'bold' : 'normal');
-            } else if (fontList['helvetica']) {
-                pdf.setFont('helvetica', isBold ? 'bold' : 'normal');
             } else {
                 pdf.setFont('courier', 'normal');
             }
@@ -857,12 +860,8 @@ const drawVectorBarcode = async (pdf, value, x, y, w, h, format, fill, isProduct
         const fl = pdf.getFontList();
         if (fl[pdfFont]) {
             pdf.setFont(pdfFont, pdfStyle);
-        } else if (fl['Arial']) {
-            pdf.setFont('Arial', isBold ? 'bold' : 'normal');
-        } else if (fl['helvetica']) {
-            pdf.setFont('helvetica', isBold ? 'bold' : 'normal');
         } else {
-            pdf.setFont('courier', 'normal');
+            pdf.setFont('Arial', isBold ? 'bold' : 'normal');
         }
         const scaledFs = fsPt * (w / 44);
         pdf.setFontSize(scaledFs);
@@ -1702,7 +1701,8 @@ export default function Layout() {
                     bx = ex + (ew - bw) / 2;
                     by = ey + (eh - bh) / 2 + 5 * PX_TO_MM * cs;
                 }
-                await drawVectorBarcode(pdf, bv, bx, by, bw, bh, fmt, el.fill, isProduction, el.fontFamily, el.fontWeight, el.fontStyle);
+                const barFs = Math.max(2, (el.fontSize || 10) * 0.75 * (el.scaleY || 1) * cs);
+                await drawVectorBarcode(pdf, bv, bx, by, bw, bh, fmt, el.fill, isProduction, el.fontFamily, el.fontWeight, el.fontStyle, barFs);
                 pdf.restoreGraphicsState(); continue;
             }
 
@@ -1733,9 +1733,10 @@ export default function Layout() {
 
                 pdf.setFontSize(fs); pdf.setTextColor(textColor);
                 try {
-                    const fontExists = pdf.getFontList()[pdfFont];
-                    pdf.setFont(fontExists ? pdfFont : 'helvetica', pdfStyle);
-                } catch { try { pdf.setFont('helvetica', 'normal'); } catch { } }
+                    const flist = pdf.getFontList();
+                    const fontExists = flist[pdfFont];
+                    pdf.setFont(fontExists ? pdfFont : 'Arial', pdfStyle);
+                } catch { try { pdf.setFont('Arial', 'normal'); } catch { } }
 
                 const align = el.textAlign || 'left';
                 const wrapW = (el.width || 0) * unitScale * cs;

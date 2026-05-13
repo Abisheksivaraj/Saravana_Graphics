@@ -1,3 +1,52 @@
+/* ===== FONTS ===== */
+@font-face {
+  font-family: 'Arial';
+  src: url('/fonts/Arial.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Arial';
+  src: url('/fonts/Arial-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Arial';
+  src: url('/fonts/Arial-Italic.ttf') format('truetype');
+  font-weight: normal;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Arial';
+  src: url('/fonts/Arial-Bold-Italic.ttf') format('truetype');
+  font-weight: bold;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Calibri';
+  src: url('/fonts/calibri.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'OCR-B';
+  src: url('/fonts/ocrb.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Rupee_Foradian';
+  src: url('/fonts/RupeeForbidan.ttf') format('truetype');
+  font-display: swap;
+}
+
 /* ===== CSS RESET & ROOT VARIABLES ===== */
 *, *::before, *::after {
   box-sizing: border-box;

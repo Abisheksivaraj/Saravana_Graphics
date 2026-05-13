@@ -4,6 +4,19 @@ const auth = require('../middleware/auth');
 
 const router = express.Router();
 
+// ── Helper: compute usedComponents summary from elements array ──
+function computeUsedComponents(elements) {
+    if (!elements || elements.length === 0) return [];
+    const map = {};
+    elements.forEach(el => {
+        const t = el.type || 'unknown';
+        if (!map[t]) map[t] = { type: t, count: 0, names: [] };
+        map[t].count++;
+        if (el.name) map[t].names.push(el.name);
+    });
+    return Object.values(map);
+}
+
 // Get all designs for logged in user
 router.get('/', auth, async (req, res) => {
     try {
@@ -36,10 +49,33 @@ router.get('/:id', auth, async (req, res) => {
     }
 });
 
+// Get only the component summary for a design (lightweight)
+router.get('/:id/components', auth, async (req, res) => {
+    try {
+        const design = await Design.findOne(
+            { _id: req.params.id, userId: req.user._id }
+        ).select('title usedComponents elementCount');
+        if (!design) return res.status(404).json({ message: 'Design not found' });
+        res.json({
+            title: design.title,
+            elementCount: design.elementCount,
+            usedComponents: design.usedComponents,
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
 // Create design
 router.post('/', auth, async (req, res) => {
     try {
         const { title, company, canvasWidth, canvasHeight, canvasUnit, backgroundColor, sizePreset, elements, thumbnail, tags } = req.body;
+
+        // Auto-compute component summary
+        const elArray = elements || [];
+        const usedComponents = computeUsedComponents(elArray);
+        const elementCount = elArray.length;
+
         const design = new Design({
             title: title || 'Untitled Design',
             company: company || '',
@@ -49,7 +85,9 @@ router.post('/', auth, async (req, res) => {
             canvasUnit: canvasUnit || 'px',
             backgroundColor: backgroundColor || '#ffffff',
             sizePreset: sizePreset || 'custom',
-            elements: elements || [],
+            elements: elArray,
+            usedComponents,
+            elementCount,
             thumbnail: thumbnail || '',
             tags: tags || [],
         });
@@ -71,6 +109,12 @@ router.put('/:id', auth, async (req, res) => {
         allowedFields.forEach(field => {
             if (req.body[field] !== undefined) design[field] = req.body[field];
         });
+
+        // Auto-recompute component summary whenever elements change
+        if (req.body.elements !== undefined) {
+            design.usedComponents = computeUsedComponents(req.body.elements);
+            design.elementCount = (req.body.elements || []).length;
+        }
 
         await design.save();
         res.json({ design });
@@ -132,7 +176,7 @@ router.get('/next-title/:company', auth, async (req, res) => {
 router.delete('/:id', auth, async (req, res) => {
     try {
         const design = await Design.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
-        if (!design) return res.status(404).json({ message: 'Design not found' });
+        if (!design) return res.status(404).json({ message: 'Design deleted successfully' });
         res.json({ message: 'Design deleted successfully' });
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });

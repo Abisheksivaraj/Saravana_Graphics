@@ -15,6 +15,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import logo from '../../assets/logo.png';
+import artworkLogo from '../../assets/artwork.png';
 
 const DRAWER_WIDTH = 260;
 const COLLAPSED_WIDTH = 80;
@@ -172,35 +173,26 @@ export default function VendorLayout() {
                 <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                     {/* Top Navbar for Profile & Logout */}
                     <AppBar position="static" elevation={0} sx={{ bgcolor: '#ffffff', borderBottom: '1px solid #e2e8f0', color: '#1e293b' }}>
-                        <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 2, md: 4 }, minHeight: '64px !important' }}>
-                            {/* Vendor Branding - Left Side */}
+                        <Toolbar sx={{ px: { xs: 2, md: 4 }, minHeight: '64px !important', position: 'relative' }}>
+                            {/* Left Side: Artwork Logo */}
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                {user?.avatar ? (
-                                    <Box sx={{ 
-                                        height: 45, 
-                                        px: 2, 
-                                        py: 0.5, 
-                                        bgcolor: '#f8fafc', 
-                                        borderRadius: '12px', 
-                                        border: '1px solid #e2e8f0',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center'
-                                    }}>
-                                        <img 
-                                            src={`http://localhost:5000/${user.avatar}`} 
-                                            alt="Vendor Logo" 
-                                            style={{ height: '100%', maxWidth: 120, objectFit: 'contain' }} 
-                                        />
-                                    </Box>
-                                ) : (
-                                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#f97316' }}>
-                                        {user?.vendorName || 'Vendor Portal'}
-                                    </Typography>
-                                )}
+                                <img src={artworkLogo} alt="Logo" style={{ height: 45, objectFit: 'contain' }} />
                             </Box>
 
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            {/* Center: Vendor Portal Title */}
+                            <Box sx={{ 
+                                position: 'absolute', 
+                                left: '50%', 
+                                transform: 'translateX(-50%)',
+                                display: 'flex',
+                                alignItems: 'center'
+                            }}>
+                                <Typography variant="h5" sx={{ fontWeight: 900, color: '#f97316', letterSpacing: '-0.02em' }}>
+                                    Vendor Portal
+                                </Typography>
+                            </Box>
+
+                            <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                                     <Avatar 
                                         src={user?.avatar ? `http://localhost:5000/${user.avatar}` : undefined}

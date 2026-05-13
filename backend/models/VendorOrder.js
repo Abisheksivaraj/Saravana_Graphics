@@ -8,6 +8,8 @@ const vendorOrderSchema = new mongoose.Schema({
     fileName: { type: String, required: true },
     filePath: { type: String, required: true },
     brand: { type: String, trim: true },
+    brandName: { type: String, trim: true },
+    manualBrand: { type: String, trim: true },
     groupName: { type: String, trim: true },
     adminQuantity: { type: String, trim: true, default: '' },
     status: { 
@@ -60,6 +62,9 @@ const vendorOrderSchema = new mongoose.Schema({
     deliveryRemarks: { type: String },
     deliveryDate: { type: Date },
     productionDate: { type: Date },
+    productionStartDate: { type: Date },
+    productionStartComment: { type: String, default: '' },
+    isProductionStarted: { type: Boolean, default: false },
     dispatchDate: { type: Date },
     paymentDetails: {
         amountPaid: { type: Number },

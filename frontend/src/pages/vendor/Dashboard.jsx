@@ -152,7 +152,16 @@ export default function Dashboard() {
                                     </TableCell>
                                     <TableCell sx={{ fontSize: '0.8rem', fontWeight: 800, color: '#f97316' }}>{o.groupName || '-'}</TableCell>
                                     <TableCell sx={{ fontSize: '0.85rem', fontWeight: 500 }}>{o.fileName}</TableCell>
-                                    <TableCell sx={{ fontSize: '0.85rem', color: '#475569', textTransform: 'uppercase' }}>{o.brand || 'General'}</TableCell>
+                                    <TableCell sx={{ fontSize: '0.85rem', color: '#475569', textTransform: 'uppercase' }}>
+                                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                            <Typography sx={{ fontSize: '0.85rem', fontWeight: 700 }}>{o.brandName || o.brand || 'General'}</Typography>
+                                            {o.manualBrand && (
+                                                <Typography sx={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 500 }}>
+                                                    {o.manualBrand}
+                                                </Typography>
+                                            )}
+                                        </Box>
+                                    </TableCell>
                                     <TableCell sx={{ fontSize: '0.85rem' }}>{o.uploadedBy?.name || '—'}</TableCell>
                                     <TableCell sx={{ fontSize: '0.85rem', color: '#64748b' }}>{formatDate(o.createdAt)}</TableCell>
                                     <TableCell>

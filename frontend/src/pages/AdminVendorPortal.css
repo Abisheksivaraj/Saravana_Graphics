@@ -270,6 +270,11 @@
     font-size: 13px;
 }
 
+.ap-td-qty {
+    width: 120px;
+    white-space: nowrap;
+}
+
 .ap-td-brand {
     color: #475569;
     font-size: 12px;

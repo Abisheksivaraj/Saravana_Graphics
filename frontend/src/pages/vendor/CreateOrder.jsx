@@ -22,6 +22,7 @@ export default function CreateOrder() {
     const [groups, setGroups] = useState([]);
     const [selectedGroup, setSelectedGroup] = useState('');
     const [selectedEntity, setSelectedEntity] = useState('');
+    const [manualBrand, setManualBrand] = useState('');
     const [loadingProfile, setLoadingProfile] = useState(true);
     const navigate = useNavigate();
 
@@ -52,9 +53,13 @@ export default function CreateOrder() {
                     setSelectedGroup(firstGroup);
                     // Find first entity in this group
                     const firstMatch = normalised.find(e => e.groupName === firstGroup);
-                    if (firstMatch) setSelectedEntity(firstMatch.vendorCode);
+                    if (firstMatch) {
+                        setSelectedEntity(firstMatch.vendorCode);
+                        setManualBrand('');
+                    }
                 } else if (normalised.length > 0) {
                     setSelectedEntity(normalised[0].vendorCode);
+                    setManualBrand('');
                 }
             } catch (err) {
                 toast.error('Failed to load profile');
@@ -83,7 +88,9 @@ export default function CreateOrder() {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('vendorCode', entity?.vendorCode || selectedEntity);
-        formData.append('brand', entity?.vendorBrand || 'General');
+        formData.append('brand', manualBrand || entity?.vendorBrand || 'General'); // Still send 'brand' for general use
+        formData.append('brandName', entity?.vendorBrand || '');
+        formData.append('manualBrand', manualBrand || '');
         formData.append('groupName', selectedGroup);
         formData.append('barcodeFileId', '');
         if (message.trim()) {
@@ -152,6 +159,7 @@ export default function CreateOrder() {
                                             setSelectedGroup(g);
                                             const match = entities.find(ent => ent.groupName === g);
                                             setSelectedEntity(match ? match.vendorCode : '');
+                                            setManualBrand('');
                                         }}
                                         label="Select Group Name"
                                         sx={{ 
@@ -173,7 +181,11 @@ export default function CreateOrder() {
                                     <InputLabel sx={{ fontWeight: 700, color: '#f97316' }}>Select Vendor Code</InputLabel>
                                     <Select
                                         value={selectedEntity}
-                                        onChange={(e) => setSelectedEntity(e.target.value)}
+                                        onChange={(e) => {
+                                            const code = e.target.value;
+                                            setSelectedEntity(code);
+                                            setManualBrand('');
+                                        }}
                                         label="Select Vendor Code"
                                         sx={{ 
                                             borderRadius: '8px', bgcolor: 'white',
@@ -198,6 +210,27 @@ export default function CreateOrder() {
                                         )}
                                     </Select>
                                 </FormControl>
+                            </Box>  
+
+                            {/* Sub Brand Input */}
+                            <Box sx={{ p: 2, bgcolor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', flex: 1 }}>
+                                <TextField
+                                    fullWidth
+                                    label="Brand Name"
+                                    value={manualBrand}
+                                    onChange={(e) => setManualBrand(e.target.value)}
+                                    disabled={!selectedEntity}
+                                    variant="outlined"
+                                    sx={{ 
+                                        bgcolor: 'white',
+                                        '& .MuiOutlinedInput-root': { 
+                                            borderRadius: '8px',
+                                            '& fieldset': { border: 'none' }
+                                        },
+                                        '& .MuiInputBase-input': { py: 1.2, fontWeight: 700 }
+                                    }}
+                                    InputLabelProps={{ sx: { fontWeight: 700, color: '#ec4899' } }}
+                                />
                             </Box>
                         </Box>
 

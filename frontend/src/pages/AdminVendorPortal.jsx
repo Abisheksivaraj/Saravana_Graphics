@@ -543,15 +543,260 @@ function ArtworkHistoryModal({ order, onClose }) {
     );
 }
 
+function QuantityInput({ order, onRefresh }) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [quantity, setQuantity] = useState(order.adminQuantity || '');
+    const [saving, setSaving] = useState(false);
+
+    const handleBlur = async () => {
+        setIsEditing(false);
+        if (quantity === (order.adminQuantity || '')) return;
+        setSaving(true);
+        try {
+            await vendorAPI.updateQuantity(order._id, { adminQuantity: quantity });
+            toast.success('Quantity updated');
+            onRefresh();
+        } catch (err) {
+            toast.error('Failed to update quantity');
+            setQuantity(order.adminQuantity || '');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (isEditing) {
+        return (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <input 
+                    autoFocus
+                    type="text" 
+                    value={quantity}
+                    onChange={e => setQuantity(e.target.value)}
+                    onBlur={handleBlur}
+                    onKeyDown={e => e.key === 'Enter' && handleBlur()}
+                    disabled={saving}
+                    style={{ 
+                        padding: '6px 10px', 
+                        fontSize: '1rem', 
+                        fontWeight: '800',
+                        color: '#000',
+                        border: '2px solid #3b82f6', 
+                        borderRadius: '6px', 
+                        width: '100px',
+                        textAlign: 'center',
+                        outline: 'none',
+                        backgroundColor: '#fff',
+                        whiteSpace: 'nowrap'
+                    }}
+                />
+            </div>
+        );
+    }
+
+    return (
+        <div 
+            onClick={() => setIsEditing(true)}
+            style={{ 
+                padding: '6px 10px',
+                fontSize: '1.1rem',
+                fontWeight: '900',
+                color: '#000',
+                cursor: 'pointer',
+                textAlign: 'center',
+                borderRadius: '6px',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minWidth: '80px',
+                whiteSpace: 'nowrap'
+            }}
+            title="Click to edit quantity"
+            className="qty-view"
+        >
+            {quantity || '0'}
+            {saving && <Loader2 size={12} className="oc-spin" color="#94a3b8" style={{ marginLeft: '6px' }} />}
+        </div>
+    );
+}
+
+function ProductionStartModal({ order, onClose, onRefresh }) {
+    const [startDate, setStartDate] = useState(
+        order.productionStartDate ? new Date(order.productionStartDate).toISOString().split('T')[0] : ''
+    );
+    const [comment, setComment] = useState(order.productionStartComment || '');
+    const [saving, setSaving] = useState(false);
+
+    const handleSave = async () => {
+        if (!startDate) return toast.error('Please select a date');
+        setSaving(true);
+        try {
+            await vendorAPI.updateProductionStart(order._id, {
+                productionStartDate: startDate,
+                isProductionStarted: true,
+                productionStartComment: comment
+            });
+            toast.success('Production started');
+            onRefresh();
+            onClose();
+        } catch (err) {
+            toast.error('Failed to save');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="jm-modal" style={{ maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
+                <div className="jm-header">
+                    <div>
+                        <h2 className="jm-title">Production Start Date</h2>
+                        <span className="jm-order-id">#{order.orderId}</span>
+                    </div>
+                    <button className="jm-close" onClick={onClose}><X size={22} /></button>
+                </div>
+                <div className="jm-body" style={{ padding: '20px' }}>
+                    <div className="jm-field">
+                        <label>Start Date</label>
+                        <input 
+                            type="date" 
+                            value={startDate} 
+                            onChange={e => setStartDate(e.target.value)}
+                            style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '15px' }}
+                        />
+                    </div>
+                    <div className="jm-field">
+                        <label>Comment / Remarks</label>
+                        <textarea 
+                            value={comment} 
+                            onChange={e => setComment(e.target.value)}
+                            placeholder="Add production notes..."
+                            style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', minHeight: '80px', resize: 'vertical' }}
+                        />
+                    </div>
+                </div>
+                <div className="jm-footer">
+                    <button className="jm-btn-cancel" onClick={onClose}>Cancel</button>
+                    <button className="jm-btn-save" onClick={handleSave} disabled={saving}>
+                        {saving ? <><Loader2 size={16} className="oc-spin" /> Saving...</> : 'Save & Start'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function StopProductionModal({ order, onClose, onRefresh }) {
+    const [saving, setSaving] = useState(false);
+
+    const handleStop = async () => {
+        setSaving(true);
+        try {
+            await vendorAPI.updateProductionStart(order._id, {
+                isProductionStarted: false,
+                productionStartDate: null,
+                productionStartComment: ''
+            });
+            toast.success('Production stopped');
+            onRefresh();
+            onClose();
+        } catch (err) {
+            toast.error('Failed to stop production');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="jm-modal" style={{ maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
+                <div className="jm-header">
+                    <div>
+                        <h2 className="jm-title" style={{ color: '#ef4444' }}>Stop Production?</h2>
+                        <span className="jm-order-id">#{order.orderId}</span>
+                    </div>
+                    <button className="jm-close" onClick={onClose}><X size={22} /></button>
+                </div>
+                <div className="jm-body" style={{ padding: '20px' }}>
+                    <p style={{ fontSize: '1rem', color: '#1e293b' }}>Are you sure you want to stop production for <strong>{order.brand}</strong>?</p>
+                    <p style={{ color: '#64748b', fontSize: '0.85rem', marginTop: '10px' }}>This will reset the production start status and clear the recorded date.</p>
+                </div>
+                <div className="jm-footer">
+                    <button className="jm-btn-cancel" onClick={onClose}>Keep Running</button>
+                    <button className="jm-btn-save" style={{ background: '#ef4444' }} onClick={handleStop} disabled={saving}>
+                        {saving ? <><Loader2 size={16} className="oc-spin" /> Stopping...</> : 'Yes, Stop Production'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ProductionInfoModal({ order, onClose }) {
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="jm-modal" style={{ maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
+                <div className="jm-header">
+                    <div>
+                        <h2 className="jm-title">Production Information</h2>
+                        <span className="jm-order-id">#{order.orderId}</span>
+                    </div>
+                    <button className="jm-close" onClick={onClose}><X size={22} /></button>
+                </div>
+                <div className="jm-body" style={{ padding: '20px' }}>
+                    <div style={{ marginBottom: '15px' }}>
+                        <strong style={{ display: 'block', color: '#64748b', fontSize: '0.85rem' }}>Brand</strong>
+                        <span style={{ fontSize: '1.1rem', fontWeight: 600 }}>{order.brand}</span>
+                    </div>
+                    <div>
+                        <strong style={{ display: 'block', color: '#64748b', fontSize: '0.85rem' }}>Front Matter Production Started Date</strong>
+                        <span style={{ fontSize: '1.1rem', color: '#f97316', fontWeight: 600 }}>
+                            {new Date(order.productionStartDate).toLocaleDateString()}
+                        </span>
+                    </div>
+                    {order.productionStartComment && (
+                        <div style={{ marginTop: '15px' }}>
+                            <strong style={{ display: 'block', color: '#64748b', fontSize: '0.85rem' }}>Notes</strong>
+                            <div style={{ 
+                                padding: '12px', 
+                                background: '#fff7ed', 
+                                border: '1px solid #fed7aa', 
+                                borderRadius: '8px', 
+                                color: '#9a3412',
+                                fontSize: '0.95rem',
+                                marginTop: '4px'
+                            }}>
+                                {order.productionStartComment}
+                            </div>
+                        </div>
+                    )}
+                    <div style={{ marginTop: '20px', padding: '10px', background: '#f8fafc', borderRadius: '6px', fontSize: '0.9rem', color: '#475569' }}>
+                        Production has officially started for this brand.
+                    </div>
+                </div>
+                <div className="jm-footer">
+                    <button className="jm-btn-save" style={{ width: '100%' }} onClick={onClose}>Close</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function AdminVendorPortal() {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
+    const [vendorFilter, setVendorFilter] = useState('All');
+    const [brandFilter, setBrandFilter] = useState('All');
     const [activeTab, setActiveTab] = useState('active'); // 'active' or 'completed'
     const [activeChat, setActiveChat] = useState(null);
     const [managingOrder, setManagingOrder] = useState(null);
+    const [editingProductionStart, setEditingProductionStart] = useState(null);
+    const [stoppingProduction, setStoppingProduction] = useState(null);
+    const [viewingProductionInfo, setViewingProductionInfo] = useState(null);
 
     const handleDelete = async (orderId) => {
         if (!window.confirm('Are you sure you want to delete this order? This action cannot be undone.')) return;
@@ -584,13 +829,23 @@ export default function AdminVendorPortal() {
             o.fileName?.toLowerCase().includes(search.toLowerCase());
 
         const matchesStatus = statusFilter === 'All' || o.status === statusFilter;
+        const matchesVendor = vendorFilter === 'All' || o.vendorId?.name === vendorFilter;
+        const matchesBrand = brandFilter === 'All' || o.brand === brandFilter;
 
         // Tab filtering
         const isCompleted = o.status === 'Delivered' || o.status === 'Completed';
-        const matchesTab = activeTab === 'active' ? !isCompleted : isCompleted;
+        const isProduction = o.status === 'Production';
+        
+        let matchesTab = false;
+        if (activeTab === 'active') matchesTab = !isProduction && !isCompleted;
+        else if (activeTab === 'production') matchesTab = isProduction;
+        else if (activeTab === 'completed') matchesTab = isCompleted;
 
-        return matchesSearch && matchesStatus && matchesTab;
+        return matchesSearch && matchesStatus && matchesVendor && matchesBrand && matchesTab;
     });
+
+    const uniqueVendors = ['All', ...new Set(orders.map(o => o.vendorId?.name).filter(Boolean))].sort();
+    const uniqueBrands = ['All', ...new Set(orders.map(o => o.brand).filter(Boolean))].sort();
 
 
 
@@ -629,6 +884,29 @@ export default function AdminVendorPortal() {
                     />
                 )}
 
+                {editingProductionStart && (
+                    <ProductionStartModal 
+                        order={editingProductionStart}
+                        onRefresh={fetchData}
+                        onClose={() => setEditingProductionStart(null)}
+                    />
+                )}
+
+                {viewingProductionInfo && (
+                    <ProductionInfoModal 
+                        order={viewingProductionInfo}
+                        onClose={() => setViewingProductionInfo(null)}
+                    />
+                )}
+
+                {stoppingProduction && (
+                    <StopProductionModal 
+                        order={stoppingProduction}
+                        onRefresh={fetchData}
+                        onClose={() => setStoppingProduction(null)}
+                    />
+                )}
+
                 {/* Stats Strip */}
                 <div className="ap-stats-strip">
                     {[
@@ -642,6 +920,7 @@ export default function AdminVendorPortal() {
                     ].map(s => (
                         <div key={s.label} className="ap-stat-card" onClick={() => {
                             if (s.label === 'Delivered') setActiveTab('completed');
+                            else if (s.label === 'In Production') setActiveTab('production');
                             else if (s.label !== 'Total') setActiveTab('active');
                             setStatusFilter(s.label === 'Total' ? 'All' : s.label);
                         }}>
@@ -656,16 +935,40 @@ export default function AdminVendorPortal() {
                     <div className="ap-search">
                         <Search size={18} color="#94a3b8" />
                         <input
+                            type="text"
                             placeholder="Search by Order ID, File, or Vendor..."
                             value={search}
-                            onChange={e => setSearch(e.target.value)}
+                            onChange={(e) => setSearch(e.target.value)}
                         />
                     </div>
+                    
                     <div className="ap-filter">
-                        <Filter size={18} color="#f97316" />
-                        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                        <Filter size={18} color="#94a3b8" />
+                        <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)}>
+                            <option value="All">All Vendors</option>
+                            {uniqueVendors.filter(v => v !== 'All').map(v => (
+                                <option key={v} value={v}>{v}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="ap-filter">
+                        <Filter size={18} color="#94a3b8" />
+                        <select value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)}>
+                            <option value="All">All Brands</option>
+                            {uniqueBrands.filter(b => b !== 'All').map(b => (
+                                <option key={b} value={b}>{b}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="ap-filter">
+                        <Filter size={18} color="#94a3b8" />
+                        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                             <option value="All">All Statuses</option>
-                            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                            {STATUS_OPTIONS.map(s => (
+                                <option key={s} value={s}>{s}</option>
+                            ))}
                         </select>
                     </div>
                 </div>
@@ -678,7 +981,16 @@ export default function AdminVendorPortal() {
                     >
                         Active Orders
                         <span className="ap-tab-count">
-                            {orders.filter(o => o.status !== 'Delivered' && o.status !== 'Completed').length}
+                            {orders.filter(o => o.status !== 'Production' && o.status !== 'Delivered' && o.status !== 'Completed').length}
+                        </span>
+                    </button>
+                    <button
+                        className={`ap-tab ${activeTab === 'production' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('production')}
+                    >
+                        In Production
+                        <span className="ap-tab-count">
+                            {orders.filter(o => o.status === 'Production').length}
                         </span>
                     </button>
                     <button
@@ -700,8 +1012,9 @@ export default function AdminVendorPortal() {
                                 <th>#</th>
                                 <th>Order ID</th>
                                 <th>Vendor</th>
-                                <th>Group</th>
+                                <th>Buyer</th>
                                 <th>File</th>
+                                <th>QTY</th>
                                 <th>Brand</th>
                                 <th>Progress</th>
                                 <th>Status</th>
@@ -724,14 +1037,14 @@ export default function AdminVendorPortal() {
                                 return (
                                     <tr key={o._id} className="ap-row">
                                         <td className="ap-td-num">{idx + 1}</td>
-                                        <td className="ap-td-id">{o.orderId}</td>
+                                        <td className="ap-td-id" style={{ whiteSpace: 'nowrap' }}>{o.orderId}</td>
                                         <td>
-                                            <div className="ap-vendor-info">
+                                            <div className="ap-vendor-info style={{ whiteSpace: 'nowrap' }}">
                                                 <span className="ap-vendor-name">{o.vendorId?.name || 'Unknown'}</span>
                                                 <span className="ap-vendor-code">{o.vendorId?.vendorCode || '—'}</span>
                                             </div>
                                         </td>
-                                        <td className="ap-td-group">
+                                        <td className="ap-td-group" style={{ whiteSpace: 'nowrap' }}>
                                             <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#f97316', background: '#fff7ed', padding: '2px 8px', borderRadius: '6px' }}>
                                                 {o.groupName || '—'}
                                             </span>
@@ -746,7 +1059,52 @@ export default function AdminVendorPortal() {
                                                 <span title={o.fileName}>{o.fileName?.length > 22 ? o.fileName.slice(0, 22) + '…' : o.fileName}</span>
                                             )}
                                         </td>
-                                        <td className="ap-td-brand">{o.brand || '—'}</td>
+                                        <td className="ap-td-qty">
+                                            <QuantityInput order={o} onRefresh={fetchData} />
+                                        </td>
+                                        <td className="ap-td-brand" style={{ backgroundColor: o.isProductionStarted ? '#f0fdf4' : 'transparent', transition: 'background-color 0.3s' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                {o.isProductionStarted ? (
+                                                    <CheckCircle 
+                                                        size={20} 
+                                                        fill="#22c55e" 
+                                                        color="#ffffff" 
+                                                        style={{ filter: 'drop-shadow(0 2px 4px rgba(34, 197, 94, 0.3))', cursor: 'pointer' }} 
+                                                        onClick={(e) => { e.stopPropagation(); setStoppingProduction(o); }}
+                                                    />
+                                                ) : (
+                                                    <div 
+                                                        onClick={() => setEditingProductionStart(o)}
+                                                        style={{ 
+                                                            width: '18px', 
+                                                            height: '18px', 
+                                                            borderRadius: '50%', 
+                                                            border: '2px solid #94a3b8', 
+                                                            cursor: 'pointer',
+                                                            backgroundColor: '#fff'
+                                                        }}
+                                                    />
+                                                )}
+                                                <span 
+                                                    onClick={() => o.isProductionStarted && setViewingProductionInfo(o)}
+                                                    style={{ 
+                                                        cursor: o.isProductionStarted ? 'pointer' : 'default',
+                                                        textDecoration: o.isProductionStarted ? 'underline' : 'none',
+                                                        color: o.isProductionStarted ? '#1e40af' : 'inherit',
+                                                        fontWeight: o.isProductionStarted ? 700 : 'inherit',
+                                                        display: 'flex',
+                                                        flexDirection: 'column'
+                                                    }}
+                                                >
+                                                    <span style={{ fontSize: '0.85rem' }}>{o.brandName || o.brand || '—'}</span>
+                                                    {o.manualBrand && (
+                                                        <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 500, marginTop: '1px' }}>
+                                                            {o.manualBrand}
+                                                        </span>
+                                                    )}
+                                                </span>
+                                            </div>
+                                        </td>
                                         <td>
                                             {/* Mini progress bar */}
                                             <div className="ap-mini-progress">

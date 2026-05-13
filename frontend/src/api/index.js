@@ -49,6 +49,7 @@ export const designsAPI = {
     duplicate: (id) => api.post(`/designs/${id}/duplicate`),
     delete: (id) => api.delete(`/designs/${id}`),
     getNextTitle: (company) => api.get(`/designs/next-title/${company}`),
+    getComponents: (id) => api.get(`/designs/${id}/components`),
 };
 
 // Templates  
@@ -90,6 +91,8 @@ export const vendorAPI = {
     deleteAccount: (id) => api.delete(`/vendors/account/${id}`),
     updateAccount: (id, data) => api.patch(`/vendors/account/${id}`, data),
     getNotifications: () => api.get('/vendors/notifications'),
+    updateQuantity: (id, data) => api.patch(`/vendors/quantity/${id}`, data),
+    updateProductionStart: (id, data) => api.patch(`/vendors/production-start/${id}`, data),
 };
 
 // Strip Colors
@@ -117,6 +120,12 @@ export const filesAPI = {
     }),
     getAll: () => api.get('/files'),
     delete: (id) => api.delete(`/files/${id}`),
+};
+
+// RFID
+export const rfidAPI = {
+    getConfig: () => api.get('/rfid/config'),
+    updateConfig: (data) => api.post('/rfid/config', data),
 };
 
 export default api;

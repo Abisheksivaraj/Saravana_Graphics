@@ -4,7 +4,11 @@ const elementSchema = new mongoose.Schema({
     id: { type: String, required: true },
     type: {
         type: String,
-        enum: ['text', 'rect', 'circle', 'line', 'image', 'barcode', 'qrcode', 'triangle', 'ellipse', 'placeholder'],
+        enum: [
+            'text', 'rect', 'circle', 'line', 'image', 'barcode', 'qrcode',
+            'triangle', 'ellipse', 'placeholder', 'star', 'polygon',
+            'diamond', 'hexagon', 'octagon', 'arrow', 'path'
+        ],
         required: true
     },
     x: { type: Number, default: 0 },
@@ -62,6 +66,13 @@ const elementSchema = new mongoose.Schema({
     tension: { type: Number, default: 0 },
 });
 
+// Schema for tracking which component types are used in a design
+const usedComponentSchema = new mongoose.Schema({
+    type: { type: String, required: true },   // e.g. 'text', 'barcode', 'qrcode'
+    count: { type: Number, default: 0 },       // how many of this type
+    names: [{ type: String }],                 // element names for reference
+}, { _id: false });
+
 const designSchema = new mongoose.Schema({
     title: { type: String, required: true, trim: true, default: 'Untitled Design' },
     description: { type: String, default: '' },
@@ -76,6 +87,10 @@ const designSchema = new mongoose.Schema({
     sizePreset: { type: String, default: 'custom' },
     // Elements on canvas
     elements: [elementSchema],
+    // Auto-computed summary of elements used in this design
+    usedComponents: [usedComponentSchema],
+    // Total number of elements
+    elementCount: { type: Number, default: 0 },
     // Company name for grouping/folders
     company: { type: String, trim: true, default: '' },
     // Thumbnail (base64)
