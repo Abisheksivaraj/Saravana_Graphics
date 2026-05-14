@@ -12,24 +12,25 @@ const vendorOrderSchema = new mongoose.Schema({
     manualBrand: { type: String, trim: true },
     groupName: { type: String, trim: true },
     adminQuantity: { type: String, trim: true, default: '' },
-    status: { 
-        type: String, 
+    status: {
+        type: String,
         enum: [
-            'Excel Uploaded', 
-            'Layout Uploaded', 
-            'Artwork Rejected', 
+            'Excel Uploaded',
+            'Layout Uploaded',
+            'Artwork Rejected',
             'Revised Artwork Uploaded',
-            'Artwork Approved', 
-            'Performa Invoice Uploaded', 
+            'Artwork Approved',
+            'Performa Invoice Uploaded',
             'Performa Invoice Approved',
-            'Payment Proof Uploaded', 
-            'Payment Follow-up',
-            'Production', 
-            'Despatch', 
+            'Payment Proof Uploaded',
+            'Check Uploaded',
+            'Production',
+
             'Delivered',
-            'Completed'
+            'Completed',
+            'Cancelled'
         ],
-        default: 'Excel Uploaded' 
+        default: 'Excel Uploaded'
     },
     uploadedBy: { type: mongoose.Schema.Types.ObjectId, required: true, refPath: 'uploaderModel' },
     uploaderModel: { type: String, required: true, enum: ['User', 'Vendor'], default: 'Vendor' },
@@ -80,7 +81,23 @@ const vendorOrderSchema = new mongoose.Schema({
         purchaseOrders: { type: String },
         purchaseOrdersUrl: { type: String },
         remarks: { type: String }
-    }
+    },
+    paymentHistory: [{
+        amountPaid: { type: Number },
+        tdsApplicable: { type: Boolean, default: false },
+        paymentMode: { type: String, enum: ['PDC', 'NEFT/RTGS', 'UPI'], default: 'PDC' },
+        chequeNumber: { type: String },
+        chequeScanUrl: { type: String },
+        chequeDate: { type: Date },
+        dispatchedBy: { type: String },
+        trackingNumber: { type: String },
+        trackingScanUrl: { type: String },
+        deliveryDate: { type: Date },
+        purchaseOrders: { type: String },
+        purchaseOrdersUrl: { type: String },
+        remarks: { type: String },
+        submittedAt: { type: Date, default: Date.now }
+    }]
 }, { timestamps: true });
 
 // Index for performance

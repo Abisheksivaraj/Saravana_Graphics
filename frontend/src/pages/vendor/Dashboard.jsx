@@ -4,7 +4,8 @@ import toast from 'react-hot-toast';
 import {
     Box, Typography, Paper, Grid, Table, TableBody, TableCell, TableContainer,
     TableHead, TableRow, Chip, IconButton, Skeleton, Tooltip, Badge,
-    Pagination, CircularProgress, Divider, Button
+    Pagination, CircularProgress, Divider, Button,
+    Dialog, DialogTitle, DialogContent, DialogActions, TextField
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import MessageIcon from '@mui/icons-material/Message';
@@ -35,6 +36,7 @@ export default function Dashboard() {
     const [activeChat, setActiveChat] = useState(null);
     const [expandedRow, setExpandedRow] = useState(null);
     const [trackingOrder, setTrackingOrder] = useState(null);
+    const [cancelModal, setCancelModal] = useState({ open: false, orderId: null, remarks: '' });
 
     const fetchData = async () => {
         setLoading(true);
@@ -54,14 +56,18 @@ export default function Dashboard() {
 
     useEffect(() => { fetchData(); }, []);
 
-    const handleDelete = async (id) => {
-        if (!window.confirm('Are you sure you want to delete this order?')) return;
+    const handleCancelSubmit = async () => {
+        if (!cancelModal.remarks.trim()) {
+            toast.error('Please provide cancellation remarks');
+            return;
+        }
         try {
-            await vendorAPI.deleteOrder(id);
-            toast.success('Order deleted successfully');
+            await vendorAPI.cancelOrder(cancelModal.orderId, { remarks: cancelModal.remarks });
+            toast.success('Order cancelled successfully');
+            setCancelModal({ open: false, orderId: null, remarks: '' });
             fetchData();
         } catch (err) {
-            toast.error('Failed to delete order');
+            toast.error('Failed to cancel order');
         }
     };
 
@@ -184,9 +190,17 @@ export default function Dashboard() {
                                                 <HistoryIcon fontSize="small" />
                                             </IconButton>
                                         )}
-                                        <IconButton onClick={() => handleDelete(o._id)} size="small" sx={{ color: '#ef4444' }}>
-                                            <DeleteIcon fontSize="small" />
-                                        </IconButton>
+                                        {![
+                                            'Performa Invoice Uploaded', 'Performa Invoice Approved', 
+                                            'Payment Proof Uploaded', 'Check Uploaded', 
+                                            'Production', 'Delivered', 'Completed', 'Cancelled'
+                                        ].includes(o.status) && (
+                                            <Tooltip title="Cancel Order">
+                                                <IconButton onClick={() => setCancelModal({ open: true, orderId: o._id, remarks: '' })} size="small" sx={{ color: '#ef4444' }}>
+                                                    <CloseIcon fontSize="small" />
+                                                </IconButton>
+                                            </Tooltip>
+                                        )}
                                     </TableCell>
                                 </TableRow>
                                 {expandedRow === o._id && (
@@ -213,6 +227,43 @@ export default function Dashboard() {
             {/* Tracking Modal */}
             {trackingOrder && <OrderTrackingModal order={trackingOrder} onClose={() => setTrackingOrder(null)} />}
             
+            {/* Cancel Modal */}
+            <Dialog open={cancelModal.open} onClose={() => setCancelModal({ ...cancelModal, open: false })} maxWidth="sm" fullWidth>
+                <DialogTitle sx={{ fontWeight: 800, color: '#ef4444' }}>Cancel Order</DialogTitle>
+                <DialogContent>
+                    <Typography sx={{ mb: 2, fontSize: '0.9rem', color: '#64748b' }}>
+                        Are you sure you want to cancel this order? This action will notify the admin and the assigned buyer.
+                    </Typography>
+                    <TextField
+                        autoFocus
+                        margin="dense"
+                        label="Cancellation Remarks *"
+                        type="text"
+                        fullWidth
+                        multiline
+                        rows={3}
+                        variant="outlined"
+                        value={cancelModal.remarks}
+                        onChange={(e) => setCancelModal({ ...cancelModal, remarks: e.target.value })}
+                        placeholder="Please state the reason for cancellation (e.g., uploaded wrong file)"
+                    />
+                </DialogContent>
+                <DialogActions sx={{ p: 2, pt: 0 }}>
+                    <Button onClick={() => setCancelModal({ ...cancelModal, open: false })} color="inherit" sx={{ fontWeight: 600 }}>
+                        Keep Order
+                    </Button>
+                    <Button 
+                        onClick={handleCancelSubmit} 
+                        variant="contained" 
+                        color="error" 
+                        sx={{ fontWeight: 700, borderRadius: '8px' }}
+                        disabled={!cancelModal.remarks.trim()}
+                    >
+                        Confirm Cancellation
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
             {/* Chat Modal (Existing logic) */}
             {activeChat && <VendorChat order={activeChat} onClose={() => setActiveChat(null)} />}
         </Box>

@@ -18,12 +18,32 @@ import OrderTrackingModal from '../../components/OrderTrackingModal';
 const statusColor = (status) => {
     const map = {
         'Despatch': { bg: '#dcfce7', text: '#15803d' },
-        'Payment Follow-up': { bg: '#fef9c3', text: '#a16207' },
+        'Check Uploaded': { bg: '#fef9c3', text: '#a16207' },
         'Performa Invoice Uploaded': { bg: '#fff7ed', text: '#c2410c' },
         'Performa Invoice Approved': { bg: '#ecfdf5', text: '#059669' }
     };
     return map[status] || { bg: '#f1f5f9', text: '#475569' };
 };
+
+const CustomTextField = (props) => (
+    <TextField
+        {...props}
+        size="small"
+        fullWidth
+        sx={{
+            '& .MuiOutlinedInput-root': {
+                borderRadius: '12px',
+                transition: 'all 0.2s',
+                '& fieldset': { borderColor: '#e2e8f0' },
+                '&:hover fieldset': { borderColor: '#f97316' },
+                '&.Mui-focused fieldset': { borderColor: '#f97316', borderWidth: '2px' },
+            },
+            '& .MuiInputLabel-root': { color: '#64748b' },
+            '& .Mui-focused .MuiInputLabel-root': { color: '#f97316' },
+            ...props.sx
+        }}
+    />
+);
 
 export default function Payments() {
     const [orders, setOrders] = useState([]);
@@ -47,7 +67,7 @@ export default function Payments() {
                 o.status === 'Performa Invoice Uploaded' ||
                 o.status === 'Performa Invoice Approved' ||
                 o.status === 'Despatch' ||
-                o.status === 'Payment Follow-up'
+                o.status === 'Check Uploaded'
             ));
         } catch (err) {
             toast.error('Failed to load orders');
@@ -112,25 +132,7 @@ export default function Payments() {
 
     const updateField = (field, value) => setPaymentData(prev => ({ ...prev, [field]: value }));
 
-    const CustomTextField = (props) => (
-        <TextField
-            {...props}
-            size="small"
-            fullWidth
-            sx={{
-                '& .MuiOutlinedInput-root': {
-                    borderRadius: '12px',
-                    transition: 'all 0.2s',
-                    '& fieldset': { borderColor: '#e2e8f0' },
-                    '&:hover fieldset': { borderColor: '#f97316' },
-                    '&.Mui-focused fieldset': { borderColor: '#f97316', borderWidth: '2px' },
-                },
-                '& .MuiInputLabel-root': { color: '#64748b' },
-                '& .Mui-focused .MuiInputLabel-root': { color: '#f97316' },
-                ...props.sx
-            }}
-        />
-    );
+
 
     if (loading) return (
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 20, gap: 2 }}>

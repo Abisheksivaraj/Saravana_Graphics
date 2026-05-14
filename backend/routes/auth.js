@@ -12,12 +12,29 @@ const generateToken = (userId) => {
     return jwt.sign({ userId: userId.toString() }, process.env.JWT_SECRET, { expiresIn: '7d' });
 };
 
+// Check if registration is enabled (only for first user)
+router.get('/registration-status', async (req, res) => {
+    try {
+        const userCount = await User.countDocuments();
+        res.json({ registrationEnabled: userCount === 0 });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
 // Register
 router.post('/register', async (req, res) => {
     try {
         const { name, email, password } = req.body;
         if (!name || !email || !password)
             return res.status(400).json({ message: 'All fields are required' });
+        
+        // Check if registration is disabled (only allow if no users exist)
+        const userCount = await User.countDocuments();
+        if (userCount > 0) {
+            return res.status(403).json({ message: 'Registration is disabled. Please contact the administrator.' });
+        }
+
         if (password.length < 6)
             return res.status(400).json({ message: 'Password must be at least 6 characters' });
 

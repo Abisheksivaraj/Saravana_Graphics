@@ -9,6 +9,7 @@ const VendorOrder = require('../models/VendorOrder');
 const User = require('../models/User');
 const Vendor = require('../models/Vendor');
 const Message = require('../models/Message');
+const { sendOrderCancelledEmail } = require('../utils/sendEmail');
 
 // Multer storage config
 const storage = multer.diskStorage({
@@ -183,7 +184,7 @@ router.get('/notifications', auth, async (req, res) => {
                 // Admin needs to act if new excel, revised artwork, or payment submitted
                 if (order.status === 'Excel Uploaded' ||
                     order.status === 'Revised Artwork Uploaded' ||
-                    order.status === 'Payment Follow-up') {
+                    order.status === 'Check Uploaded') {
                     notifications.orders++;
                 }
             }
@@ -286,9 +287,9 @@ router.patch('/status/:id', auth, checkRole(['admin', 'vendor']), async (req, re
 
         // ✅ Fixed: was referencing undefined 'update' object
         let finalStatus = status;
-        if (status === 'Delivered') {
-            finalStatus = 'Completed';
-            order.deliveryDate = new Date(); // ✅ set directly on order
+        if (status === 'Delivered' || status === 'Completed') {
+            finalStatus = 'Delivered';
+            if (!order.deliveryDate) order.deliveryDate = new Date(); 
         }
 
         order.status = finalStatus;
@@ -358,7 +359,7 @@ router.post('/delivery-proof/:id', auth, checkRole(['admin', 'vendor']), upload.
 
         const order = await VendorOrder.findOneAndUpdate(
             query,
-            { deliveryProofUrl: req.file.path },
+            { deliveryProofUrl: req.file.path.replace(/\\/g, '/') },
             { new: true }
         );
         if (!order) return res.status(404).json({ message: 'Order not found' });
@@ -554,6 +555,57 @@ router.get('/accounts', auth, checkRole(['admin']), async (req, res) => {
     }
 });
 
+// @route   PATCH api/vendors/order/:id/cancel
+// @desc    Cancel a vendor order
+// @access  Vendor
+router.patch('/order/:id/cancel', auth, checkRole(['vendor']), async (req, res) => {
+    try {
+        const order = await VendorOrder.findById(req.params.id).populate('vendorId', 'vendorName');
+        if (!order || order.vendorId._id.toString() !== req.user._id.toString()) {
+            return res.status(404).json({ message: 'Order not found' });
+        }
+
+        const { remarks } = req.body;
+
+        const blockedStatuses = [
+            'Performa Invoice Uploaded', 'Performa Invoice Approved', 
+            'Payment Proof Uploaded', 'Check Uploaded', 
+            'Production', 'Delivered', 'Completed', 'Cancelled'
+        ];
+
+        if (blockedStatuses.includes(order.status)) {
+            return res.status(400).json({ 
+                message: `Order cannot be cancelled in its current status: ${order.status}` 
+            });
+        }
+
+        order.status = 'Cancelled';
+        order.remarks = remarks || 'Order cancelled by vendor.';
+
+        await order.save();
+
+        // Get Admins and relevant Buyer emails
+        const admins = await User.find({ role: 'admin' }).select('email');
+        const adminEmails = admins.map(a => a.email);
+        
+        let buyerEmails = [];
+        if (order.groupName) {
+            const buyers = await User.find({ role: 'buyer', assignedGroup: order.groupName }).select('email');
+            buyerEmails = buyers.map(b => b.email);
+        }
+
+        const recipientEmails = [...new Set([...adminEmails, ...buyerEmails])];
+
+        if (recipientEmails.length > 0) {
+            await sendOrderCancelledEmail(order.orderId, order.vendorId.vendorName, req.user.email, order.groupName, order.remarks, recipientEmails);
+        }
+
+        res.json({ message: 'Order cancelled successfully', order });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
 // @route   POST api/vendors/payment/:id
 // @desc    Submit payment acknowledgement details
 // @access  Vendor
@@ -598,8 +650,9 @@ router.post('/payment/:id', auth, checkRole(['vendor']), upload.fields([
         }
 
         order.paymentDetails = paymentDetails;
+        order.paymentHistory.push(paymentDetails);
         order.paymentSubmittedDate = new Date();
-        order.status = 'Payment Follow-up'; // Or remain Despatch depending on semantics
+        order.status = 'Check Uploaded'; 
         await order.save();
 
         res.json({ message: 'Payment details submitted successfully', order });

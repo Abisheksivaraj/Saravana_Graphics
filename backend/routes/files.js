@@ -71,6 +71,21 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
     }
 });
 
+// @route   GET /api/files/folders
+// @desc    Get all unique folder names
+// @access  Private
+router.get('/folders', auth, async (req, res) => {
+    try {
+        const folders = await SavedFile.distinct('folder');
+        // Filter out null/empty and sort
+        const cleanFolders = folders.filter(f => f).sort();
+        res.json(cleanFolders);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // @route   GET /api/files
 // @desc    Get all saved files
 // @access  Private (Admin only)

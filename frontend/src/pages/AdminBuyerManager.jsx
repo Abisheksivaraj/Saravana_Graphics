@@ -2,8 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { buyerAPI, vendorAPI } from '../api';
 import Sidebar from '../components/Sidebar';
 import toast from 'react-hot-toast';
-import { UserPlus, Search, Building2, ChevronRight, History } from 'lucide-react';
-import './AdminVendorPortal.css';
+import { 
+    UserPlus, Search, Building2, ChevronRight, 
+    History, Mail, User, ShieldCheck, Info, X 
+} from 'lucide-react';
+import './AdminBuyerManager.css';
 
 export default function AdminBuyerManager() {
     const [buyers, setBuyers] = useState([]);
@@ -12,10 +15,11 @@ export default function AdminBuyerManager() {
     const [showModal, setShowModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     
-    // New buyer form state
     const [formData, setFormData] = useState({
-        name: '', email: '', username: '', password: '', companyName: '', assignedVendors: []
+        name: '', email: '', companyName: '', assignedGroup: ''
     });
+
+    const uniqueGroupNames = [...new Set(vendors.flatMap(v => v.groupNames || []).filter(Boolean))].sort();
 
     const fetchData = async () => {
         try {
@@ -24,8 +28,8 @@ export default function AdminBuyerManager() {
                 buyerAPI.getAccounts(),
                 vendorAPI.getAccounts()
             ]);
-            setBuyers(buyersRes.data);
-            setVendors(vendorsRes.data);
+            setBuyers(buyersRes.data || []);
+            setVendors(vendorsRes.data || []);
         } catch (err) {
             toast.error('Failed to load data');
         } finally {
@@ -41,21 +45,15 @@ export default function AdminBuyerManager() {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    const handleVendorToggle = (vendorId) => {
-        const assigned = [...formData.assignedVendors];
-        const idx = assigned.indexOf(vendorId);
-        if (idx > -1) assigned.splice(idx, 1);
-        else assigned.push(vendorId);
-        setFormData({ ...formData, assignedVendors: assigned });
-    };
-
     const handleCreateBuyer = async (e) => {
         e.preventDefault();
         try {
+            const loadingToast = toast.loading('Creating buyer account...');
             await buyerAPI.createAccount(formData);
-            toast.success('Buyer account created successfully');
+            toast.dismiss(loadingToast);
+            toast.success('Buyer account created. Credentials sent via email.');
             setShowModal(false);
-            setFormData({ name: '', email: '', username: '', password: '', companyName: '', assignedVendors: [] });
+            setFormData({ name: '', email: '', companyName: '', assignedGroup: '' });
             fetchData();
         } catch (err) {
              toast.error(err.response?.data?.message || 'Failed to create buyer');
@@ -63,80 +61,102 @@ export default function AdminBuyerManager() {
     };
 
     const filteredBuyers = buyers.filter(b => 
-        b.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        b.companyName?.toLowerCase().includes(searchTerm.toLowerCase())
+        (b.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+        (b.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (b.email || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     return (
-        <div className="admin-portal-layout">
+        <div className="buyer-manager-container">
             <Sidebar />
-            <main className="ap-main">
-                <header className="ap-header">
-                    <div className="ap-header-title">
+            <main className="bm-main">
+                <header className="bm-header">
+                    <div className="bm-header-title">
                         <h1>Buyer Management</h1>
-                        <p>Manage buyer accounts and assign vendor access</p>
+                        <p>Manage accounts and assign vendor group permissions</p>
                     </div>
-                    <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-                         <UserPlus size={16} style={{ marginRight: 8 }}/> Add New Buyer
+                    <button className="bm-add-btn" onClick={() => setShowModal(true)}>
+                        <UserPlus size={18} /> Add New Buyer
                     </button>
                 </header>
 
-                <div className="ap-controls">
-                    <div className="ap-search">
-                        <Search size={18} color="#94a3b8" />
+                <div className="bm-controls">
+                    <div className="bm-search-wrapper">
+                        <Search size={20} className="bm-search-icon" />
                         <input 
-                            placeholder="Search buyers by name or company..." 
+                            className="bm-search-input"
+                            placeholder="Search by name, company, or email..." 
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
                 </div>
 
-                <div className="ap-table-container">
-                    <table className="ap-table">
+                <div className="bm-table-container">
+                    <table className="bm-table">
                         <thead>
                             <tr>
                                 <th>Buyer / Company</th>
                                 <th>Username</th>
-                                <th>Assigned Vendors</th>
-                                <th>Created</th>
+                                <th>Assigned Group</th>
+                                <th>Join Date</th>
                                 <th style={{ textAlign: 'right' }}>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan="5" className="ap-loading-cell">Loading buyers...</td></tr>
+                                <tr>
+                                    <td colSpan="5">
+                                        <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                                            <div className="animate-spin" style={{ display: 'inline-block', marginBottom: 12 }}>⏳</div>
+                                            <p>Loading buyer accounts...</p>
+                                        </div>
+                                    </td>
+                                </tr>
                             ) : filteredBuyers.length === 0 ? (
-                                <tr><td colSpan="5" className="ap-empty-cell">No buyers found.</td></tr>
+                                <tr>
+                                    <td colSpan="5">
+                                        <div style={{ textAlign: 'center', padding: '60px 40px', color: '#94a3b8' }}>
+                                            <User size={48} style={{ margin: '0 auto 16px', opacity: 0.2 }} />
+                                            <p style={{ fontSize: 16, fontWeight: 600 }}>No buyer accounts found</p>
+                                            <p style={{ fontSize: 13 }}>Try adjusting your search or add a new buyer.</p>
+                                        </div>
+                                    </td>
+                                </tr>
                             ) : (
                                 filteredBuyers.map(b => (
-                                    <tr key={b._id} className="ap-row">
+                                    <tr key={b._id} className="bm-row">
                                         <td>
-                                            <div className="ap-vendor-name">{b.name}</div>
-                                            <div style={{ fontSize: '12px', color: '#64748b' }}>{b.companyName} • {b.email}</div>
-                                        </td>
-                                        <td className="ap-td-id">{b.username}</td>
-                                        <td>
-                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                                {b.assignedVendors?.length > 0 ? (
-                                                    b.assignedVendors.map(vId => {
-                                                        const v = vendors.find(vend => vend._id === vId);
-                                                        return v ? (
-                                                            <span key={vId} className="ap-status-badge badge-layout" style={{ fontSize: '9px' }}>
-                                                                {v.vendorName || v.name}
-                                                            </span>
-                                                        ) : null;
-                                                    })
-                                                ) : (
-                                                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>None</span>
-                                                )}
+                                            <div className="bm-buyer-info">
+                                                <div className="bm-buyer-name">{b.name}</div>
+                                                <div className="bm-buyer-sub">{b.companyName} • {b.email}</div>
                                             </div>
                                         </td>
-                                        <td>{new Date(b.createdAt).toLocaleDateString()}</td>
-                                        <td style={{ textAlign: 'right' }}>
-                                            <button className="ap-icon-btn chat" title="View History">
-                                                <History size={16} />
-                                            </button>
+                                        <td>
+                                            <span style={{ fontFamily: 'monospace', fontSize: 13, background: '#f1f5f9', padding: '4px 8px', borderRadius: 6, color: '#475569' }}>
+                                                {b.username}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {b.assignedGroup ? (
+                                                <span className="bm-badge bm-badge-group">
+                                                    <ShieldCheck size={12} style={{ marginRight: 6 }} /> {b.assignedGroup}
+                                                </span>
+                                            ) : (
+                                                <span style={{ color: '#94a3b8', fontSize: 12, fontStyle: 'italic' }}>Unassigned</span>
+                                            )}
+                                        </td>
+                                        <td>
+                                            <div style={{ fontSize: 13, color: '#64748b' }}>
+                                                {new Date(b.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                                <button className="bm-action-btn" title="View Order History">
+                                                    <History size={16} />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -146,98 +166,71 @@ export default function AdminBuyerManager() {
                 </div>
 
                 {showModal && (
-                    <div className="modal-overlay" onClick={() => setShowModal(false)}>
-                        <div className="modal" style={{ maxWidth: 750, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
-                            <div className="modal-header">
-                                <h2 className="modal-title text-[white]">Create Buyer Account</h2>
-                                <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}>✕</button>
+                    <div className="bm-modal-overlay" onClick={() => setShowModal(false)}>
+                        <div className="bm-modal" onClick={e => e.stopPropagation()}>
+                            <div className="bm-modal-header">
+                                <h2>Create Buyer Account</h2>
+                                <button className="bm-modal-close" onClick={() => setShowModal(false)}>
+                                    <X size={18} />
+                                </button>
                             </div>
-                            <form onSubmit={handleCreateBuyer} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                                <div className="modal-body" style={{ overflowY: 'auto', paddingRight: '10px' }}>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="form-group">
-                                            <label className="form-label block text-sm font-semibold mb-2">Buyer Contact Name *</label>
-                                            <input required name="name" className="input w-full" value={formData.name} onChange={handleChange} />
+                            <form onSubmit={handleCreateBuyer}>
+                                <div className="bm-modal-body">
+                                    <div className="bm-grid">
+                                        <div className="bm-input-group">
+                                            <label className="bm-label">Contact Name *</label>
+                                            <div className="bm-input-wrapper">
+                                                <User size={18} />
+                                                <input required name="name" className="bm-input" placeholder="Full Name" value={formData.name} onChange={handleChange} />
+                                            </div>
                                         </div>
-                                        <div className="form-group">
-                                            <label className="form-label block text-sm font-semibold mb-2">Email *</label>
-                                            <input required type="email" name="email" className="input w-full" value={formData.email} onChange={handleChange} />
-                                        </div>
-                                    </div>
-                                    <div className="form-group mt-4">
-                                        <label className="form-label block text-sm font-semibold mb-2">Company Name *</label>
-                                        <input required name="companyName" className="input w-full" value={formData.companyName} onChange={handleChange} />
-                                    </div>
-                                    
-                                    <div className="grid grid-cols-2 gap-4 mt-4">
-                                        <div className="form-group">
-                                            <label className="form-label block text-sm font-semibold mb-2">Login Username *</label>
-                                            <input required name="username" className="input w-full" value={formData.username} onChange={handleChange} />
-                                        </div>
-                                        <div className="form-group">
-                                            <label className="form-label block text-sm font-semibold mb-2">Login Password *</label>
-                                            <input required type="password" name="password" className="input w-full" value={formData.password} onChange={handleChange} />
+                                        <div className="bm-input-group">
+                                            <label className="bm-label">Email Address *</label>
+                                            <div className="bm-input-wrapper">
+                                                <Mail size={18} />
+                                                <input required type="email" name="email" className="bm-input" placeholder="email@example.com" value={formData.email} onChange={handleChange} />
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div className="mt-6">
-                                        <label className="form-label block text-sm font-bold mb-3 text-primary uppercase letter-spacing-1">Assign Vendors</label>
-                                        
-                                        <div className="flex gap-3 mb-4">
-                                            <select 
-                                                className="input flex-1"
-                                                value=""
-                                                onChange={(e) => {
-                                                    const vId = e.target.value;
-                                                    if (vId && !formData.assignedVendors.includes(vId)) {
-                                                        handleVendorToggle(vId);
-                                                    }
-                                                }}
-                                            >
-                                                <option value="">-- Select Vendor to Add --</option>
-                                                {vendors
-                                                    .filter(v => !formData.assignedVendors.includes(v._id))
-                                                    .map(v => (
-                                                        <option key={v._id} value={v._id}>
-                                                            {v.vendorName || 'No Business Name'} ({v.name}) - {v.vendorCode}
-                                                        </option>
-                                                    ))
-                                                }
-                                            </select>
+                                    <div className="bm-grid">
+                                        <div className="bm-input-group">
+                                            <label className="bm-label">Company Name *</label>
+                                            <div className="bm-input-wrapper">
+                                                <Building2 size={18} />
+                                                <input required name="companyName" className="bm-input" placeholder="Company Ltd." value={formData.companyName} onChange={handleChange} />
+                                            </div>
                                         </div>
+                                        <div className="bm-input-group">
+                                            <label className="bm-label">Assigned Vendor Group *</label>
+                                            <div className="bm-input-wrapper">
+                                                <ShieldCheck size={18} />
+                                                <select 
+                                                    required
+                                                    name="assignedGroup" 
+                                                    className="bm-input bm-select" 
+                                                    value={formData.assignedGroup} 
+                                                    onChange={handleChange}
+                                                >
+                                                    <option value="">Select Group</option>
+                                                    {uniqueGroupNames.map(group => (
+                                                        <option key={group} value={group}>{group}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
 
-                                        <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #e2e8f0', minHeight: '80px' }}>
-                                            {formData.assignedVendors.length === 0 ? (
-                                                <div className="text-center py-4 text-slate-400 text-sm italic">No vendors assigned yet. Select from the dropdown above.</div>
-                                            ) : (
-                                                <div className="flex flex-wrap gap-2">
-                                                    {formData.assignedVendors.map(vId => {
-                                                        const v = vendors.find(vend => vend._id === vId);
-                                                        return v ? (
-                                                            <div key={vId} className="flex items-center gap-3 bg-white border border-orange-100 px-4 py-2 rounded-xl shadow-sm animate-in fade-in zoom-in duration-200">
-                                                                <div className="flex flex-col">
-                                                                    <span className="text-sm font-bold text-slate-800">{v.vendorName || 'No Business Name'}</span>
-                                                                    <span className="text-[10px] text-slate-500 font-medium">Contact: {v.name}</span>
-                                                                    <span className="text-[10px] text-primary font-mono font-bold tracking-wider">{v.vendorCode}</span>
-                                                                </div>
-                                                                <button 
-                                                                    type="button"
-                                                                    onClick={() => handleVendorToggle(vId)}
-                                                                    className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
-                                                                >
-                                                                    ✕
-                                                                </button>
-                                                            </div>
-                                                        ) : null;
-                                                    })}
-                                                </div>
-                                            )}
-                                        </div>
+                                    <div className="bm-note">
+                                        <Info size={20} className="bm-note-icon" />
+                                        <p>
+                                            <strong>Security Note:</strong> Account credentials will be automatically generated and dispatched to the provided email. This buyer will inherit view permissions for all vendors within the selected group.
+                                        </p>
                                     </div>
                                 </div>
-                                <div className="modal-footer">
-                                    <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-                                    <button type="submit" className="btn btn-primary">Create Buyer Account</button>
+                                <div className="bm-modal-footer">
+                                    <button type="button" className="bm-btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
+                                    <button type="submit" className="bm-btn-primary">Create Account</button>
                                 </div>
                             </form>
                         </div>
@@ -247,3 +240,4 @@ export default function AdminBuyerManager() {
         </div>
     );
 }
+

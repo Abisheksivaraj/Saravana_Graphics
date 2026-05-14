@@ -7,7 +7,9 @@ import {
     FileSpreadsheet, FileSearch, CheckCircle2, CreditCard, ShieldCheck, User, X,
     Paperclip, Send,
     CheckCircle,
-    Eye
+    Eye,
+    History,
+    Download
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Sidebar from '../components/Sidebar';
@@ -17,7 +19,7 @@ import './AdminVendorPortal.css';
 const STATUS_OPTIONS = [
     'Excel Uploaded', 'Layout Uploaded', 'Artwork Rejected', 'Revised Artwork Uploaded',
     'Artwork Approved', 'Performa Invoice Uploaded', 'Performa Invoice Approved',
-    'Payment Proof Uploaded', 'Production', 'Delivered', 'Completed'
+    'Payment Proof Uploaded', 'Production', 'Delivered'
 ];
 
 // Only statuses the Admin can manually set
@@ -27,7 +29,6 @@ const ADMIN_STATUS_OPTIONS = [
     'Performa Invoice Upload',
     'Production',
     'Delivered',
-    'Completed',
 ];
 
 const STAGES = [
@@ -61,8 +62,30 @@ function getStatusBadgeClass(status) {
     if (s.includes('performa invoice approved')) return 'badge-approved';
     if (s.includes('performa') || s.includes('invoice')) return 'badge-invoice';
     if (s.includes('layout')) return 'badge-layout';
+    if (s.includes('check uploaded')) return 'badge-payment';
     return 'badge-default';
 }
+
+export const handleDownload = async (e, url, filename) => {
+    e.preventDefault();
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Network response was not ok');
+        const blob = await response.blob();
+        const objectUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = filename || 'download';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(objectUrl);
+        document.body.removeChild(a);
+    } catch (err) {
+        console.error("Download failed via fetch, falling back to open:", err);
+        window.open(url, '_blank');
+    }
+};
+
 
 // ─── Admin Chat Panel ────────────────────────────────────────────────────────
 function AdminChat({ order, onClose }) {
@@ -282,6 +305,9 @@ function JobModal({ order, onClose, onRefresh }) {
         }
     };
 
+
+
+
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="jm-modal" onClick={e => e.stopPropagation()}>
@@ -413,14 +439,24 @@ function JobModal({ order, onClose, onRefresh }) {
                                             </div>
                                         </div>
                                     </div>
-                                    <a
-                                        href={`${BASE_URL}/${order.paymentDetails.chequeScanUrl}`}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="jm-upload-btn payment-btn"
-                                    >
-                                        <Eye size={14} /> View
-                                    </a>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <a
+                                            href={`${BASE_URL}/${order.paymentDetails.chequeScanUrl}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="jm-upload-btn payment-btn"
+                                            style={{ textDecoration: 'none', padding: '8px 16px' }}
+                                        >
+                                            <Eye size={14} style={{ marginRight: '4px' }} /> View
+                                        </a>
+                                        <button
+                                            onClick={(e) => handleDownload(e, `${BASE_URL}/${order.paymentDetails.chequeScanUrl}`, `cheque_${order.orderId}`)}
+                                            className="jm-upload-btn payment-btn"
+                                            style={{ border: 'none', cursor: 'pointer', padding: '8px 16px', textDecoration: 'none', background: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0' }}
+                                        >
+                                            <Download size={14} style={{ marginRight: '4px' }} /> Download
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -567,21 +603,21 @@ function QuantityInput({ order, onRefresh }) {
     if (isEditing) {
         return (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <input 
+                <input
                     autoFocus
-                    type="text" 
+                    type="text"
                     value={quantity}
                     onChange={e => setQuantity(e.target.value)}
                     onBlur={handleBlur}
                     onKeyDown={e => e.key === 'Enter' && handleBlur()}
                     disabled={saving}
-                    style={{ 
-                        padding: '6px 10px', 
-                        fontSize: '1rem', 
+                    style={{
+                        padding: '6px 10px',
+                        fontSize: '1rem',
                         fontWeight: '800',
                         color: '#000',
-                        border: '2px solid #3b82f6', 
-                        borderRadius: '6px', 
+                        border: '2px solid #3b82f6',
+                        borderRadius: '6px',
                         width: '100px',
                         textAlign: 'center',
                         outline: 'none',
@@ -594,9 +630,9 @@ function QuantityInput({ order, onRefresh }) {
     }
 
     return (
-        <div 
+        <div
             onClick={() => setIsEditing(true)}
-            style={{ 
+            style={{
                 padding: '6px 10px',
                 fontSize: '1.1rem',
                 fontWeight: '900',
@@ -659,17 +695,17 @@ function ProductionStartModal({ order, onClose, onRefresh }) {
                 <div className="jm-body" style={{ padding: '20px' }}>
                     <div className="jm-field">
                         <label>Start Date</label>
-                        <input 
-                            type="date" 
-                            value={startDate} 
+                        <input
+                            type="date"
+                            value={startDate}
                             onChange={e => setStartDate(e.target.value)}
                             style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '15px' }}
                         />
                     </div>
                     <div className="jm-field">
                         <label>Comment / Remarks</label>
-                        <textarea 
-                            value={comment} 
+                        <textarea
+                            value={comment}
                             onChange={e => setComment(e.target.value)}
                             placeholder="Add production notes..."
                             style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', minHeight: '80px', resize: 'vertical' }}
@@ -758,11 +794,11 @@ function ProductionInfoModal({ order, onClose }) {
                     {order.productionStartComment && (
                         <div style={{ marginTop: '15px' }}>
                             <strong style={{ display: 'block', color: '#64748b', fontSize: '0.85rem' }}>Notes</strong>
-                            <div style={{ 
-                                padding: '12px', 
-                                background: '#fff7ed', 
-                                border: '1px solid #fed7aa', 
-                                borderRadius: '8px', 
+                            <div style={{
+                                padding: '12px',
+                                background: '#fff7ed',
+                                border: '1px solid #fed7aa',
+                                borderRadius: '8px',
                                 color: '#9a3412',
                                 fontSize: '0.95rem',
                                 marginTop: '4px'
@@ -773,6 +809,138 @@ function ProductionInfoModal({ order, onClose }) {
                     )}
                     <div style={{ marginTop: '20px', padding: '10px', background: '#f8fafc', borderRadius: '6px', fontSize: '0.9rem', color: '#475569' }}>
                         Production has officially started for this brand.
+                    </div>
+                </div>
+                <div className="jm-footer">
+                    <button className="jm-btn-save" style={{ width: '100%' }} onClick={onClose}>Close</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function PaymentHistoryModal({ order, onClose }) {
+    const history = order.paymentHistory || [];
+    const current = order.paymentDetails || {};
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="jm-modal" style={{ maxWidth: '800px' }} onClick={e => e.stopPropagation()}>
+                <div className="jm-header">
+                    <div>
+                        <h2 className="jm-title">Payment Details & History</h2>
+                        <span className="jm-order-id">#{order.orderId} · {order.vendorId?.name}</span>
+                    </div>
+                    <button className="jm-close" onClick={onClose}><X size={22} /></button>
+                </div>
+
+                <div className="jm-body" style={{ padding: '24px' }}>
+                    {/* Current Payment Details */}
+                    <div className="jm-section" style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                            <h3 className="jm-section-title" style={{ margin: 0 }}>Current Payment Details</h3>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#f97316', background: '#fff7ed', padding: '4px 12px', borderRadius: '20px' }}>
+                                {current.paymentMode || 'N/A'}
+                            </span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Amount Paid</label>
+                                <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a' }}>₹{current.amountPaid?.toLocaleString() || '0'}</span>
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Cheque Number</label>
+                                <span style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>{current.chequeNumber || '—'}</span>
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Cheque Date</label>
+                                <span style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
+                                    {current.chequeDate ? new Date(current.chequeDate).toLocaleDateString() : '—'}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div style={{ marginTop: '20px', display: 'flex', gap: '20px' }}>
+                            {current.chequeScanUrl && (
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <a
+                                        href={`${BASE_URL}/${current.chequeScanUrl}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="jm-upload-btn payment-btn"
+                                        style={{ textDecoration: 'none', padding: '8px 16px' }}
+                                    >
+                                        <Eye size={16} style={{ marginRight: '8px' }} /> View Scan
+                                    </a>
+                                    <button
+                                        onClick={(e) => handleDownload(e, `${BASE_URL}/${current.chequeScanUrl}`, `cheque_${order.orderId}`)}
+                                        className="jm-upload-btn payment-btn"
+                                        style={{ border: 'none', cursor: 'pointer', padding: '8px 16px', textDecoration: 'none', background: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0' }}
+                                    >
+                                        <Download size={16} style={{ marginRight: '8px' }} /> Download
+                                    </button>
+                                </div>
+                            )}
+                            {current.purchaseOrdersUrl && (
+                                <a href={`${BASE_URL}/${current.purchaseOrdersUrl}`} target="_blank" rel="noreferrer" className="jm-upload-btn" style={{ textDecoration: 'none', padding: '8px 16px', background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0' }}>
+                                    <FileText size={16} style={{ marginRight: '8px' }} /> View Purchase Order
+                                </a>
+                            )}
+                        </div>
+
+                        {current.remarks && (
+                            <div style={{ marginTop: '20px', padding: '12px', background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <label style={{ display: 'block', fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '4px' }}>Vendor Remarks</label>
+                                <p style={{ margin: 0, fontSize: '0.9rem', color: '#334155' }}>{current.remarks}</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* History Timeline */}
+                    <div className="jm-section">
+                        <h3 className="jm-section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <History size={18} /> Payment History
+                        </h3>
+                        <div className="ah-timeline">
+                            {history.length === 0 ? (
+                                <p style={{ color: '#94a3b8', padding: '10px' }}>No previous payment records found.</p>
+                            ) : [...history].reverse().map((h, idx) => (
+                                <div key={idx} className="ah-entry" style={{ marginBottom: '12px', padding: '12px', background: '#fff', border: '1px solid #f1f5f9', borderRadius: '12px' }}>
+                                    <div className="ah-entry-badge" style={{ background: '#f8fafc', color: '#64748b', fontSize: '0.7rem' }}>
+                                        {history.length - idx}
+                                    </div>
+                                    <div className="ah-entry-info" style={{ flex: 1 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <div>
+                                                <div className="ah-entry-type" style={{ fontWeight: 800 }}>₹{h.amountPaid?.toLocaleString()} via {h.paymentMode}</div>
+                                                <div className="ah-entry-date">{new Date(h.submittedAt || h.chequeDate).toLocaleString()}</div>
+                                            </div>
+                                            {h.chequeScanUrl && (
+                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <a
+                                                        href={`${BASE_URL}/${h.chequeScanUrl}`}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="jm-link"
+                                                        style={{ fontSize: '0.75rem', textDecoration: 'underline' }}
+                                                    >
+                                                        View Scan ↗
+                                                    </a>
+                                                    <button
+                                                        onClick={(e) => handleDownload(e, `${BASE_URL}/${h.chequeScanUrl}`, `cheque_${order.orderId}_${idx}`)}
+                                                        className="jm-link"
+                                                        style={{ fontSize: '0.75rem', border: 'none', background: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                                                    >
+                                                        Download ⬇
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
                 <div className="jm-footer">
@@ -797,12 +965,20 @@ export default function AdminVendorPortal() {
     const [editingProductionStart, setEditingProductionStart] = useState(null);
     const [stoppingProduction, setStoppingProduction] = useState(null);
     const [viewingProductionInfo, setViewingProductionInfo] = useState(null);
+    const [viewingPaymentHistory, setViewingPaymentHistory] = useState(null);
+    const [deletingOrderId, setDeletingOrderId] = useState(null);
+    const [deletePassInput, setDeletePassInput] = useState('');
 
-    const handleDelete = async (orderId) => {
-        if (!window.confirm('Are you sure you want to delete this order? This action cannot be undone.')) return;
+    const handleDelete = async () => {
+        if (deletePassInput !== 'sara@1234') {
+            toast.error('Invalid admin password');
+            return;
+        }
         try {
-            await vendorAPI.deleteOrder(orderId);
+            await vendorAPI.deleteOrder(deletingOrderId);
             toast.success('Order deleted successfully');
+            setDeletingOrderId(null);
+            setDeletePassInput('');
             fetchData();
         } catch (err) {
             toast.error('Failed to delete order');
@@ -833,13 +1009,15 @@ export default function AdminVendorPortal() {
         const matchesBrand = brandFilter === 'All' || o.brand === brandFilter;
 
         // Tab filtering
-        const isCompleted = o.status === 'Delivered' || o.status === 'Completed';
+        const isCompleted = o.status === 'Delivered';
         const isProduction = o.status === 'Production';
-        
+        const isCancelled = o.status === 'Cancelled';
+
         let matchesTab = false;
-        if (activeTab === 'active') matchesTab = !isProduction && !isCompleted;
+        if (activeTab === 'active') matchesTab = !isProduction && !isCompleted && !isCancelled;
         else if (activeTab === 'production') matchesTab = isProduction;
         else if (activeTab === 'completed') matchesTab = isCompleted;
+        else if (activeTab === 'cancelled') matchesTab = isCancelled;
 
         return matchesSearch && matchesStatus && matchesVendor && matchesBrand && matchesTab;
     });
@@ -885,7 +1063,7 @@ export default function AdminVendorPortal() {
                 )}
 
                 {editingProductionStart && (
-                    <ProductionStartModal 
+                    <ProductionStartModal
                         order={editingProductionStart}
                         onRefresh={fetchData}
                         onClose={() => setEditingProductionStart(null)}
@@ -893,18 +1071,75 @@ export default function AdminVendorPortal() {
                 )}
 
                 {viewingProductionInfo && (
-                    <ProductionInfoModal 
+                    <ProductionInfoModal
                         order={viewingProductionInfo}
                         onClose={() => setViewingProductionInfo(null)}
                     />
                 )}
 
                 {stoppingProduction && (
-                    <StopProductionModal 
+                    <StopProductionModal
                         order={stoppingProduction}
                         onRefresh={fetchData}
                         onClose={() => setStoppingProduction(null)}
                     />
+                )}
+
+                {viewingPaymentHistory && (
+                    <PaymentHistoryModal
+                        order={viewingPaymentHistory}
+                        onClose={() => setViewingPaymentHistory(null)}
+                    />
+                )}
+
+                {deletingOrderId && (
+                    <div className="ap-modal-overlay">
+                        <div className="ap-modal-content" style={{ maxWidth: '400px' }}>
+                            <div className="ap-modal-header">
+                                <h3 style={{ color: '#ef4444' }}>Confirm Order Deletion</h3>
+                                <button className="ap-close-btn" onClick={() => { setDeletingOrderId(null); setDeletePassInput(''); }}>
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div className="ap-modal-body">
+                                <p style={{ marginBottom: '15px', fontSize: '0.9rem', color: '#64748b', lineHeight: '1.5' }}>
+                                    This action is permanent and cannot be undone. Please enter the admin password to confirm deletion.
+                                </p>
+                                <input 
+                                    type="password" 
+                                    className="ap-input" 
+                                    placeholder="Enter Admin Password" 
+                                    value={deletePassInput}
+                                    onChange={(e) => setDeletePassInput(e.target.value)}
+                                    autoFocus
+                                    onKeyDown={(e) => e.key === 'Enter' && handleDelete()}
+                                    style={{ 
+                                        width: '100%', 
+                                        padding: '12px', 
+                                        borderRadius: '10px', 
+                                        border: '1px solid #e2e8f0',
+                                        fontSize: '0.95rem'
+                                    }}
+                                />
+                            </div>
+                            <div className="ap-modal-footer">
+                                <button 
+                                    className="ap-btn" 
+                                    onClick={() => { setDeletingOrderId(null); setDeletePassInput(''); }}
+                                    style={{ background: '#f1f5f9', color: '#475569', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    className="ap-btn" 
+                                    onClick={handleDelete}
+                                    style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+                                >
+                                    Delete Permanently
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 )}
 
                 {/* Stats Strip */}
@@ -916,7 +1151,7 @@ export default function AdminVendorPortal() {
                         { label: 'Rejected', value: stats['Artwork Rejected'] || 0, color: '#ef4444' },
                         { label: 'Invoice Pending', value: (stats['Artwork Approved'] || 0) + (stats['Performa Invoice Uploaded'] || 0), color: '#f59e0b' },
                         { label: 'In Production', value: stats['Production'] || 0, color: '#8b5cf6' },
-                        { label: 'Delivered', value: (stats['Delivered'] || 0) + (stats['Completed'] || 0), color: '#10b981' },
+                        { label: 'Delivered', value: stats['Delivered'] || 0, color: '#10b981' },
                     ].map(s => (
                         <div key={s.label} className="ap-stat-card" onClick={() => {
                             if (s.label === 'Delivered') setActiveTab('completed');
@@ -941,7 +1176,7 @@ export default function AdminVendorPortal() {
                             onChange={(e) => setSearch(e.target.value)}
                         />
                     </div>
-                    
+
                     <div className="ap-filter">
                         <Filter size={18} color="#94a3b8" />
                         <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)}>
@@ -981,7 +1216,7 @@ export default function AdminVendorPortal() {
                     >
                         Active Orders
                         <span className="ap-tab-count">
-                            {orders.filter(o => o.status !== 'Production' && o.status !== 'Delivered' && o.status !== 'Completed').length}
+                            {orders.filter(o => o.status !== 'Production' && o.status !== 'Delivered' && o.status !== 'Cancelled').length}
                         </span>
                     </button>
                     <button
@@ -997,9 +1232,18 @@ export default function AdminVendorPortal() {
                         className={`ap-tab ${activeTab === 'completed' ? 'active' : ''}`}
                         onClick={() => setActiveTab('completed')}
                     >
-                        Completed
+                        Delivered
                         <span className="ap-tab-count">
-                            {orders.filter(o => o.status === 'Delivered' || o.status === 'Completed').length}
+                            {orders.filter(o => o.status === 'Delivered').length}
+                        </span>
+                    </button>
+                    <button
+                        className={`ap-tab ${activeTab === 'cancelled' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('cancelled')}
+                    >
+                        Cancelled
+                        <span className="ap-tab-count">
+                            {orders.filter(o => o.status === 'Cancelled').length}
                         </span>
                     </button>
                 </div>
@@ -1035,7 +1279,7 @@ export default function AdminVendorPortal() {
                                 const stageIdx = getStageIndex(o.status);
                                 const artworkState = getArtworkState(o.status);
                                 return (
-                                    <tr key={o._id} className="ap-row">
+                                    <tr key={o._id} className={`ap-row ${o.status === 'Cancelled' ? 'cancelled-row' : ''}`} style={o.status === 'Cancelled' ? { opacity: 0.6, textDecoration: 'line-through' } : {}}>
                                         <td className="ap-td-num">{idx + 1}</td>
                                         <td className="ap-td-id" style={{ whiteSpace: 'nowrap' }}>{o.orderId}</td>
                                         <td>
@@ -1065,29 +1309,29 @@ export default function AdminVendorPortal() {
                                         <td className="ap-td-brand" style={{ backgroundColor: o.isProductionStarted ? '#f0fdf4' : 'transparent', transition: 'background-color 0.3s' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 {o.isProductionStarted ? (
-                                                    <CheckCircle 
-                                                        size={20} 
-                                                        fill="#22c55e" 
-                                                        color="#ffffff" 
-                                                        style={{ filter: 'drop-shadow(0 2px 4px rgba(34, 197, 94, 0.3))', cursor: 'pointer' }} 
+                                                    <CheckCircle
+                                                        size={20}
+                                                        fill="#22c55e"
+                                                        color="#ffffff"
+                                                        style={{ filter: 'drop-shadow(0 2px 4px rgba(34, 197, 94, 0.3))', cursor: 'pointer' }}
                                                         onClick={(e) => { e.stopPropagation(); setStoppingProduction(o); }}
                                                     />
                                                 ) : (
-                                                    <div 
+                                                    <div
                                                         onClick={() => setEditingProductionStart(o)}
-                                                        style={{ 
-                                                            width: '18px', 
-                                                            height: '18px', 
-                                                            borderRadius: '50%', 
-                                                            border: '2px solid #94a3b8', 
+                                                        style={{
+                                                            width: '18px',
+                                                            height: '18px',
+                                                            borderRadius: '50%',
+                                                            border: '2px solid #94a3b8',
                                                             cursor: 'pointer',
                                                             backgroundColor: '#fff'
                                                         }}
                                                     />
                                                 )}
-                                                <span 
+                                                <span
                                                     onClick={() => o.isProductionStarted && setViewingProductionInfo(o)}
-                                                    style={{ 
+                                                    style={{
                                                         cursor: o.isProductionStarted ? 'pointer' : 'default',
                                                         textDecoration: o.isProductionStarted ? 'underline' : 'none',
                                                         color: o.isProductionStarted ? '#1e40af' : 'inherit',
@@ -1133,7 +1377,11 @@ export default function AdminVendorPortal() {
                                             <div className="ap-mini-label">{stageIdx + 1}/6</div>
                                         </td>
                                         <td>
-                                            <span className={`ap-status-badge ${getStatusBadgeClass(o.status)}`}>
+                                            <span
+                                                className={`ap-status-badge ${getStatusBadgeClass(o.status)} ${o.status === 'Check Uploaded' ? 'clickable' : ''}`}
+                                                onClick={() => o.status === 'Check Uploaded' && setViewingPaymentHistory(o)}
+                                                style={{ cursor: o.status === 'Check Uploaded' ? 'pointer' : 'default' }}
+                                            >
                                                 {o.status}
                                             </span>
                                         </td>
@@ -1166,15 +1414,18 @@ export default function AdminVendorPortal() {
                                                 <button
                                                     className="ap-icon-btn manage"
                                                     title="Manage Order"
-                                                    onClick={() => setManagingOrder(o)}
+                                                    onClick={() => o.status !== 'Cancelled' && setManagingOrder(o)}
+                                                    disabled={o.status === 'Cancelled'}
+                                                    style={{ opacity: o.status === 'Cancelled' ? 0.4 : 1, cursor: o.status === 'Cancelled' ? 'not-allowed' : 'pointer' }}
                                                 >
                                                     <Edit size={16} />
                                                 </button>
                                                 <button
                                                     className="ap-icon-btn delete"
                                                     title="Delete Order"
-                                                    onClick={() => handleDelete(o._id)}
-                                                    style={{ background: '#fef2f2', color: '#ef4444' }}
+                                                    onClick={() => o.status !== 'Cancelled' && setDeletingOrderId(o._id)}
+                                                    style={{ background: '#fef2f2', color: '#ef4444', opacity: o.status === 'Cancelled' ? 0.4 : 1, cursor: o.status === 'Cancelled' ? 'not-allowed' : 'pointer' }}
+                                                    disabled={o.status === 'Cancelled'}
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>

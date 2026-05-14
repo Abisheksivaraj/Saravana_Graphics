@@ -1331,6 +1331,8 @@ export default function Layout() {
     const [showGenerateModal, setShowGenerateModal] = useState(false);
     const [showSaveModal, setShowSaveModal] = useState(false);
     const [saveInputs, setSaveInputs] = useState({ folder: '', filename: 'Proof_Sheet' });
+    const [existingFolders, setExistingFolders] = useState([]);
+    const [isCreatingNewFolder, setIsCreatingNewFolder] = useState(false);
     const [epcStats, setEpcStats] = useState(null);
     const [cmykInput, setCmykInput] = useState({ name: '', c: 0, m: 0, y: 0, k: 0 });
     const stageRef = useRef();
@@ -2087,9 +2089,21 @@ export default function Layout() {
         }
     };
 
-    const saveProofSheet = () => {
+    const saveProofSheet = async () => {
         if (!selectedTemplate) return toast.error('Please select a design template first');
         if (!expandedData.filter(r => !r.__blank).length) return toast.error('No label data to save');
+        
+        try {
+            const res = await filesAPI.getFolders();
+            setExistingFolders(res.data || []);
+            setIsCreatingNewFolder(false);
+            if (res.data && res.data.length > 0) {
+                setSaveInputs(prev => ({ ...prev, folder: res.data[0] }));
+            }
+        } catch (err) {
+            console.error('Failed to fetch folders', err);
+        }
+        
         setShowSaveModal(true);
     };
 
@@ -2179,12 +2193,33 @@ export default function Layout() {
                         </div>
                         <div className="save-modal-body">
                             <div className="save-input-group">
-                                <label className="save-input-label"><FolderOpen size={13} /> Folder Name (Optional)</label>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                    <label className="save-input-label" style={{ margin: 0 }}><FolderOpen size={13} /> Folder Name</label>
+                                    <button 
+                                        onClick={() => {
+                                            setIsCreatingNewFolder(!isCreatingNewFolder);
+                                            setSaveInputs(prev => ({ ...prev, folder: '' }));
+                                        }}
+                                        style={{ background: 'none', border: 'none', color: '#4f46e5', fontSize: '11px', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                                    >
+                                        {isCreatingNewFolder ? 'Choose Existing' : '+ Create New'}
+                                    </button>
+                                </div>
                                 <div className="save-input-wrapper">
                                     <FolderOpen size={16} className="save-input-icon" />
-                                    <input className="save-input-field" placeholder="e.g. Vendor Name or Project"
-                                        value={saveInputs.folder}
-                                        onChange={e => setSaveInputs({ ...saveInputs, folder: e.target.value })} />
+                                    {isCreatingNewFolder || existingFolders.length === 0 ? (
+                                        <input className="save-input-field" placeholder="New folder name..."
+                                            value={saveInputs.folder}
+                                            onChange={e => setSaveInputs({ ...saveInputs, folder: e.target.value })}
+                                            autoFocus />
+                                    ) : (
+                                        <select className="save-input-field" style={{ appearance: 'none', background: 'transparent' }}
+                                            value={saveInputs.folder}
+                                            onChange={e => setSaveInputs({ ...saveInputs, folder: e.target.value })}>
+                                            <option value="">— Root Directory —</option>
+                                            {existingFolders.map(f => <option key={f} value={f}>{f}</option>)}
+                                        </select>
+                                    )}
                                 </div>
                             </div>
                             <div className="save-input-group" style={{ marginBottom: 28 }}>
@@ -2198,7 +2233,7 @@ export default function Layout() {
                             </div>
                             <div className="save-modal-footer">
                                 <button className="save-btn-cancel" onClick={() => setShowSaveModal(false)}>Cancel</button>
-                                <button className="save-btn-confirm" onClick={handleSaveSubmit}><Save size={16} /> Save to Server</button>
+                                <button className="save-btn-confirm" onClick={handleSaveSubmit}><Save size={16} /> Save File</button>
                             </div>
                         </div>
                     </div>

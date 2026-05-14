@@ -4,7 +4,7 @@ const auth = require('../middleware/auth');
 const User = require('../models/User');
 const VendorOrder = require('../models/VendorOrder');
 const Vendor = require('../models/Vendor');
-const sendAccountCreationEmail = require('../utils/sendEmail');
+const { sendAccountCreationEmail } = require('../utils/sendEmail');
 
 // Role middleware
 const checkRole = (roles) => (req, res, next) => {
@@ -19,13 +19,18 @@ const checkRole = (roles) => (req, res, next) => {
 // @access  Admin
 router.post('/account', auth, checkRole(['admin']), async (req, res) => {
     try {
-        const { name, email, username, password, companyName, assignedVendors } = req.body;
+        const { email, companyName, assignedGroup } = req.body;
+        const name = assignedGroup; // Mapped to satisfy the User schema requirement
         
-        const existingUser = await User.findOne({ $or: [{ email }, { username }] });
-        if (existingUser) return res.status(400).json({ message: 'Buyer with this email or username already exists' });
+        const existingUser = await User.findOne({ email });
+        if (existingUser) return res.status(400).json({ message: 'Buyer with this email already exists' });
+        
+        // Auto-generate credentials
+        const username = `buyer_${Math.floor(10000 + Math.random() * 90000)}`;
+        const password = Math.random().toString(36).slice(-8) + Math.floor(Math.random() * 10); // Ensure some numbers
         
         const user = new User({
-            name, email, username, password, companyName, assignedVendors, role: 'buyer'
+            name, email, username, password, companyName, assignedGroup, role: 'buyer'
         });
         
         await user.save();
@@ -59,7 +64,17 @@ router.get('/vendors', auth, checkRole(['buyer']), async (req, res) => {
         const buyer = await User.findById(req.user._id).populate('assignedVendors', 'name vendorName vendorCode email status');
         if (!buyer) return res.status(404).json({ message: 'Buyer not found' });
         
-        res.json(buyer.assignedVendors);
+        let assignedVendors = [];
+        if (buyer.assignedGroup) {
+            // Find vendors that have this groupName
+            assignedVendors = await Vendor.find({ groupNames: buyer.assignedGroup })
+                .select('name vendorName vendorCode email status');
+        } else if (buyer.assignedVendors && buyer.assignedVendors.length > 0) {
+            // Fallback for legacy buyers
+            assignedVendors = buyer.assignedVendors;
+        }
+        
+        res.json(assignedVendors);
     } catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
@@ -72,16 +87,19 @@ router.get('/vendor-history/:vendorId', auth, checkRole(['buyer', 'admin']), asy
     try {
         const vendorId = req.params.vendorId;
         
-        // Security check for buyers: must be assigned to this vendor
+        const vendor = await Vendor.findById(vendorId).select('name vendorName vendorCode email groupNames');
+        if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+        
+        // Security check for buyers: must be assigned to this vendor's group or directly
         if (req.user.role === 'buyer') {
             const buyer = await User.findById(req.user._id);
-            if (!buyer.assignedVendors.includes(vendorId)) {
+            const hasGroupAccess = buyer.assignedGroup && vendor.groupNames && vendor.groupNames.includes(buyer.assignedGroup);
+            const hasDirectAccess = buyer.assignedVendors && buyer.assignedVendors.includes(vendorId);
+            
+            if (!hasGroupAccess && !hasDirectAccess) {
                 return res.status(403).json({ message: 'Access denied: Vendor not assigned to you' });
             }
         }
-        
-        const vendor = await Vendor.findById(vendorId).select('name vendorName vendorCode email');
-        if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
         
         const orders = await VendorOrder.find({ vendorId }).sort({ createdAt: -1 });
         

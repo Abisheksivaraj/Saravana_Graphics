@@ -269,16 +269,16 @@ export default function VendorDashboard() {
                     >
                         Active Jobs
                         <span className="vp-tab-count">
-                            {orders.filter(o => o.status !== 'Delivered' && o.status !== 'Completed').length}
+                            {orders.filter(o => o.status !== 'Delivered').length}
                         </span>
                     </button>
                     <button 
                         className={`vp-tab ${activeTab === 'completed' ? 'active' : ''}`}
                         onClick={() => setActiveTab('completed')}
                     >
-                        Completed
+                        Delivered
                         <span className="vp-tab-count">
-                            {orders.filter(o => o.status === 'Delivered' || o.status === 'Completed').length}
+                            {orders.filter(o => o.status === 'Delivered').length}
                         </span>
                     </button>
                 </div>
@@ -291,17 +291,17 @@ export default function VendorDashboard() {
                             <p>Loading your orders...</p>
                         </div>
                     ) : orders.filter(o => {
-                        const isCompleted = o.status === 'Delivered' || o.status === 'Completed';
-                        return activeTab === 'active' ? !isCompleted : isCompleted;
+                        const isDelivered = o.status === 'Delivered';
+                        return activeTab === 'active' ? !isDelivered : isDelivered;
                     }).length === 0 ? (
                         <div className="vp-empty-state">
                             <Upload size={48} />
-                            <p>No {activeTab} orders found.</p>
+                            <p>No {activeTab === 'active' ? 'active' : 'delivered'} orders found.</p>
                         </div>
                     ) : (
                         orders.filter(o => {
-                            const isCompleted = o.status === 'Delivered' || o.status === 'Completed';
-                            return activeTab === 'active' ? !isCompleted : isCompleted;
+                            const isDelivered = o.status === 'Delivered';
+                            return activeTab === 'active' ? !isDelivered : isDelivered;
                         }).map((order) => (
                             <OrderWorkflow 
                                 key={order._id} 
@@ -310,9 +310,6 @@ export default function VendorDashboard() {
                                 onAction={(action) => handleWorkflowAction(order, action)}
                             />
                         ))
-                    )}
-                </div>
-
                     )}
                 </div>
 

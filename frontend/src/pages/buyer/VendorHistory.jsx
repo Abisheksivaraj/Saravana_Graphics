@@ -94,7 +94,7 @@ export default function VendorHistory() {
                                 history.map(order => (
                                     <React.Fragment key={order._id}>
                                         <tr>
-                                        <td className="ap-td-id">#{order.orderNumber || order._id.slice(-6).toUpperCase()}</td>
+                                        <td className="ap-td-id">#{order.orderId || order._id.slice(-6).toUpperCase()}</td>
                                         <td>
                                             <div className="flex items-center gap-2">
                                                 <Calendar size={14} className="text-slate-400" />
@@ -102,27 +102,43 @@ export default function VendorHistory() {
                                             </div>
                                         </td>
                                         <td>
-                                            <div className="font-semibold">{order.itemName || 'Bulk Label Order'}</div>
-                                            <div className="text-xs text-slate-400">{order.quantity || 0} units</div>
+                                            <div className="font-semibold">{order.brand || 'Bulk Label Order'}</div>
                                         </td>
                                         <td>
                                             <span className={`ap-status-badge ${getStatusClass(order.status)}`}>
                                                 {order.status || 'Pending'}
                                             </span>
                                             <div className="ap-mini-progress" style={{ marginTop: '8px' }}>
-                                                {[...Array(7)].map((_, i) => (
-                                                    <div 
-                                                        key={i} 
-                                                        className={`ap-mini-step ${i < getStageIndex(order.status) ? 'done' : ''} ${i === getStageIndex(order.status) ? 'active' : ''}`}
-                                                    />
-                                                ))}
+                                                {[...Array(7)].map((_, i) => {
+                                                    const stageIdx = getStageIndex(order.status);
+                                                    let dotLabel = '';
+                                                    if (i < stageIdx) dotLabel = '✓';
+                                                    if (i === stageIdx) dotLabel = i + 1;
+                                                    
+                                                    let extraClass = '';
+                                                    const artworkState = order.reviewHistory?.length > 0 ? order.reviewHistory[order.reviewHistory.length - 1].status : '';
+                                                    if (i === 1 && artworkState === 'rejected') extraClass = 'rejected';
+                                                    if (i === 1 && artworkState === 'revised') {
+                                                        extraClass = 'revised';
+                                                        dotLabel = 'RA';
+                                                    }
+
+                                                    return (
+                                                        <div 
+                                                            key={i} 
+                                                            className={`ap-mini-step ${i < stageIdx ? 'done' : ''} ${i === stageIdx ? 'active' : ''} ${extraClass}`}
+                                                        >
+                                                            {dotLabel}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         </td>
                                         <td>
-                                            {order.commitDate ? (
+                                            {order.dispatchDate || order.deliveryDate || order.productionStartDate ? (
                                                 <div className="flex items-center gap-2 text-emerald-600 font-bold">
                                                     <Clock size={14} />
-                                                    {new Date(order.commitDate).toLocaleDateString()}
+                                                    {new Date(order.dispatchDate || order.deliveryDate || order.productionStartDate).toLocaleDateString()}
                                                 </div>
                                             ) : '--'}
                                         </td>

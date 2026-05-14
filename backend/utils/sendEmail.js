@@ -10,16 +10,16 @@ const transporter = nodemailer.createTransport({
 
 const sendAccountCreationEmail = async (toEmail, role, identifierCode, username, password, adminCode) => {
     try {
-        const baseUrl = process.env.LOGIN_URL || 'https://saravanagraphics.onrender.com/login';
+        const baseUrl = process.env.LOGIN_URL || 'https://saravanarfid.in/login';
         const loginUrl = (role === 'vendor' || role === 'buyer') ? `${baseUrl}?type=${role}` : baseUrl;
 
-        const fromEmail = process.env.EMAIL_FROM || '"Saravana Graphics Supporting Team" <support@saravanagraphics.com>';
-        const supportEmail = process.env.SMTP_USER || 'support@saravanagraphics.com';
+        const fromEmail = process.env.EMAIL_FROM || '"Saravana Rfid Supporting Team" <info@saravanarfid.in>';
+        const supportEmail = process.env.SMTP_USER || 'info@saravanarfid.in';
         const contactNo = '+91 93811 60606 | +91 93608 07755'; // Default, update as needed
 
         const identifierLabel = role === 'vendor' ? 'Vendor Number' : 'Buyer Code';
 
-        const frontendUrl = process.env.FRONTEND_URL || 'https://saravanagraphics.onrender.com';
+        const frontendUrl = process.env.FRONTEND_URL || 'https://saravanarfid.in';
 
         const htmlContent = `
         <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0;">
@@ -60,7 +60,7 @@ const sendAccountCreationEmail = async (toEmail, role, identifierCode, username,
         const mailOptions = {
             from: fromEmail,
             to: toEmail,
-            subject: `Account Created - Saravana Graphics Connect`,
+            subject: `Account Created - Saravana Rfid Connect`,
             html: htmlContent
         };
 
@@ -75,7 +75,7 @@ const sendAccountCreationEmail = async (toEmail, role, identifierCode, username,
 
 const sendOtpEmail = async (toEmail, otp) => {
     try {
-        const fromEmail = process.env.EMAIL_FROM || '"Saravana Graphics Supporting Team" <info@saravanarfid.com>';
+        const fromEmail = process.env.EMAIL_FROM || '"Saravana Graphics Rfid Team" <info@saravanarfid.com>';
 
         const htmlContent = `
         <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; padding: 20px;">
@@ -106,4 +106,66 @@ const sendOtpEmail = async (toEmail, otp) => {
     }
 };
 
-module.exports = { sendAccountCreationEmail, sendOtpEmail };
+const sendOrderCancelledEmail = async (orderId, vendorName, vendorEmail, groupName, remarks, recipientEmails) => {
+    try {
+        const supportEmail = process.env.SMTP_USER || 'info@saravanarfid.in';
+
+        const htmlContent = `
+        <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0;">
+            <div style="background-color: white; padding: 15px; text-align: center; border-bottom: 3px solid #ef4444;">
+                <h2 style="color: #ef4444; margin: 0;">Order Cancelled</h2>
+            </div>
+            <div style="padding: 20px;">
+                <p>An order has been <strong>cancelled</strong> by the vendor.</p>
+                
+                <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px;">
+                    <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eee; width: 140px;"><strong>Order ID:</strong></td>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eee;">${orderId}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eee;"><strong>Vendor Name:</strong></td>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eee;">${vendorName}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eee;"><strong>Vendor Email:</strong></td>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eee;">${vendorEmail}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eee;"><strong>Group Name:</strong></td>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eee;">${groupName || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eee; vertical-align: top;"><strong>Remarks:</strong></td>
+                        <td style="padding: 8px 0; border-bottom: 1px solid #eee;">${remarks || 'No remarks provided.'}</td>
+                    </tr>
+                </table>
+                
+                <p style="margin-top: 30px; margin-bottom: 5px;">Thank You,</p>
+                <p style="margin-bottom: 5px; margin-top: 5px;"><strong>Saravana Graphics Supporting Team</strong></p>
+                <p style="margin-bottom: 5px; margin-top: 5px;">Help Desk Email ID: <span style="background-color: #f0f0f0; padding: 2px 5px;">${supportEmail}</span></p>
+            </div>
+            <div style="background-color: #f9f9f9; padding: 15px; font-size: 11px; color: #777; border-top: 1px solid #e0e0e0;">
+                <p style="margin: 0;">This email is an automated notification regarding order status changes.</p>
+            </div>
+        </div>
+        `;
+
+        const mailOptions = {
+            from: vendorEmail,
+            to: recipientEmails.join(', '),
+            replyTo: vendorEmail,
+            subject: `Order Cancelled - ${orderId}`,
+            html: htmlContent
+        };
+
+        await transporter.sendMail(mailOptions);
+        console.log(`Cancellation email sent for order ${orderId}`);
+        return true;
+    } catch (error) {
+        console.error('Error sending cancellation email:', error);
+        return false;
+    }
+};
+
+module.exports = { sendAccountCreationEmail, sendOtpEmail, sendOrderCancelledEmail };

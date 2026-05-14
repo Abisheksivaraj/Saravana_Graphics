@@ -1,7 +1,8 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-    Cpu, Grid, LayoutTemplate, Layers, LogOut, ChevronLeft, Menu, Users, Upload, FileText
+    Cpu, Grid, LayoutTemplate, Layers, LogOut, ChevronLeft, Menu, Users, Upload, FileText,
+    LayoutDashboard, UserCheck, Store
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useUIStore } from '../store/uiStore';
@@ -48,8 +49,10 @@ const Sidebar = () => {
     }
 
     if (user?.role === 'admin') {
-        navItems.push({ path: '/admin/buyers', icon: Users, label: 'Buyer Management' });
-        navItems.push({ path: '/admin/vendors', icon: Users, label: 'Manage Vendors' });
+        navItems.unshift({ path: '/admin/dashboard', icon: LayoutDashboard, label: 'Admin Dashboard' }); // Add to the very top
+        
+        navItems.push({ path: '/admin/buyers', icon: UserCheck, label: 'Buyer Management' });
+        navItems.push({ path: '/admin/vendors', icon: Store, label: 'Manage Vendors' });
         navItems.push({ 
             path: '/admin/vendor-portal', 
             icon: Upload, 

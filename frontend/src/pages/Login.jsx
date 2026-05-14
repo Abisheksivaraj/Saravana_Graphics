@@ -27,6 +27,7 @@ export default function Login() {
     const [forgotEmail, setForgotEmail] = useState('');
     const [otp, setOtp] = useState('');
     const [newCreds, setNewCreds] = useState({ username: '', password: '', confirm: '' });
+    const [registrationEnabled, setRegistrationEnabled] = useState(false);
 
     const { login, user: authUser } = useAuthStore();
     const navigate = useNavigate();
@@ -45,6 +46,17 @@ export default function Login() {
         } else {
             setPortalType('admin');
         }
+        
+        const checkRegistration = async () => {
+            try {
+                const res = await authAPI.registrationStatus();
+                setRegistrationEnabled(res.data.registrationEnabled);
+            } catch (err) {
+                console.error('Registration status check failed:', err);
+            }
+        };
+        
+        checkRegistration();
         generateCaptcha();
     }, [searchParams]);
 
@@ -189,23 +201,6 @@ export default function Login() {
                     <div className="auth-card-modern">
                         {view === 'login' && (
                             <>
-                                {!searchParams.has('type') && (
-                                    <div className="portal-switcher">
-                                        {['admin', 'vendor', 'buyer'].map(t => (
-                                            <button
-                                                key={t}
-                                                className={`portal-btn ${portalType === t ? 'active' : ''}`}
-                                                onClick={() => {
-                                                    setPortalType(t);
-                                                    navigate(`/login?type=${t}`, { replace: true });
-                                                }}
-                                            >
-                                                {t === 'admin' ? <Shield size={16} /> : t === 'vendor' ? <Factory size={16} /> : <ShoppingCart size={16} />}
-                                                {t.charAt(0).toUpperCase() + t.slice(1)}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
 
                                 <div className="auth-card-header">
                                     <h2>{currentConfig.formTitle}</h2>
@@ -263,6 +258,12 @@ export default function Login() {
                                         {loading ? <div className="auth-spinner"></div> : <><LogIn size={18} /> Sign In</>}
                                     </button>
                                 </form>
+
+                                {registrationEnabled && portalType === 'admin' && (
+                                    <div className="auth-switch" style={{ marginTop: '24px', textAlign: 'center' }}>
+                                        Don't have an account? <Link to="/register">Register Admin</Link>
+                                    </div>
+                                )}
                             </>
                         )}
 

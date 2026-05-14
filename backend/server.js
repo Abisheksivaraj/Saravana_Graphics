@@ -12,6 +12,7 @@ const app = express();
 const corsOptions = {
   origin: [
     'http://localhost:5173',
+    'https://saravanarfid.in',
     'http://localhost:5174',
     'http://localhost:3000',
     'https://saravanagraphics.onrender.com',
@@ -54,6 +55,19 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
+// Serve static files from the React app
+if (process.env.NODE_ENV === 'production') {
+  const distPath = path.join(__dirname, '../frontend/dist');
+  app.use(express.static(distPath));
+
+  app.get('*', (req, res) => {
+    // Only handle non-API routes
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(distPath, 'index.html'));
+    }
+  });
+}
 
 // Start server immediately (don't wait for MongoDB)
 const PORT = process.env.PORT || 5000;

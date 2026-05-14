@@ -61,12 +61,7 @@ export default function OrderTrackingModal({ order, onClose }) {
             desc: 'Your order is currently in the manufacturing phase.',
             isDone: !!order.productionDate || order.status === 'Production' || order.status === 'Despatch' || order.status === 'Completed'
         },
-        { 
-            label: 'Despatched', 
-            date: order.dispatchDate, 
-            desc: 'Order has been despatched from the facility.',
-            isDone: !!order.dispatchDate || order.status === 'Despatch' || order.status === 'Completed'
-        },
+       
         { 
             label: 'Delivered', 
             date: order.deliveryDate, 

@@ -18,10 +18,12 @@ import AdminVendorPortal from './pages/AdminVendorPortal';
 import AdminVendorManager from './pages/AdminVendorManager';
 import AdminBuyerManager from './pages/AdminBuyerManager';
 import AdminFilesManager from './pages/AdminFilesManager';
+import AdminDashboard from './pages/AdminDashboard';
 
 import DashboardBuyer from './pages/buyer/Dashboard';
 import VendorHistory from './pages/buyer/VendorHistory';
 import AdminGlobalChat from './components/AdminGlobalChat';
+import RegisterCheck from './components/RegisterCheck';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { token, user, isLoading } = useAuthStore();
@@ -34,6 +36,7 @@ function ProtectedRoute({ children, allowedRoles }) {
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     if (user.role === 'vendor') return <Navigate to="/vendor-portal" replace />;
     if (user.role === 'buyer') return <Navigate to="/buyer/dashboard" replace />;
+    if (user.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
     return <Navigate to="/dashboard" replace />;
   }
   return children;
@@ -51,6 +54,7 @@ function PublicRoute({ children }) {
     if (!type) {
       if (user.role === 'vendor') return <Navigate to="/vendor-portal" replace />;
       if (user.role === 'buyer') return <Navigate to="/buyer/dashboard" replace />;
+      if (user.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
       return <Navigate to="/dashboard" replace />;
     }
     
@@ -58,6 +62,7 @@ function PublicRoute({ children }) {
     if (type === user.role) {
       if (user.role === 'vendor') return <Navigate to="/vendor-portal" replace />;
       if (user.role === 'buyer') return <Navigate to="/buyer/dashboard" replace />;
+      if (user.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
       return <Navigate to="/dashboard" replace />;
     }
     
@@ -80,7 +85,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<PublicRoute><Login /></PublicRoute>} />
         <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-        <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+        <Route path="/register" element={<PublicRoute><RegisterCheck><Register /></RegisterCheck></PublicRoute>} />
 
 
         {/* Shared Dashboard (Admin/User) */}
@@ -105,6 +110,7 @@ export default function App() {
         </Route>
         
         {/* Admin Specific */}
+        <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
         <Route path="/admin/vendor-portal" element={<ProtectedRoute allowedRoles={['admin']}><AdminVendorPortal /></ProtectedRoute>} />
         <Route path="/admin/vendors" element={<ProtectedRoute allowedRoles={['admin']}><AdminVendorManager /></ProtectedRoute>} />
         <Route path="/admin/buyers" element={<ProtectedRoute allowedRoles={['admin']}><AdminBuyerManager /></ProtectedRoute>} />

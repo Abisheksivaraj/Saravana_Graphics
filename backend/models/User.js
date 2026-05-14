@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema({
     role: { type: String, enum: ['user', 'admin', 'vendor', 'staff', 'buyer'], default: 'user' },
     status: { type: String, enum: ['active', 'pending', 'suspended'], default: 'active' },
     companyName: { type: String },
+    assignedGroup: { type: String, trim: true },
     assignedVendors: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Vendor' }]
 }, { timestamps: true });
 

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import './OrderWorkflow.css';
 import FileHistory from './FileHistory';
+import { BASE_URL } from '../api';
 
 const STAGES = [
     { id: 'uploaded', label: 'Excel Uploaded', icon: FileSpreadsheet, color: '#6366f1' },
@@ -121,9 +122,36 @@ export default function OrderWorkflow({ currentStatus, order, onAction }) {
                         </button>
                     )}
 
-                    {currentStatus === 'Completed' && (
-                        <div className="ow-pending-msg text-emerald-600">
-                            <CheckCircle2 size={14} /> Order Completed & Delivered
+                    {(currentStatus === 'Delivered' || currentStatus === 'Completed') && (
+                        <div className="ow-delivery-details" style={{ width: '100%', borderTop: '1px solid #f1f5f9', paddingTop: '16px', marginTop: '16px' }}>
+                            <div className="ow-pending-msg text-emerald-600" style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}>
+                                <CheckCircle2 size={18} /> Order Delivered
+                            </div>
+                            
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                                {order.deliveryDate && (
+                                    <div className="ow-date-tag" style={{ background: '#ecfdf5', color: '#065f46', border: '1px solid #d1fae5' }}>
+                                        <Calendar size={14} /> 
+                                        <span>Delivered: {new Date(order.deliveryDate).toLocaleDateString()}</span>
+                                    </div>
+                                )}
+                                {order.deliveryProofUrl && (
+                                    <button 
+                                        className="ow-btn success" 
+                                        style={{ fontSize: '0.8rem', padding: '8px 16px', width: 'fit-content' }}
+                                        onClick={() => window.open(`${BASE_URL}/${order.deliveryProofUrl.replace(/\\/g, '/')}`, '_blank')}
+                                    >
+                                        <FileText size={16} /> View POD / Proof
+                                    </button>
+                                )}
+                            </div>
+
+                            {order.deliveryRemarks && (
+                                <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                                    <div style={{ fontSize: '0.7rem', fontWeight: 900, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.04em' }}>Delivery Remarks</div>
+                                    <p style={{ margin: 0, fontSize: '0.9rem', color: '#334155', lineHeight: 1.5 }}>{order.deliveryRemarks}</p>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

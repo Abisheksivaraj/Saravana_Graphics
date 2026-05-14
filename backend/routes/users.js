@@ -49,7 +49,7 @@ router.post('/invite', auth, adminOnly, async (req, res) => {
         );
 
         // In a real app, send email here
-        const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/invite-accept/${token}`;
+        const inviteLink = `${process.env.FRONTEND_URL || 'https://saravanarfid.in'}/invite-accept/${token}`;
         
         res.status(201).json({ 
             message: 'Invitation generated successfully', 

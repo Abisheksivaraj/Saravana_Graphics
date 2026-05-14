@@ -1,8 +1,8 @@
 import axios from 'axios';
 
-export const BASE_URL = window.location.hostname === 'localhost' 
-    ? 'http://localhost:5000' 
-    : 'https://saravana-graphics.onrender.com';
+export const BASE_URL = window.location.hostname === 'localhost'
+    ? 'http://localhost:5000'
+    : 'https://saravanarfid.in';
 
 const api = axios.create({
     // Use full URL in production because frontend and   backend are on different domains
@@ -38,6 +38,7 @@ export const authAPI = {
     verifyOtp: (email, otp) => api.post('/auth/verify-otp', { email, otp }),
     resetPassword: (email, otp, newPassword) => api.post('/auth/reset-password', { email, otp, newPassword }),
     updateCredentials: (data) => api.post('/auth/update-credentials', data),
+    registrationStatus: () => api.get('/auth/registration-status'),
 };
 
 // Designs
@@ -87,7 +88,7 @@ export const vendorAPI = {
     approvePerforma: (id) => api.patch(`/vendors/approve-performa/${id}`),
     rejectPerforma: (id, data) => api.patch(`/vendors/reject-performa/${id}`, data),
     uploadDeliveryProof: (id, formData) => api.post(`/vendors/delivery-proof/${id}`, formData),
-    deleteOrder: (id) => api.delete(`/vendors/order/${id}`),
+    cancelOrder: (id, data) => api.patch(`/vendors/order/${id}/cancel`, data),
     deleteAccount: (id) => api.delete(`/vendors/account/${id}`),
     updateAccount: (id, data) => api.patch(`/vendors/account/${id}`, data),
     getNotifications: () => api.get('/vendors/notifications'),
@@ -119,6 +120,7 @@ export const filesAPI = {
         headers: { 'Content-Type': 'multipart/form-data' }
     }),
     getAll: () => api.get('/files'),
+    getFolders: () => api.get('/files/folders'),
     delete: (id) => api.delete(`/files/${id}`),
 };
 
