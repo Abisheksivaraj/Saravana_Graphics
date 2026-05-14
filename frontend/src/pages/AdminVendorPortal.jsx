@@ -452,7 +452,7 @@ function JobModal({ order, onClose, onRefresh }) {
                                         <button
                                             onClick={(e) => handleDownload(e, `${BASE_URL}/${order.paymentDetails.chequeScanUrl}`, `cheque_${order.orderId}`)}
                                             className="jm-upload-btn payment-btn"
-                                            style={{ border: 'none', cursor: 'pointer', padding: '8px 16px', textDecoration: 'none', background: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0' }}
+                                            style={{ cursor: 'pointer', padding: '8px 16px', textDecoration: 'none', background: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0' }}
                                         >
                                             <Download size={14} style={{ marginRight: '4px' }} /> Download
                                         </button>
@@ -876,7 +876,7 @@ function PaymentHistoryModal({ order, onClose }) {
                                     <button
                                         onClick={(e) => handleDownload(e, `${BASE_URL}/${current.chequeScanUrl}`, `cheque_${order.orderId}`)}
                                         className="jm-upload-btn payment-btn"
-                                        style={{ border: 'none', cursor: 'pointer', padding: '8px 16px', textDecoration: 'none', background: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0' }}
+                                        style={{ cursor: 'pointer', padding: '8px 16px', textDecoration: 'none', background: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0' }}
                                     >
                                         <Download size={16} style={{ marginRight: '8px' }} /> Download
                                     </button>
