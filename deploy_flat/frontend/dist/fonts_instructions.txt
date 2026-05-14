@@ -1,0 +1,10 @@
+public/
+  fonts/
+    Arial.ttf
+    Arial-Bold.ttf          ← arialbd.ttf in Windows
+    Arial-Italic.ttf        ← ariali.ttf in Windows
+    Arial-Bold-Italic.ttf   ← arialbi.ttf in Windows
+    Calibri.ttf
+    Calibri-Bold.ttf        ← calibrib.ttf in Windows
+    OCRB.ttf                ← download free from internet
+    RupeeForbidan.ttf       ← you already have this
